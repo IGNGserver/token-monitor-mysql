@@ -1,0 +1,27 @@
+{
+  "name": "token-monitor-hub-worker",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Cloudflare Worker deployment of the Token Monitor hub.",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "tail": "wrangler tail",
+    "secret:put": "wrangler secret put TOKEN_MONITOR_SECRET"
+  },
+  "author": "Javis",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Javis603/token-monitor.git",
+    "directory": "worker"
+  },
+  "homepage": "https://github.com/Javis603/token-monitor/tree/main/worker#readme",
+  "bugs": {
+    "url": "https://github.com/Javis603/token-monitor/issues"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}

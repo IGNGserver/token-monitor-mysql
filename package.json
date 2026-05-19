@@ -1,0 +1,51 @@
+{
+  "name": "token-monitor",
+  "productName": "Token Monitor",
+  "version": "0.1.0",
+  "description": "Live token & cost widget for Claude Code, Codex & Hermes — local-first, optional multi-device sync.",
+  "main": "src/electron/main.js",
+  "scripts": {
+    "start": "electron .",
+    "hub": "node src/hub/server.js",
+    "agent": "node src/agent/agent.js",
+    "agent:once": "node src/agent/agent.js --once",
+    "widget": "electron .",
+    "dev": "electron .",
+    "check": "node --check src/hub/server.js && node --check src/agent/agent.js && node --check src/shared/collector.js && node --check src/shared/config.js && node --check src/shared/http.js && node --check src/shared/usage.js && node --check src/electron/main.js && node --check src/electron/preload.js && node --check src/electron/renderer/app.js && node --check worker/src/index.js"
+  },
+  "keywords": [
+    "tokscale",
+    "claude-code",
+    "codex",
+    "hermes",
+    "token-monitor",
+    "token-usage",
+    "cost-tracking",
+    "llm",
+    "ai-tools",
+    "electron",
+    "desktop-widget",
+    "local-first",
+    "self-hosted"
+  ],
+  "author": "Javis",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Javis603/token-monitor.git"
+  },
+  "homepage": "https://github.com/Javis603/token-monitor#readme",
+  "bugs": {
+    "url": "https://github.com/Javis603/token-monitor/issues"
+  },
+  "dependencies": {
+    "chokidar": "^3.6.0",
+    "tokscale": "^2.1.3"
+  },
+  "devDependencies": {
+    "electron": "^42.1.0"
+  },
+  "engines": {
+    "node": ">=18.17"
+  }
+}

@@ -1,0 +1,76 @@
+﻿<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Token Monitor</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="titlebar">
+        <div>
+          <div class="app-title">Token Monitor<span id="liveDot" class="live-dot" title="Stream offline"></span></div>
+          <div id="status" class="status">Starting</div>
+        </div>
+        <div class="title-controls">
+          <nav class="tabs" aria-label="Period tabs">
+            <button class="tab active" data-period="today">DAY</button>
+            <button class="tab" data-period="month">MONTH</button>
+            <button class="tab" data-period="allTime">TOTAL</button>
+          </nav>
+          <div class="actions-hotspot" title="Window controls"></div>
+          <div class="window-actions">
+            <button id="pinButton" class="icon-button" title="Toggle always on top">⇧</button>
+            <button id="settingsButton" class="icon-button" title="Settings">⚙</button>
+            <button id="minButton" class="icon-button" title="Minimize">−</button>
+            <button id="closeButton" class="icon-button" title="Close">×</button>
+          </div>
+        </div>
+      </header>
+
+      <section id="settingsPanel" class="settings-panel hidden">
+        <div class="settings-group">
+          <div class="settings-group-header"><span>Multi-device Sync</span></div>
+          <p class="settings-note">Leave empty to run in local mode (this device only).</p>
+          <label>Hub URL<input id="hubUrlInput" type="text" spellcheck="false" placeholder="http://hub-host:17321" /></label>
+          <label>Secret<input id="secretInput" type="password" spellcheck="false" placeholder="optional shared secret" /></label>
+          <label>Device ID<input id="deviceIdInput" type="text" spellcheck="false" placeholder="auto (hostname)" /></label>
+          <div class="settings-actions">
+            <button id="saveSettingsButton">Save</button>
+          </div>
+        </div>
+        <div class="settings-group">
+          <div class="settings-group-header">
+            <span>Appearance</span>
+            <button id="resetAppearanceButton" class="reset-appearance-button" title="Reset appearance">↺</button>
+          </div>
+          <label class="checkbox-label"><input id="systemGlassInput" type="checkbox" />System Glass</label>
+          <label class="checkbox-label"><input id="liveDotInput" type="checkbox" />Live Indicator</label>
+          <label>Glass<input id="glassInput" type="range" min="0" max="100" step="1" /></label>
+          <label>Depth<input id="blurInput" type="range" min="0" max="100" step="1" /></label>
+        </div>
+        <div class="settings-group">
+          <div class="settings-group-header"><span>Advanced</span></div>
+          <p class="settings-note">Additional options are available in <code>settings.json</code>.</p>
+          <div class="settings-actions">
+            <button id="openConfigButton">Open Config</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="total-panel">
+        <div class="label-row"><span>TOTAL TOKENS</span></div>
+        <div id="totalTokens" class="total-number">0</div>
+        <div id="cost" class="cost">$0.00</div>
+      </section>
+
+      <section id="breakdown" class="breakdown"></section>
+      <footer class="footer">
+        <button id="breakdownToggle" class="mode-button">0 devices</button>
+        <button id="refreshButton" class="refresh-button" title="Refresh">↻</button>
+      </footer>
+    </main>
+    <script src="app.js"></script>
+  </body>
+</html>

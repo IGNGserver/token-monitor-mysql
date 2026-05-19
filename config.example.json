@@ -1,0 +1,27 @@
+{
+  "widget": {
+    "hubUrl": "",
+    "secret": "",
+    "alwaysOnTop": true,
+    "systemGlass": true,
+    "glassOpacity": 68,
+    "glassBlur": 32,
+    "showLiveDot": true,
+    "deviceId": "",
+    "clients": "claude,codex,hermes",
+    "allTimeSince": "2024-01-01"
+  },
+  "hub": {
+    "port": 17321,
+    "secret": "change-me",
+    "staleAfterMs": 600000
+  },
+  "agent": {
+    "hubUrl": "http://<hub-host>:17321",
+    "secret": "change-me",
+    "deviceId": "my-device",
+    "intervalMs": 300000,
+    "clients": "claude,codex,hermes",
+    "allTimeSince": "2024-01-01"
+  }
+}
