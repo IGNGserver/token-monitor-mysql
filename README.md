@@ -44,7 +44,7 @@ Only summary numbers ever leave your machine. Raw prompts, source files, and con
 
 Token Monitor reads usage from these AI coding tools out of the box:
 
-| | Tool | Data path |
+| Logo | Tool | Data path |
 |:---:|------|-----------|
 | <img src=".github/assets/tools-icon/claude.png" width="28" alt="Claude Code" /> | Claude Code | `~/.claude/projects/`, `~/.claude/transcripts/` |
 | <img src=".github/assets/tools-icon/codex.png" width="28" alt="Codex" /> | Codex | `~/.codex/sessions/` |
