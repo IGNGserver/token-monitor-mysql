@@ -1,4 +1,12 @@
-⚠️ **Unsigned developer build.** No Apple Developer / EV certificate signing.
+**Open-source build, not paid-signed.** macOS and Windows will ask you to confirm on first launch — instructions below.
+
+## Which file should I download?
+
+- **macOS (Apple Silicon, M1 and later)** — the `.dmg` file
+- **Windows 10/11** — `Token Monitor Setup ….exe` (installer, recommended)
+- **Windows portable** — `Token Monitor ….exe` (runs without installing)
+
+Intel Macs and Linux are not pre-built — run from source per the [README](https://github.com/Javis603/token-monitor#readme). The macOS `.zip` is the same app repackaged; ignore it unless you specifically need it.
 
 ## First-launch unlock
 
