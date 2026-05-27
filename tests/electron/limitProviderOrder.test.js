@@ -6,6 +6,7 @@ const test = require('node:test');
 const {
   moveLimitProvider,
   normalizeLimitProviderOrder,
+  normalizeLimitProviderSelection,
   orderedLimitProviders
 } = require('../../src/electron/renderer/limitProviderOrder');
 
@@ -20,6 +21,13 @@ test('normalizeLimitProviderOrder drops invalid entries and appends missing prov
   assert.deepEqual(
     normalizeLimitProviderOrder('codex,unknown,codex,claude', providers),
     ['codex', 'claude', 'cursor', 'antigravity']
+  );
+});
+
+test('normalizeLimitProviderSelection preserves disabled providers', () => {
+  assert.deepEqual(
+    normalizeLimitProviderSelection('codex,unknown,codex', providers),
+    ['codex']
   );
 });
 

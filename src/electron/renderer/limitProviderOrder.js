@@ -29,6 +29,20 @@
     return order;
   }
 
+  function normalizeLimitProviderSelection(value, providers) {
+    const knownSet = new Set(providerIds(providers));
+    const raw = Array.isArray(value) ? value : String(value || '').split(',');
+    const seen = new Set();
+    const selection = [];
+    for (const item of raw) {
+      const id = String(item || '').trim().toLowerCase();
+      if (!knownSet.has(id) || seen.has(id)) continue;
+      seen.add(id);
+      selection.push(id);
+    }
+    return selection;
+  }
+
   function orderedLimitProviders(providers, value) {
     const byId = new Map((providers || []).map((provider) => [String(provider.id || '').toLowerCase(), provider]));
     return normalizeLimitProviderOrder(value, providers).map((id) => byId.get(id)).filter(Boolean);
@@ -45,5 +59,5 @@
     return order.join(',');
   }
 
-  return { moveLimitProvider, normalizeLimitProviderOrder, orderedLimitProviders };
+  return { moveLimitProvider, normalizeLimitProviderOrder, normalizeLimitProviderSelection, orderedLimitProviders };
 });

@@ -522,7 +522,7 @@ function configuredLimitProviderOrder() {
 function configuredLimitProviderSelection() {
   const raw = state.settings?.limitProviders;
   const source = raw === undefined || raw === null ? DEFAULT_LIMIT_PROVIDER_ORDER : raw;
-  return limitProviderOrderApi.normalizeLimitProviderOrder(source, LIMIT_PROVIDERS);
+  return limitProviderOrderApi.normalizeLimitProviderSelection(source, LIMIT_PROVIDERS);
 }
 
 function enabledLimitProviderSet() {
