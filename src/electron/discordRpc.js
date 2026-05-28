@@ -1,6 +1,7 @@
 'use strict';
 
 const { Client } = require('@xhayper/discord-rpc');
+const { formatCurrencyFromUsd, normalizeCurrency } = require('../shared/currency');
 
 const CLIENT_ID = '1507034330436862062';
 const GITHUB_URL = 'https://github.com/Javis603/token-monitor';
@@ -19,16 +20,12 @@ let client = null;
 let isConnected = false;
 let startTimestamp = 0;
 let latestStats = null;
+let latestCurrency = 'USD';
 let pendingPayload = null;
 let lastSentAt = 0;
 let flushTimer = null;
 let reconnectTimer = null;
 let stopped = true;
-
-function formatCost(value) {
-  const amount = Number(value || 0);
-  return `$${amount.toFixed(amount >= 10 ? 2 : 4)}`;
-}
 
 function formatTokensCompact(value) {
   const n = Math.round(Number(value || 0));
@@ -44,8 +41,9 @@ function topClient(today) {
   return entries[0]?.[0] || null;
 }
 
-function buildPayload(stats) {
+function buildPayload(stats, currency = 'USD') {
   const today = stats?.periods?.today || { totalTokens: 0, costUsd: 0, clients: {} };
+  const displayCurrency = normalizeCurrency(currency);
   const totalTokens = Number(today.totalTokens || 0);
   const base = {
     type: 0,
@@ -62,7 +60,7 @@ function buildPayload(stats) {
   const payload = {
     ...base,
     details: `${label} · ${formatTokensCompact(totalTokens)} tokens`,
-    state: `${formatCost(today.costUsd)} today`
+    state: `${formatCurrencyFromUsd(today.costUsd, displayCurrency)} today`
   };
   if (top && KNOWN_CLIENT_ASSETS.has(top)) {
     payload.smallImageKey = top;
@@ -104,7 +102,7 @@ function connect() {
   client.on('ready', () => {
     isConnected = true;
     startTimestamp = Date.now();
-    pendingPayload = buildPayload(latestStats);
+    pendingPayload = buildPayload(latestStats, latestCurrency);
     flush();
   });
   client.on('disconnected', () => {
@@ -143,10 +141,11 @@ function stopDiscordRpc() {
   isConnected = false;
 }
 
-function updateDiscordRpc(stats) {
+function updateDiscordRpc(stats, currency = 'USD') {
   latestStats = stats;
+  latestCurrency = normalizeCurrency(currency);
   if (stopped) return;
-  pendingPayload = buildPayload(stats);
+  pendingPayload = buildPayload(stats, latestCurrency);
   scheduleFlush();
 }
 

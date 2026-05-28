@@ -3,7 +3,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 
-const { pickUsageTrayIconId } = require('../../src/electron/tray');
+const { formatTrayText, pickUsageTrayIconId } = require('../../src/electron/tray');
 
 const stats = {
   periods: {
@@ -48,4 +48,10 @@ test('usage tray icon returns null when the top client has no available icon', (
     pickUsageTrayIconId({ periods: { today: { clients: { unknown: 20, codex: 10 } } } }, 'tokens', ['codex']),
     null
   );
+});
+
+test('tray cost text uses the selected display currency', () => {
+  assert.equal(formatTrayText({ periods: { today: { costUsd: 1, totalTokens: 12_000 } } }, 'cost'), '$1.0000');
+  assert.equal(formatTrayText({ periods: { today: { costUsd: 1, totalTokens: 12_000 } } }, 'cost', 'TWD'), 'NT$31.50');
+  assert.equal(formatTrayText({ periods: { today: { costUsd: 1, totalTokens: 12_000 } } }, 'both', 'HKD'), '12.0K · HK$7.80');
 });

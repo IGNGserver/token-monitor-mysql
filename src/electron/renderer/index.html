@@ -137,6 +137,14 @@
               <option value="desktop" data-i18n="settings.windowBehavior.desktop">Desktop pinned</option>
             </select>
           </label>
+          <label><span data-i18n="settings.currency.label">Currency</span>
+            <select id="currencyInput">
+              <option value="USD" data-i18n="settings.currency.usd">USD - US Dollar</option>
+              <option value="TWD" data-i18n="settings.currency.twd">TWD - New Taiwan Dollar</option>
+              <option value="HKD" data-i18n="settings.currency.hkd">HKD - Hong Kong Dollar</option>
+              <option value="CNY" data-i18n="settings.currency.cny">CNY - Chinese Yuan</option>
+            </select>
+          </label>
           <p class="settings-note" data-i18n="settings.display.windowBehaviorNote">Desktop pinned keeps the widget below other apps and locks drag/resize while staying clickable.</p>
           <label class="checkbox-label"><input id="trayModeInput" type="checkbox" /><span data-i18n="settings.display.trayMode">Tray Mode</span></label>
           <p class="settings-note" data-i18n="settings.display.trayNote">Hide the floating window; show a popover from the macOS menu bar or Windows system tray.</p>
@@ -234,6 +242,7 @@
     <script src="trayProviderIcons.js"></script>
     <script src="limitProviderOrder.js"></script>
     <script src="i18n.js"></script>
+    <script src="../../shared/currency.js"></script>
     <script src="app.js"></script>
   </body>
 </html>

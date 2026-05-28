@@ -2,6 +2,7 @@
 
 const path = require('node:path');
 const { Tray, Menu, nativeImage, screen } = require('electron');
+const { formatCurrencyFromUsd } = require('../shared/currency');
 
 const ICON_PATH = path.join(__dirname, '..', '..', 'assets', 'icon.png');
 
@@ -17,11 +18,6 @@ function formatCompactNumber(value) {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
   return String(n);
-}
-
-function formatCost(value) {
-  const amount = Number(value) || 0;
-  return `$${amount.toFixed(amount >= 10 ? 2 : 4)}`;
 }
 
 function pickWorstLimit(stats) {
@@ -72,7 +68,7 @@ function pickUsageTrayIconId(stats, contentMode = 'tokens', availableIconIds = [
   return available.has(client) ? client : null;
 }
 
-function formatTrayText(stats, contentMode = 'tokens') {
+function formatTrayText(stats, contentMode = 'tokens', currency = 'USD') {
   if (contentMode === 'icon') return '';
   if (contentMode === 'bars' || contentMode === 'barsSession' || contentMode === 'barsWeekly' || contentMode === 'barsAllSessions') {
     // Icon carries all the info; only show text if we have no limit data at all.
@@ -80,11 +76,11 @@ function formatTrayText(stats, contentMode = 'tokens') {
   }
   const today = stats?.periods?.today || {};
   const allTime = stats?.periods?.allTime || {};
-  if (contentMode === 'cost') return formatCost(today.costUsd);
-  if (contentMode === 'costAll') return formatCost(allTime.costUsd);
+  if (contentMode === 'cost') return formatCurrencyFromUsd(today.costUsd, currency);
+  if (contentMode === 'costAll') return formatCurrencyFromUsd(allTime.costUsd, currency);
   if (contentMode === 'tokensAll') return formatCompactNumber(allTime.totalTokens);
-  if (contentMode === 'bothAll') return `${formatCompactNumber(allTime.totalTokens)} · ${formatCost(allTime.costUsd)}`;
-  if (contentMode === 'both') return `${formatCompactNumber(today.totalTokens)} · ${formatCost(today.costUsd)}`;
+  if (contentMode === 'bothAll') return `${formatCompactNumber(allTime.totalTokens)} · ${formatCurrencyFromUsd(allTime.costUsd, currency)}`;
+  if (contentMode === 'both') return `${formatCompactNumber(today.totalTokens)} · ${formatCurrencyFromUsd(today.costUsd, currency)}`;
   return formatCompactNumber(today.totalTokens);
 }
 

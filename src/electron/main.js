@@ -18,6 +18,7 @@ const { checkLatestRelease } = require('../shared/appUpdater');
 const cursorAuth = require('../shared/cursorAuth');
 const cursorProbe = require('../shared/cursorProbe');
 const semver = require('semver');
+const { normalizeCurrency } = require('../shared/currency');
 const { aggregateDevices } = require('../shared/usage');
 const { startDiscordRpc, stopDiscordRpc, updateDiscordRpc } = require('./discordRpc');
 const { buildTrayIcon, createTray, formatTrayText, pickUsageTrayIconId, popoverBounds } = require('./tray');
@@ -94,6 +95,7 @@ function defaultSettings() {
     zoomFactor: 1,
     trayMode: false,
     trayContent: 'tokens',
+    currency: normalizeCurrency(process.env.TOKEN_MONITOR_CURRENCY || 'USD'),
     startAtLogin: false,
     language: 'auto',
     appUpdate: {
@@ -243,6 +245,7 @@ function readSettings() {
     }
     merged.hubMode = normalizeHubMode(merged.hubMode);
     merged.language = normalizeLanguageSetting(merged.language);
+    merged.currency = normalizeCurrency(merged.currency);
     merged.hubHostPort = normalizeHubPort(merged.hubHostPort);
     merged.hubHostSecret = typeof merged.hubHostSecret === 'string' ? merged.hubHostSecret : '';
     return normalizeWindowBehaviorSettings(merged);
@@ -520,10 +523,11 @@ function sendPush(payload) {
 function updateTrayDisplay() {
   if (!tray || tray.isDestroyed()) return;
   const mode = settings?.trayContent || 'tokens';
-  const text = formatTrayText(latestStats, mode);
+  const currency = normalizeCurrency(settings?.currency);
+  const text = formatTrayText(latestStats, mode, currency);
   if (process.platform === 'darwin') tray.setTitle(text);
   // Tooltip always shows a useful summary, even in icon-only mode where setTitle is blank.
-  const tip = formatTrayText(latestStats, 'both');
+  const tip = formatTrayText(latestStats, 'both', currency);
   tray.setToolTip(`Token Monitor - ${tip}`);
   // Icon: rendered bars image in bar modes, otherwise the app icon.
   let icon = null;
@@ -567,7 +571,7 @@ function startLocalCollector() {
     onUpdate: (summary, reason) => {
       localDevice = { ...summary, receivedAt: new Date().toISOString() };
       localStats = aggregateDevices([localDevice], 0);
-      updateDiscordRpc(localStats);
+      updateDiscordRpc(localStats, settings.currency);
       sendPush({ event: 'stats', data: { type: 'stats', reason, stats: localStats, at: new Date().toISOString() } });
       sendStatus(true, { reason });
     },
@@ -633,7 +637,7 @@ async function startStatsStream() {
         buffer = buffer.slice(idx + 2);
         const parsed = parseSseChunk(chunk);
         if (parsed) {
-          if (parsed.event === 'stats' && parsed.data?.stats) updateDiscordRpc(parsed.data.stats);
+          if (parsed.event === 'stats' && parsed.data?.stats) updateDiscordRpc(parsed.data.stats, settings.currency);
           sendPush(parsed);
         }
       }
@@ -1116,10 +1120,13 @@ app.whenReady().then(() => {
     const previousDiscordRpcEnabled = settings.discordRpcEnabled;
     const previousTrayMode = settings.trayMode;
     const previousTrayContent = settings.trayContent;
+    const previousCurrency = settings.currency;
     const previousStartAtLogin = settings.startAtLogin;
+    const normalizedCurrency = patch.currency !== undefined ? normalizeCurrency(patch.currency, settings.currency) : normalizeCurrency(settings.currency);
+    const normalizedPatch = { ...patch, currency: normalizedCurrency };
     settings = normalizeWindowBehaviorSettings({
       ...settings,
-      ...patch,
+      ...normalizedPatch,
       hubMode: patch.hubMode !== undefined ? normalizeHubMode(patch.hubMode, settings.hubMode) : settings.hubMode,
       hubHostPort: patch.hubHostPort !== undefined ? normalizeHubPort(patch.hubHostPort, settings.hubHostPort) : settings.hubHostPort,
       hubHostSecret: patch.hubHostSecret !== undefined ? String(patch.hubHostSecret) : settings.hubHostSecret,
@@ -1140,17 +1147,22 @@ app.whenReady().then(() => {
       zoomFactor: clampZoom(patch.zoomFactor ?? settings.zoomFactor),
       trayMode: parseBoolean(patch.trayMode ?? settings.trayMode, false),
       trayContent: normalizeTrayContent(patch.trayContent ?? settings.trayContent),
+      currency: normalizedCurrency,
       language: patch.language !== undefined ? normalizeLanguageSetting(patch.language, settings.language) : normalizeLanguageSetting(settings.language),
       startAtLogin: loginItemEnabledHere() ? parseBoolean(patch.startAtLogin ?? settings.startAtLogin, false) : false
-    }, patch);
+    }, normalizedPatch);
     saveSettings();
     if (settings.startAtLogin !== previousStartAtLogin) {
       settings.startAtLogin = applyLoginItem(settings.startAtLogin);
       saveSettings();
     }
     if (patch.zoomFactor !== undefined) applyZoomFactor();
-    if (settings.discordRpcEnabled && !previousDiscordRpcEnabled) startDiscordRpc();
+    if (settings.discordRpcEnabled && !previousDiscordRpcEnabled) {
+      startDiscordRpc();
+      if (latestStats) updateDiscordRpc(latestStats, settings.currency);
+    }
     else if (!settings.discordRpcEnabled && previousDiscordRpcEnabled) stopDiscordRpc();
+    else if (settings.discordRpcEnabled && settings.currency !== previousCurrency && latestStats) updateDiscordRpc(latestStats, settings.currency);
     applyWindowSettings();
     if (process.platform === 'win32' && previousSystemGlass !== settings.systemGlass) {
       rebuildWindow();
@@ -1174,7 +1186,7 @@ app.whenReady().then(() => {
     if (settings.trayMode !== previousTrayMode) {
       if (settings.trayMode) enterTrayMode();
       else exitTrayMode();
-    } else if (settings.trayContent !== previousTrayContent) {
+    } else if (settings.trayContent !== previousTrayContent || settings.currency !== previousCurrency) {
       updateTrayDisplay();
     }
     return settings;

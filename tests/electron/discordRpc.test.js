@@ -14,6 +14,7 @@ function loadBuildPayload() {
     module: { exports: {} },
     require(name) {
       if (name === '@xhayper/discord-rpc') return { Client: class {} };
+      if (name === '../shared/currency') return require('../../src/shared/currency');
       return require(name);
     },
     setTimeout,
@@ -40,4 +41,19 @@ test('Discord Rich Presence uses Antigravity label and uploaded asset key', () =
   assert.equal(payload.details, 'Antigravity · 12.3K tokens');
   assert.equal(payload.smallImageKey, 'antigravity');
   assert.equal(payload.smallImageText, 'Antigravity');
+});
+
+test('Discord Rich Presence formats today cost with selected currency', () => {
+  const buildPayload = loadBuildPayload();
+  const payload = buildPayload({
+    periods: {
+      today: {
+        totalTokens: 12_345,
+        costUsd: 1,
+        clients: { codex: 12_345 }
+      }
+    }
+  }, 'CNY');
+
+  assert.equal(payload.state, '¥6.80 today');
 });
