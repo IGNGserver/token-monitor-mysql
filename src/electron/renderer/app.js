@@ -2048,14 +2048,8 @@ function renderCursorStatus() {
     setCursorAccountExpanded(true);
     return;
   }
-  const parts = [];
-  if (status.email) parts.push(status.email);
-  if (status.membershipType) parts.push(`Cursor ${status.membershipType}`);
-  if (status.billingCycleEnd) {
-    const d = new Date(status.billingCycleEnd);
-    parts.push(t('settings.cursor.billingResets', { date: d.toLocaleDateString(currentLocale()) }));
-  }
-  setCursorStatusText(statusEl, `✓ ${parts.join(' · ')}`);
+  const summary = status.email || t('settings.cursor.loggedIn');
+  setCursorStatusText(statusEl, summary);
   loginBtn.classList.add('hidden');
   logoutBtn.classList.remove('hidden');
   refreshBtn.classList.remove('hidden');

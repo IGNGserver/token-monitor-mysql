@@ -368,14 +368,26 @@ body.floating-bubble-collapsed-right .floating-bubble-tab {
 }
 .cursor-disclosure-icon {
   flex: 0 0 auto;
+  display: inline-grid;
+  place-items: center;
   width: 12px;
+  height: 12px;
   color: var(--muted);
-  text-align: center;
-  transform: translateY(-1px);
+  font-size: 0;
+  line-height: 0;
+  transform-origin: center;
   transition: transform 140ms ease;
 }
+.cursor-disclosure-icon::before {
+  content: "";
+  width: 5px;
+  height: 5px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: translateY(-1.5px) rotate(45deg);
+}
 .cursor-account-group.expanded .cursor-disclosure-icon {
-  transform: translateY(-1px) rotate(180deg);
+  transform: rotate(180deg);
 }
 .cursor-settings-details {
   display: grid;
