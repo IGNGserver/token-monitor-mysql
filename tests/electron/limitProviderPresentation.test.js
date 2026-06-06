@@ -7,6 +7,8 @@ const test = require('node:test');
 
 const {
   limitProviderCapabilityTags,
+  limitProviderMainDeviceLabel,
+  limitProviderProvenance,
   limitProviderSettingsTags
 } = require('../../src/electron/renderer/limitProviderPresentation');
 
@@ -64,6 +66,78 @@ test('detected settings tags show only current source after status', () => {
   );
 });
 
+test('remote synced provider tags show the selected source device and local availability', () => {
+  const provider = { provider: 'codex', status: 'ok', source: 'rpc', sourceDeviceId: 'work-mac' };
+  const provenance = limitProviderProvenance(provider, {
+    localDeviceId: 'local-mac',
+    syncActive: true,
+    devices: [
+      {
+        deviceId: 'local-mac',
+        hostname: 'local.local',
+        limits: { providers: [{ provider: 'codex', status: 'ok', source: 'rpc', accountKey: 'same' }] }
+      },
+      {
+        deviceId: 'work-mac',
+        hostname: 'work.local',
+        limits: { providers: [{ provider: 'codex', status: 'ok', source: 'rpc', accountKey: 'same' }] }
+      }
+    ]
+  });
+
+  assert.deepEqual(
+    limitProviderSettingsTags(provider, provenance).map((tag) => tag.key || tag.label),
+    ['Live', 'CLI RPC', 'settings.limits.device.from', 'settings.limits.device.localAlso']
+  );
+  assert.equal(provenance.selectedDeviceLabel, 'work-mac');
+  assert.equal(limitProviderMainDeviceLabel(provenance), 'work-mac');
+});
+
+test('local provider tags show when synced devices also have provider data', () => {
+  const provider = { provider: 'cursor', status: 'ok', source: 'web', sourceDeviceId: 'local-mac' };
+  const provenance = limitProviderProvenance(provider, {
+    localDeviceId: 'local-mac',
+    syncActive: true,
+    devices: [
+      {
+        deviceId: 'local-mac',
+        limits: { providers: [{ provider: 'cursor', status: 'ok', source: 'web', accountKey: 'cursor' }] }
+      },
+      {
+        deviceId: 'office-pc',
+        limits: { providers: [{ provider: 'cursor', status: 'ok', source: 'web', accountKey: 'cursor' }] }
+      }
+    ]
+  });
+
+  assert.deepEqual(
+    limitProviderSettingsTags(provider, provenance).map((tag) => tag.key || tag.label),
+    ['Linked', 'Web', 'settings.limits.device.localAndSynced']
+  );
+  assert.equal(limitProviderSettingsTags(provider, provenance)[2].count, 1);
+  assert.equal(limitProviderMainDeviceLabel(provenance), '');
+});
+
+test('single local synced provider tags identify local provenance without main panel noise', () => {
+  const provider = { provider: 'opencode', status: 'ok', source: 'web', sourceDeviceId: 'local-mac' };
+  const provenance = limitProviderProvenance(provider, {
+    localDeviceId: 'local-mac',
+    syncActive: true,
+    devices: [
+      {
+        deviceId: 'local-mac',
+        limits: { providers: [{ provider: 'opencode', status: 'ok', source: 'web', accountKey: 'zen' }] }
+      }
+    ]
+  });
+
+  assert.deepEqual(
+    limitProviderSettingsTags(provider, provenance).map((tag) => tag.key || tag.label),
+    ['Linked', 'Zen', 'settings.limits.device.local']
+  );
+  assert.equal(limitProviderMainDeviceLabel(provenance), '');
+});
+
 test('capability tags are settings-only and do not alter the main Limits panel', () => {
   const app = readRendererFile('app.js');
   const styles = readRendererFile('styles.css');
@@ -71,8 +145,11 @@ test('capability tags are settings-only and do not alter the main Limits panel',
   const renderSettings = functionBody(app, 'renderLimitProviderCheckboxes', 'onToolTrackingToggle');
 
   assert.doesNotMatch(renderLimits, /limitProviderCapabilityTags|limit-status|limitProviderStatus/);
+  assert.match(renderLimits, /const provenance = limitProviderProvenance\(provider\);/);
+  assert.match(renderLimits, /limitProviderMeta\(provider, provenance\)/);
+  assert.doesNotMatch(renderLimits, /limitProviderSettingsTags/);
   assert.match(renderLimits, /head\.append\(titleBlock, plan\);/);
-  assert.match(renderSettings, /limitProviderSettingsTags\(provider/);
+  assert.match(renderSettings, /limitProviderSettingsTags\(provider, provenance/);
   assert.doesNotMatch(styles, /\.limit-status\b/);
 });
 

@@ -804,6 +804,21 @@ body.floating-bubble-collapsed-right .floating-bubble-tab {
   border-color: rgba(115, 189, 245, 0.24);
   color: var(--blue);
 }
+.limit-provider-tag-device {
+  border-color: rgba(232, 238, 244, 0.18);
+}
+.limit-provider-tag-local {
+  border-color: rgba(183, 234, 212, 0.24);
+  color: var(--green);
+}
+.limit-provider-tag-remote {
+  border-color: rgba(241, 217, 115, 0.32);
+  color: var(--yellow);
+}
+.limit-provider-tag-multi {
+  border-color: rgba(115, 189, 245, 0.3);
+  color: var(--blue);
+}
 .limit-provider-tag-setup {
   border-color: rgba(244, 160, 115, 0.32);
   color: var(--orange);

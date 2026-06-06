@@ -190,6 +190,11 @@ function translatedLimitCapabilityTag(label) {
   return key ? t(key) : label;
 }
 
+function translatedLimitProviderTag(tagInfo) {
+  if (tagInfo?.key) return t(tagInfo.key, tagInfo.values);
+  return translatedLimitCapabilityTag(tagInfo?.label || '');
+}
+
 function applySettingsTranslations() {
   if (els.languageInput) els.languageInput.value = currentLanguage();
   i18n.applyTranslations(document, currentLocale());
@@ -622,11 +627,30 @@ function limitStatusLabel(status, stale) {
   return 'Error';
 }
 
-function limitProviderMeta(provider) {
-  if (provider.stale) return `Stale · ${formatUpdatedAge(provider.updatedAt).replace('Updated ', '')}`;
+function syncProvenanceActive() {
+  return state.mode === 'sync' || Boolean(String(state.settings?.hubUrl || '').trim());
+}
+
+function limitProviderProvenance(provider) {
+  return limitProviderPresentationApi.limitProviderProvenance(provider, {
+    localDeviceId: state.settings?.deviceId || '',
+    syncActive: syncProvenanceActive(),
+    devices: state.stats?.devices || []
+  });
+}
+
+function limitProviderMeta(provider, provenance = null) {
+  const sourceDevice = limitProviderPresentationApi.limitProviderMainDeviceLabel(provenance);
+  if (provider.stale) {
+    const parts = ['Stale', formatUpdatedAge(provider.updatedAt).replace('Updated ', '')];
+    if (sourceDevice) parts.push(sourceDevice);
+    return parts.join(' · ');
+  }
   if (provider.status === 'ok') {
-    const source = state.settings?.showLimitSource && LIMIT_SOURCE_LABELS[provider.source] ? ` · ${LIMIT_SOURCE_LABELS[provider.source]}` : '';
-    return `${formatUpdatedAge(provider.updatedAt)}${source}`;
+    const parts = [];
+    if (state.settings?.showLimitSource && LIMIT_SOURCE_LABELS[provider.source]) parts.push(LIMIT_SOURCE_LABELS[provider.source]);
+    if (sourceDevice) parts.push(sourceDevice);
+    return `${formatUpdatedAge(provider.updatedAt)}${parts.length ? ` · ${parts.join(' · ')}` : ''}`;
   }
   return limitStatusLabel(provider.status, false);
 }
@@ -765,7 +789,8 @@ function renderLimits() {
     name.append(mark, title);
     const meta = document.createElement('div');
     meta.className = 'limit-meta';
-    meta.textContent = provider.status === 'ok' || provider.stale ? limitProviderMeta(provider) : '';
+    const provenance = limitProviderProvenance(provider);
+    meta.textContent = provider.status === 'ok' || provider.stale ? limitProviderMeta(provider, provenance) : '';
     titleBlock.append(name, meta);
     const plan = document.createElement('div');
     plan.className = 'limit-plan';
@@ -1810,11 +1835,12 @@ function renderLimitProviderCheckboxes() {
     text.textContent = settingsLabel || label;
     const tags = document.createElement('span');
     tags.className = 'limit-provider-tags';
-    for (const tagInfo of limitProviderPresentationApi.limitProviderSettingsTags(provider)) {
+    const provenance = limitProviderProvenance(provider);
+    for (const tagInfo of limitProviderPresentationApi.limitProviderSettingsTags(provider, provenance)) {
       const tag = document.createElement('span');
       tag.className = `limit-provider-tag limit-provider-tag-${tagInfo.kind}`;
       if (tagInfo.tone) tag.classList.add(`limit-provider-tag-${tagInfo.tone}`);
-      tag.textContent = translatedLimitCapabilityTag(tagInfo.label);
+      tag.textContent = translatedLimitProviderTag(tagInfo);
       tags.append(tag);
     }
     copy.append(text, tags);
