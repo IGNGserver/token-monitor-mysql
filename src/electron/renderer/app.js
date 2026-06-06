@@ -129,6 +129,7 @@ const SERVICE_STATUS_PLACEHOLDERS = [
   { id: 'openai', label: 'OpenAI', pageUrl: 'https://status.openai.com' },
   { id: 'claude', label: 'Claude', pageUrl: 'https://status.claude.com' }
 ];
+const SETTINGS_SECTION_IDS = ['general', 'main', 'window', 'tools', 'limits', 'accounts', 'sync'];
 const initialFloatingBubble = window.__TOKEN_MONITOR_INITIAL_FLOATING_BUBBLE__ || { collapsed: false, side: null };
 const initialViewState = window.__TOKEN_MONITOR_INITIAL_VIEW_STATE__ || {};
 let initialBreakdownPreferenceApplied = typeof initialViewState.breakdown === 'string';
@@ -139,6 +140,7 @@ function normalizeInitialViewValue(value, allowed, fallback) {
 }
 
 const state = { period: normalizeInitialViewValue(initialViewState.period, viewPeriodValues, 'today'), appUpdate: null, breakdown: normalizeInitialViewValue(initialViewState.breakdown, viewBreakdownValues, 'tool'), settings: null, stats: null, serviceStatus: null, serviceStatusBusy: false, refreshTimer: null, currentTotal: 0, rowSignature: '', streamConnected: false, mode: 'idle', appInfo: null, tokscaleStatus: null, tokscaleCheck: null, tokscaleBusy: false, hubInfo: null, cursorAccount: { status: null, error: '' }, cursorAccountExpanded: false, opencodeAccount: { status: null, error: '' }, opencodeCookieExpanded: false, floatingBubble: initialFloatingBubble, suppressInitialNumberAnimation: window.__TOKEN_MONITOR_SUPPRESS_INITIAL_NUMBER_ANIMATION__ === true, openSession: null, detailSort: 'time', recordingWindowShortcut: false, windowShortcutInvalid: false };
+state.settingsSections = Object.fromEntries(SETTINGS_SECTION_IDS.map((id) => [id, false]));
 const defaultAppearance = { glassOpacity: 68, glassBlur: 32, zoomFactor: 1, systemGlass: true, showLiveDot: true, showToolIcons: true, titleIconOnly: false };
 let preferenceDrag = null;
 const els = {
@@ -182,6 +184,14 @@ Object.assign(els, {
   resetViewDisplayOrderButton: document.getElementById('resetViewDisplayOrderButton'),
   showAllViewsButton: document.getElementById('showAllViewsButton'),
   viewDisplayList: document.getElementById('viewDisplayList'),
+  syncSettingsSummary: document.getElementById('syncSettingsSummary'),
+  toolsSettingsSummary: document.getElementById('toolsSettingsSummary'),
+  accountsSettingsSummary: document.getElementById('accountsSettingsSummary'),
+  limitsSettingsSummary: document.getElementById('limitsSettingsSummary'),
+  viewsSettingsSummary: document.getElementById('viewsSettingsSummary'),
+  generalSettingsSummary: document.getElementById('generalSettingsSummary'),
+  mainSettingsSummary: document.getElementById('mainSettingsSummary'),
+  windowSettingsSummary: document.getElementById('windowSettingsSummary'),
   sessionDetail: document.getElementById('session-detail'),
   sessionDetailHead: document.getElementById('session-detail-head')
 });
@@ -215,6 +225,119 @@ function translatedLimitProviderTag(tagInfo) {
 function applySettingsTranslations() {
   if (els.languageInput) els.languageInput.value = currentLanguage();
   i18n.applyTranslations(document, currentLocale());
+}
+
+function applySettingsSectionDom(id, open) {
+  const toggle = document.querySelector(`[data-settings-section="${id}"]`);
+  const details = document.getElementById(`${id}SettingsDetails`);
+  const group = toggle?.closest('.settings-collapsible-group');
+  toggle?.setAttribute('aria-expanded', open ? 'true' : 'false');
+  details?.classList.toggle('hidden', !open);
+  group?.classList.toggle('expanded', open);
+}
+
+function setSettingsSectionExpanded(section, expanded) {
+  const id = String(section || '').trim();
+  if (!SETTINGS_SECTION_IDS.includes(id)) return;
+  const next = Boolean(expanded);
+  if (next) {
+    for (const other of SETTINGS_SECTION_IDS) {
+      if (other === id || !state.settingsSections[other]) continue;
+      state.settingsSections[other] = false;
+      applySettingsSectionDom(other, false);
+    }
+  }
+  state.settingsSections[id] = next;
+  applySettingsSectionDom(id, next);
+}
+
+function setupSettingsSections() {
+  for (const toggle of document.querySelectorAll('[data-settings-section]')) {
+    const section = toggle.dataset.settingsSection;
+    toggle.addEventListener('click', () => setSettingsSectionExpanded(section, !state.settingsSections[section]));
+    setSettingsSectionExpanded(section, state.settingsSections[section]);
+  }
+}
+
+function refreshIntervalLabel(value) {
+  const ms = Number(value) || 300000;
+  const minutes = Math.max(1, Math.round(ms / 60000));
+  return t('settings.summary.minutes', { minutes });
+}
+
+function cursorAccountSummary() {
+  if (state.cursorAccount.error) return t('settings.common.error');
+  const status = state.cursorAccount.status;
+  if (!status) return t('settings.common.checking');
+  if (status.expired) return t('settings.cursor.expired');
+  return status.loggedIn ? t('settings.cursor.loggedIn') : t('settings.cursor.notLoggedIn');
+}
+
+function opencodeAccountSummary() {
+  if (state.opencodeAccount.error) return t('settings.common.error');
+  const status = state.opencodeAccount.status;
+  if (!status) return t('settings.common.checking');
+  if (status.saveFailed || status.error) return t('settings.common.error');
+  if (status.expired) return t('settings.opencode.expired');
+  return status.linked ? t('settings.opencode.statusLinked') : t('settings.opencode.statusNotSet');
+}
+
+function viewsSummary() {
+  const hidden = hiddenViewSet();
+  const visible = VIEW_DISPLAY_OPTIONS.length - hidden.size;
+  return t('settings.summary.views', { visible, total: VIEW_DISPLAY_OPTIONS.length });
+}
+
+function settingsSectionSummary(section) {
+  if (!state.settings) return '';
+  if (section === 'sync') {
+    if (state.settings.hubMode === 'host') return t('settings.sync.hostHub');
+    if (state.settings.hubMode === 'client') return t('settings.sync.connectHub');
+    return t('settings.sync.localOnly');
+  }
+  if (section === 'tools') {
+    return t('settings.summary.tools', {
+      tracked: enabledClientSet().size,
+      visible: KNOWN_CLIENTS.length - hiddenClientSet().size,
+      pinned: pinnedClientSet().size
+    });
+  }
+  if (section === 'accounts') {
+    return t('settings.summary.accounts', {
+      cursor: cursorAccountSummary(),
+      opencode: opencodeAccountSummary()
+    });
+  }
+  if (section === 'limits') {
+    return t('settings.summary.limits', {
+      enabled: enabledLimitProviderSet().size,
+      refresh: refreshIntervalLabel(state.settings.limitsRefreshMs)
+    });
+  }
+  if (section === 'main') {
+    return viewsSummary();
+  }
+  if (section === 'window') {
+    const behavior = WINDOW_BEHAVIOR_VALUES.includes(state.settings.windowBehavior) ? state.settings.windowBehavior : 'floating';
+    return t(`settings.windowBehavior.${behavior}`);
+  }
+  if (section === 'general') {
+    const startup = state.appInfo?.loginItemSupported
+      ? (state.settings.startAtLogin ? t('settings.summary.on') : t('settings.summary.off'))
+      : t('settings.summary.unavailable');
+    return t('settings.summary.general', {
+      startup
+    });
+  }
+  return '';
+}
+
+function renderSettingsSummaries() {
+  for (const section of SETTINGS_SECTION_IDS) {
+    const el = els[`${section}SettingsSummary`];
+    if (el) el.textContent = settingsSectionSummary(section);
+  }
+  if (els.viewsSettingsSummary) els.viewsSettingsSummary.textContent = state.settings ? viewsSummary() : '';
 }
 
 function formatNumber(value) { return Math.round(Number(value || 0)).toLocaleString('en-US'); }
@@ -1724,8 +1847,10 @@ function syncSettingsForm() {
   els.trayModeInput.checked = Boolean(state.settings.trayMode);
   els.trayContentInput.value = ['tokens', 'cost', 'both', 'tokensAll', 'costAll', 'bothAll', 'bars', 'barsSession', 'barsWeekly', 'barsAllSessions', 'icon'].includes(state.settings.trayContent) ? state.settings.trayContent : 'tokens';
   syncWindowShortcutStatus();
-  els.startupGroup?.classList.toggle('hidden', !state.appInfo?.loginItemSupported);
-  if (els.startAtLoginInput) els.startAtLoginInput.checked = Boolean(state.settings.startAtLogin && state.appInfo?.loginItemSupported);
+  if (els.startAtLoginInput) {
+    els.startAtLoginInput.disabled = !state.appInfo?.loginItemSupported;
+    els.startAtLoginInput.checked = Boolean(state.settings.startAtLogin && state.appInfo?.loginItemSupported);
+  }
   if (els.startupNote) {
     els.startupNote.textContent = state.appInfo?.loginItemSupported
       ? t('settings.startup.launchAtSignIn')
@@ -1737,6 +1862,7 @@ function syncSettingsForm() {
   renderViewPreferences();
   renderToolPreferences();
   renderLimitProviderCheckboxes();
+  renderSettingsSummaries();
   renderOpencodeStatus();
   applyAppearanceSettings(state.settings);
   renderTokscaleStatus();
@@ -2763,13 +2889,16 @@ function renderOpencodeStatus() {
     logoutBtn.classList.remove('hidden');
     refreshBtn.classList.remove('hidden');
     manualPanel.classList.remove('hidden');
+    setSettingsSectionExpanded('accounts', true);
     setOpencodeCookieExpanded(true);
+    renderSettingsSummaries();
     return;
   }
 
   const status = state.opencodeAccount.status;
   if (!status) {
     setCursorStatusText(statusEl, t('settings.common.checking'));
+    renderSettingsSummaries();
     return;
   }
 
@@ -2791,6 +2920,7 @@ function renderOpencodeStatus() {
     logoutBtn.classList.add('hidden');
     refreshBtn.classList.add('hidden');
     manualPanel.classList.remove('hidden');
+    renderSettingsSummaries();
     return;
   }
 
@@ -2802,7 +2932,9 @@ function renderOpencodeStatus() {
     logoutBtn.classList.remove('hidden');
     refreshBtn.classList.remove('hidden');
     manualPanel.classList.remove('hidden');
+    setSettingsSectionExpanded('accounts', true);
     setOpencodeCookieExpanded(true);
+    renderSettingsSummaries();
     return;
   }
 
@@ -2814,6 +2946,7 @@ function renderOpencodeStatus() {
     logoutBtn.classList.remove('hidden');
     refreshBtn.classList.remove('hidden');
     manualPanel.classList.add('hidden');
+    renderSettingsSummaries();
     return;
   }
 
@@ -2831,6 +2964,7 @@ function renderOpencodeStatus() {
   logoutBtn.classList.remove('hidden');
   refreshBtn.classList.remove('hidden');
   manualPanel.classList.add('hidden');
+  renderSettingsSummaries();
 }
 
 async function refreshOpencodeStatus() {
@@ -2866,13 +3000,16 @@ function renderCursorStatus() {
     refreshBtn.classList.remove('hidden');
     manualPanel.classList.remove('hidden');
     setCursorCheckboxesEnabled(false);
+    setSettingsSectionExpanded('accounts', true);
     setCursorAccountExpanded(true);
+    renderSettingsSummaries();
     return;
   }
 
   const status = state.cursorAccount.status;
   if (!status) {
     setCursorStatusText(statusEl, t('settings.common.checking'));
+    renderSettingsSummaries();
     return;
   }
 
@@ -2883,6 +3020,7 @@ function renderCursorStatus() {
     refreshBtn.classList.add('hidden');
     manualPanel.classList.remove('hidden');
     setCursorCheckboxesEnabled(false);
+    renderSettingsSummaries();
     return;
   }
   if (status.expired) {
@@ -2892,7 +3030,9 @@ function renderCursorStatus() {
     refreshBtn.classList.remove('hidden');
     manualPanel.classList.remove('hidden');
     setCursorCheckboxesEnabled(false);
+    setSettingsSectionExpanded('accounts', true);
     setCursorAccountExpanded(true);
+    renderSettingsSummaries();
     return;
   }
   const summary = status.email || t('settings.cursor.loggedIn');
@@ -2902,6 +3042,7 @@ function renderCursorStatus() {
   refreshBtn.classList.remove('hidden');
   manualPanel.classList.add('hidden');
   setCursorCheckboxesEnabled(true);
+  renderSettingsSummaries();
 }
 
 async function refreshCursorStatus() {
@@ -3016,6 +3157,7 @@ function setupCursorAccountUI() {
   }
 }
 
+setupSettingsSections();
 setupCursorAccountUI();
 deliverTrayProviderIcons();
 init();

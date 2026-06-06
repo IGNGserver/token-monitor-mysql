@@ -85,7 +85,7 @@ test('Cursor account header omits plan and reset details', () => {
 
 test('OpenCode account panel mirrors Cursor linked-state controls', () => {
   const html = readRendererFile('index.html');
-  const details = html.match(/<div id="opencodeSettingsDetails"[\s\S]*?<div class="settings-group">/)?.[0] || '';
+  const details = html.match(/<div id="opencodeSettingsDetails"[\s\S]*?<div id="opencodeErrorMessage" class="settings-note error hidden"><\/div>/)?.[0] || '';
   assert.match(details, /<button id="opencodeLogoutButton" class="hidden" data-i18n="settings\.common\.logout">/);
   assert.match(details, /<button id="opencodeRefreshButton" class="hidden" data-i18n="settings\.common\.refresh">/);
   assert.match(details, /<div id="opencodeManualPanel">[\s\S]*?<textarea id="opencodeCookieInput"/);

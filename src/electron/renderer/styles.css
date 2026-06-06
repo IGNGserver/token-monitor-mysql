@@ -321,9 +321,258 @@ body.floating-bubble-collapsed-right .floating-bubble-tab {
   accent-color: var(--green);
 }
 .settings-group { display: grid; min-width: 0; gap: 8px; }
-.settings-group.hidden, .settings-actions button.hidden { display: none; }
+.settings-group.hidden, .settings-subgroup.hidden, .settings-actions button.hidden { display: none; }
 .settings-group-header { display: flex; align-items: center; justify-content: space-between; color: var(--muted); font-size: 11px; }
 .settings-group-header span:last-child:not(:first-child) { font-size: 9px; opacity: 0.72; }
+.settings-collapsible-group {
+  gap: 0;
+  padding-bottom: 2px;
+  border-bottom: 1px solid rgba(197, 216, 236, 0.09);
+}
+.settings-collapsible-group:last-child {
+  border-bottom: 0;
+}
+.settings-section-toggle {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, auto);
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
+  min-height: 34px;
+  padding: 5px 4px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.settings-section-toggle:hover,
+.settings-section-toggle:focus-visible {
+  background: rgba(255, 255, 255, var(--control-alpha));
+  color: var(--text);
+}
+.settings-section-toggle:focus-visible {
+  outline: 1px solid rgba(115, 189, 245, 0.72);
+  outline-offset: 1px;
+}
+.settings-section-heading {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 600;
+}
+.settings-section-heading > span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.settings-section-meta {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 5px;
+}
+.settings-section-disclosure {
+  flex: 0 0 auto;
+  display: inline-grid;
+  place-items: center;
+  width: 12px;
+  height: 12px;
+  color: var(--muted);
+  font-size: 0;
+  line-height: 0;
+  transform-origin: center;
+  transition: transform 140ms ease;
+}
+.settings-section-disclosure::before {
+  content: "";
+  width: 5px;
+  height: 5px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: translateY(-1.5px) rotate(45deg);
+}
+.settings-section-summary,
+.settings-subgroup-summary {
+  min-width: 0;
+  max-width: 150px;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 9.5px;
+  line-height: 1.25;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.settings-subheader-actions {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 7px;
+}
+.settings-subgroup-summary {
+  max-width: 86px;
+}
+.settings-section-details {
+  display: grid;
+  min-width: 0;
+  gap: 10px;
+  padding: 2px 0 10px;
+}
+.settings-section-details.hidden {
+  display: none;
+}
+.settings-subgroup {
+  display: grid;
+  min-width: 0;
+  gap: 8px;
+  padding-top: 9px;
+  border-top: 1px solid rgba(197, 216, 236, 0.075);
+}
+.settings-section-details > .settings-subgroup:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+.settings-collapsible-group.expanded > .settings-section-toggle .settings-section-disclosure {
+  transform: rotate(180deg);
+}
+.settings-section-icon {
+  position: relative;
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  color: var(--green);
+  opacity: 0.9;
+}
+.settings-section-icon::before,
+.settings-section-icon::after {
+  position: absolute;
+  display: block;
+  box-sizing: border-box;
+  content: "";
+}
+.settings-section-icon-sync::before {
+  left: 1px;
+  top: 7px;
+  width: 4px;
+  height: 4px;
+  background: currentColor;
+  border-radius: 50%;
+  box-shadow: 10px -5px 0 currentColor, 10px 5px 0 currentColor;
+}
+.settings-section-icon-sync::after {
+  left: 4px;
+  top: 5px;
+  width: 8px;
+  height: 8px;
+  border-top: 1.6px solid currentColor;
+  border-right: 1.6px solid currentColor;
+  border-bottom: 1.6px solid currentColor;
+  border-radius: 0 6px 6px 0;
+}
+.settings-section-icon-tools::before {
+  left: 3px;
+  top: 3px;
+  width: 10px;
+  height: 10px;
+  border-top: 1.6px solid currentColor;
+  border-bottom: 1.6px solid currentColor;
+}
+.settings-section-icon-tools::after {
+  left: 1px;
+  top: 7px;
+  width: 14px;
+  border-top: 1.6px solid currentColor;
+}
+.settings-section-icon-accounts::before {
+  left: 5px;
+  top: 2px;
+  width: 6px;
+  height: 6px;
+  border: 1.6px solid currentColor;
+  border-radius: 50%;
+}
+.settings-section-icon-accounts::after {
+  left: 2px;
+  bottom: 2px;
+  width: 12px;
+  height: 6px;
+  border: 1.6px solid currentColor;
+  border-radius: 8px 8px 2px 2px;
+}
+.settings-section-icon-limits::before {
+  left: 2px;
+  top: 4px;
+  width: 12px;
+  height: 10px;
+  border: 1.6px solid currentColor;
+  border-bottom-color: transparent;
+  border-radius: 12px 12px 0 0;
+}
+.settings-section-icon-limits::after {
+  left: 7px;
+  top: 8px;
+  width: 1.6px;
+  height: 6px;
+  background: currentColor;
+  border-radius: 999px;
+  transform: rotate(38deg);
+  transform-origin: bottom center;
+}
+.settings-section-icon-main::before {
+  left: 2px;
+  top: 3px;
+  width: 12px;
+  height: 9px;
+  border: 1.6px solid currentColor;
+  border-radius: 2px;
+}
+.settings-section-icon-main::after {
+  left: 5px;
+  bottom: 1px;
+  width: 6px;
+  height: 3px;
+  border-top: 1.6px solid currentColor;
+}
+.settings-section-icon-window::before {
+  left: 2px;
+  top: 3px;
+  width: 12px;
+  height: 10px;
+  border: 1.6px solid currentColor;
+  border-radius: 2px;
+}
+.settings-section-icon-window::after {
+  left: 2px;
+  top: 6px;
+  width: 12px;
+  border-top: 1.6px solid currentColor;
+}
+.settings-section-icon-general::before {
+  left: 3px;
+  top: 3px;
+  width: 10px;
+  height: 10px;
+  border: 1.6px solid currentColor;
+  border-radius: 3px;
+}
+.settings-section-icon-general::after {
+  left: 6px;
+  top: 1px;
+  width: 4px;
+  height: 4px;
+  border: 1.6px solid currentColor;
+  border-radius: 2px;
+  background: rgba(16, 21, 30, 0.95);
+}
 .cursor-settings-toggle {
   width: 100%;
   padding: 0;
