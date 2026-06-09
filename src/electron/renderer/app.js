@@ -188,6 +188,90 @@ Object.assign(els, {
   sessionDetailHead: document.getElementById('session-detail-head')
 });
 
+const appTooltip = document.createElement('div');
+appTooltip.className = 'app-tooltip hidden';
+document.body.appendChild(appTooltip);
+
+function positionAppTooltip(e, content) {
+  appTooltip.innerHTML = content;
+  appTooltip.classList.remove('hidden');
+  appTooltip.classList.add('visible');
+  const rect = appTooltip.getBoundingClientRect();
+  let x = e.clientX + 16;
+  let y = e.clientY + 16;
+  if (x + rect.width > window.innerWidth) x = e.clientX - rect.width - 16;
+  if (y + rect.height > window.innerHeight) y = window.innerHeight - rect.height - 8;
+  appTooltip.style.left = `${Math.max(8, x)}px`;
+  appTooltip.style.top = `${Math.max(8, y)}px`;
+}
+
+function hideAppTooltip() {
+  appTooltip.classList.remove('visible');
+  appTooltip.classList.add('hidden');
+}
+
+document.addEventListener('mousemove', (e) => {
+  const target = e.target.closest('#totalTokens, .row');
+  if (!target || target.classList.contains('session-row') || target.classList.contains('local') || target.dataset.platform) {
+    if (appTooltip.classList.contains('visible')) hideAppTooltip();
+    return;
+  }
+  
+  const cacheRead = Number(target.dataset.cacheRead || 0);
+  const output = Number(target.dataset.outputTokens || 0);
+  const total = Number(target.dataset.totalTokens || 0);
+  const name = target.dataset.name || '';
+  
+  const key = target.dataset.key || '';
+  const platform = target.dataset.platform || '';
+  const client = target.dataset.client || '';
+  const iconInfo = iconKindFor({ key, platform, client }, state.breakdown);
+  const iconHtml = iconInfo && iconInfo.kind === 'icon' 
+    ? `<i class="app-tooltip-header-icon ${iconInfo.iconClass}"></i>` 
+    : '';
+  
+  if (total === 0 && cacheRead === 0) {
+    if (appTooltip.classList.contains('visible')) hideAppTooltip();
+    return;
+  }
+
+  const cacheMiss = Math.max(0, total - cacheRead - output);
+  const inputTokens = cacheRead + cacheMiss;
+  const hitPct = inputTokens > 0 ? Math.round((cacheRead / inputTokens) * 100) : 0;
+  const missPct = inputTokens > 0 ? 100 - hitPct : 0;
+  
+  const hitLabel = t('dashboard.tooltip.inputCacheHit');
+  const missLabel = t('dashboard.tooltip.inputCacheMiss');
+  const outLabel = t('dashboard.tooltip.output');
+  
+  const hitPctHtml = inputTokens > 0 ? `<span class="app-tooltip-pct">${hitPct}%</span>` : '';
+  const missPctHtml = inputTokens > 0 ? `<span class="app-tooltip-pct">${missPct}%</span>` : '';
+  
+  const html = `
+    <div class="app-tooltip-header">${iconHtml}${name}</div>
+    <div class="app-tooltip-row">
+      <div class="app-tooltip-dot hit"></div>
+      <div class="app-tooltip-label">${hitLabel} ${hitPctHtml}</div>
+      <div class="app-tooltip-value">${formatNumber(cacheRead)}</div>
+    </div>
+    <div class="app-tooltip-row">
+      <div class="app-tooltip-dot miss"></div>
+      <div class="app-tooltip-label">${missLabel} ${missPctHtml}</div>
+      <div class="app-tooltip-value">${formatNumber(cacheMiss)}</div>
+    </div>
+    <div class="app-tooltip-row">
+      <div class="app-tooltip-dot out"></div>
+      <div class="app-tooltip-label">${outLabel}</div>
+      <div class="app-tooltip-value">${formatNumber(output)}</div>
+    </div>
+  `;
+  positionAppTooltip(e, html);
+});
+
+document.addEventListener('mouseleave', () => {
+  hideAppTooltip();
+});
+
 function preferredLanguages() {
   return navigator.languages?.length ? navigator.languages : [navigator.language || 'en'];
 }
@@ -591,10 +675,17 @@ function rowTemplate(rowData) {
   return row;
 }
 
-function updateRow(row, { name, subtitle, detail, value, cost, max, color, stale, platform, local, client, kind, title }) {
+function updateRow(row, { name, subtitle, detail, value, cost, max, color, stale, platform, local, client, kind, title, cacheReadTokens, cacheWriteTokens, outputTokens }) {
   const width = rowWidth(value, max);
   row.className = `row${kind ? ` ${kind}-row` : ''}${stale ? ' stale' : ''}${local ? ' local' : ''}`;
-  row.title = local ? 'This device' : (title || '');
+  if (local) row.title = 'This device';
+  
+  if (cacheReadTokens !== undefined || outputTokens !== undefined) {
+    row.dataset.cacheRead = cacheReadTokens || 0;
+    row.dataset.outputTokens = outputTokens || 0;
+    row.dataset.totalTokens = value || 0;
+    row.dataset.name = name || '';
+  }
   if (platform !== undefined) row.dataset.platform = platform || '';
   if (client !== undefined) row.dataset.client = client || '';
   if (kind !== undefined) row.dataset.kind = kind || '';
@@ -670,7 +761,7 @@ function deviceRowsForPeriod() {
 }
 
 function toolRowsForPeriod(period) {
-  const clientRows = Object.entries(period?.clients || {}).filter(([, value]) => Number(value) > 0).map(([client, value]) => ({ key: client, name: clientLabels[client] || client, value: Number(value), cost: Number(period?.clientCosts?.[client] || 0), color: clientColors[client] || clientColors.default, stale: false }));
+  const clientRows = Object.entries(period?.clients || {}).filter(([, value]) => Number(value) > 0).map(([client, value]) => ({ key: client, name: clientLabels[client] || client, value: Number(value), cost: Number(period?.clientCosts?.[client] || 0), color: clientColors[client] || clientColors.default, stale: false, cacheReadTokens: Number(period?.clientCacheReads?.[client] || 0), cacheWriteTokens: Number(period?.clientCacheWrites?.[client] || 0), outputTokens: Number(period?.clientOutputs?.[client] || 0) }));
   if (clientRows.length > 0) {
     const usageSortedRows = clientRows.sort((a, b) => b.value - a.value);
     return clientDisplayPreferencesApi.applyClientDisplayPreferences(usageSortedRows, state.settings?.clientDisplayOrder, state.settings?.hiddenClients, KNOWN_CLIENTS, state.settings?.pinnedClients);
@@ -686,7 +777,10 @@ function modelRowsForPeriod(period) {
     value: Number(value),
     cost: Number(period?.modelCosts?.[model] || 0),
     color: modelColor(model),
-    stale: false
+    stale: false,
+    cacheReadTokens: Number(period?.modelCacheReads?.[model] || 0),
+    cacheWriteTokens: Number(period?.modelCacheWrites?.[model] || 0),
+    outputTokens: Number(period?.modelOutputs?.[model] || 0)
   }));
   if (modelRows.length > 0) return modelRows.sort((a, b) => b.value - a.value);
   if (Number(period?.totalTokens || 0) === 0) return [];
@@ -1445,6 +1539,11 @@ function render() {
     const rows = rowsForPeriod(period);
     renderRows(rows);
   }
+  
+  els.totalTokens.dataset.cacheRead = period.cacheReadTokens || 0;
+  els.totalTokens.dataset.outputTokens = period.outputTokens || 0;
+  els.totalTokens.dataset.totalTokens = period.totalTokens || 0;
+  els.totalTokens.dataset.name = state.period === 'today' ? 'DAY' : state.period === 'month' ? 'MONTH' : 'TOTAL';
   renderFloatingBubbleContent();
   // Tell main the window has painted real content (not the static "0" defaults),
   // so a recreated window can stay hidden until it's populated. See loadWindowFile.

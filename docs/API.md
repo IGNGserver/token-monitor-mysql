@@ -50,20 +50,41 @@ Example payload:
   "agentVersion": "0.3.0",
   "agentRuntime": "headless-agent",
   "trackedClients": ["codex"],
-  "today": {
+    "today": {
     "totalTokens": 1234,
     "costUsd": 0.01,
+    "cacheReadTokens": 1100,
+    "cacheWriteTokens": 0,
+    "outputTokens": 34,
     "clients": {
       "codex": 1234
     },
     "clientCosts": {
       "codex": 0.01
     },
+    "clientCacheReads": {
+      "codex": 1100
+    },
+    "clientCacheWrites": {
+      "codex": 0
+    },
+    "clientOutputs": {
+      "codex": 34
+    },
     "models": {
       "gpt-5": 1234
     },
     "modelCosts": {
       "gpt-5": 0.01
+    },
+    "modelCacheReads": {
+      "gpt-5": 1100
+    },
+    "modelCacheWrites": {
+      "gpt-5": 0
+    },
+    "modelOutputs": {
+      "gpt-5": 34
     },
     "clientModels": {
       "codex": {
