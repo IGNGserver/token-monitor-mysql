@@ -80,7 +80,11 @@ html.is-windows, html.is-windows body {
 }
 html.is-windows .shell {
   border-radius: 8px;
-  clip-path: inset(0 round 8px);
+  /* No clip-path on Windows: Chromium renders clip-path with a hard, non-AA
+     edge on a transparent window, which made the bottom corners look truncated.
+     border-radius + overflow:hidden round the corners (and clip the backdrop
+     blur) with proper anti-aliasing instead. */
+  clip-path: none;
 }
 
 html.is-mac-legacy, html.is-mac-legacy body {

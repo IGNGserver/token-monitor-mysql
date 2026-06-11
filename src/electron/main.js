@@ -75,6 +75,7 @@ const {
   normalizeInitialRendererViewState,
   moveFloatingBubbleBounds
 } = require('./floatingBubble');
+const { applyWindowsChrome } = require('./windowsChrome');
 
 if (!app.isPackaged) loadDotEnv();
 
@@ -1605,6 +1606,7 @@ function createWindow(boundsOverride, options = {}) {
   });
   mainWindow = win;
   mainWindowChrome = { collapsedFloatingBubble };
+  applyWindowsChrome(win, { round: !collapsedFloatingBubble });
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (isAllowedExternalUrl(url)) shell.openExternal(url);
     return { action: 'deny' };
@@ -1716,6 +1718,7 @@ function createDashboardWindow() {
     }
   });
   dashboardWindow = win;
+  applyWindowsChrome(win, { round: true });
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (isAllowedExternalUrl(url)) shell.openExternal(url);
     return { action: 'deny' };

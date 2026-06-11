@@ -36,7 +36,8 @@
     ],
     "asarUnpack": [
       "node_modules/@tokscale/**/*",
-      "node_modules/tokscale/**/*"
+      "node_modules/tokscale/**/*",
+      "node_modules/koffi/**/*"
     ],
     "mac": {
       "target": [
@@ -107,6 +108,7 @@
     "@xhayper/discord-rpc": "^1.3.4",
     "chokidar": "^3.6.0",
     "dotenv": "^17.4.2",
+    "koffi": "^3.0.2",
     "semver": "^7.8.1",
     "tar": "^7.5.15",
     "tokscale": "^3.1.2"
