@@ -175,9 +175,8 @@
                 </div>
               </div>
               <div class="presence-feature">
-                <label class="checkbox-label"><input id="trayModeInput" type="checkbox" /><span data-i18n="settings.display.trayMode">Tray Mode</span></label>
-                <div id="trayOptions" class="presence-feature-body hidden">
-                  <p class="settings-note" data-i18n="settings.display.trayNote">Hide the floating window; show a popover from the macOS menu bar or Windows system tray.</p>
+                <label class="checkbox-label"><input id="showTrayIconInput" type="checkbox" /><span data-i18n="settings.display.showTrayIcon">Show tray/menu bar icon</span></label>
+                <div id="trayIconOptions" class="presence-feature-body hidden">
                   <label><span data-i18n="settings.display.trayText">Tray text</span>
                     <select id="trayContentInput">
                       <option value="tokens" data-i18n="settings.tray.tokensToday">Tokens Today (1.2M)</option>
@@ -193,6 +192,10 @@
                       <option value="icon" data-i18n="settings.tray.iconOnly">Icon only</option>
                     </select>
                   </label>
+                  <label class="checkbox-label"><input id="trayModeInput" type="checkbox" /><span data-i18n="settings.display.trayMode">Tray-only mode</span></label>
+                  <div id="trayOptions" class="presence-feature-body hidden">
+                    <p class="settings-note" data-i18n="settings.display.trayNote">Hide the main window; show a popover from the macOS menu bar or Windows system tray.</p>
+                  </div>
                 </div>
               </div>
             </div>

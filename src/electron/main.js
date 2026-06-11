@@ -44,6 +44,13 @@ const { historyPreview } = require('../shared/history');
 const { readSessionDetail } = require('../shared/sessionDetail');
 const { startDiscordRpc, stopDiscordRpc, updateDiscordRpc } = require('./discordRpc');
 const { buildTrayIcon, createTray, formatTrayText, pickUsageTrayIconId, popoverBounds } = require('./tray');
+const {
+  macActivationPolicyMode,
+  mainWindowCloseAction,
+  normalizeTrayModeSettings,
+  shouldCreateTray,
+  trayToggleAction
+} = require('./trayModeSettings');
 const { SERVICE_STATUS_PROVIDERS, createServiceStatusClient } = require('./serviceStatus');
 const { describeWindowBehavior, normalizeWindowBehaviorSettings } = require('./windowBehavior');
 const {
@@ -161,6 +168,7 @@ function defaultSettings() {
     showLimitSource: parseBoolean(process.env.TOKEN_MONITOR_SHOW_LIMIT_SOURCE, false),
     windowBounds: null,
     zoomFactor: 1,
+    showTrayIcon: true,
     trayMode: false,
     trayContent: 'tokens',
     windowToggleShortcut: '',
@@ -622,9 +630,14 @@ function readSettings() {
     merged.floatingBubbleTrigger = merged.floatingBubbleTrigger === 'hover' ? 'hover' : 'click';
     merged.floatingBubbleContent = normalizeTrayContent(merged.floatingBubbleContent, 'icon');
     merged.windowToggleShortcut = normalizeWindowToggleShortcut(merged.windowToggleShortcut);
+    Object.assign(merged, normalizeTrayModeSettings(merged));
     return normalizeWindowBehaviorSettings(merged);
   }
-  catch (_error) { return normalizeWindowBehaviorSettings(defaultSettings()); }
+  catch (_error) {
+    const defaults = defaultSettings();
+    Object.assign(defaults, normalizeTrayModeSettings(defaults));
+    return normalizeWindowBehaviorSettings(defaults);
+  }
 }
 
 function saveSettings() {
@@ -689,14 +702,19 @@ function summaryWithArchivedClientUsage(summary) {
   });
 }
 
-function applyMacActivationPolicy() {
+function applyMacActivationPolicy(state = {}) {
   if (process.platform !== 'darwin') return;
-  const trayMode = Boolean(settings?.trayMode);
+  const mainWindowVisible = state.mainWindowVisible !== undefined
+    ? state.mainWindowVisible
+    : mainWindow && !mainWindow.isDestroyed()
+      ? mainWindow.isVisible()
+      : true;
+  const mode = macActivationPolicyMode(settings, { mainWindowVisible });
   if (typeof app.setActivationPolicy === 'function') {
-    try { app.setActivationPolicy(trayMode ? 'accessory' : 'regular'); } catch (_) {}
+    try { app.setActivationPolicy(mode); } catch (_) {}
   }
   if (!app.dock) return;
-  if (trayMode) app.dock.hide();
+  if (mode === 'accessory') app.dock.hide();
   else app.dock.show();
 }
 
@@ -1129,7 +1147,11 @@ function togglePopover() {
 }
 
 function focusExistingWindow() {
-  if (!mainWindow || mainWindow.isDestroyed()) return;
+  applyMacActivationPolicy({ mainWindowVisible: true });
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    createWindow();
+    return;
+  }
   if (mainWindow.isMinimized()) mainWindow.restore();
   if (settings?.trayMode) showPopover();
   else if (floatingBubbleState.collapsed) expandFloatingBubble();
@@ -1187,6 +1209,12 @@ function handleWindowToggleShortcut() {
   else focusExistingWindow();
 }
 
+function handleTrayToggle() {
+  const action = trayToggleAction(settings);
+  if (action === 'togglePopover') togglePopover();
+  else if (action === 'focusWindow') focusExistingWindow();
+}
+
 function configureWindowToggleShortcut() {
   unregisterWindowToggleShortcut();
   const shortcut = normalizeWindowToggleShortcut(settings?.windowToggleShortcut);
@@ -1207,9 +1235,10 @@ function configureWindowToggleShortcut() {
 }
 
 function ensureTray() {
+  if (!shouldCreateTray(settings)) return false;
   if (tray && !tray.isDestroyed()) return;
   tray = createTray({
-    onToggle: togglePopover,
+    onToggle: handleTrayToggle,
     onQuit: requestAppQuit,
     onSwitchToWindowMode: () => {
       settings.trayMode = false;
@@ -1218,6 +1247,13 @@ function ensureTray() {
       pushSettingsToRenderer();
     }
   });
+  updateTrayDisplay();
+  return true;
+}
+
+function destroyTray() {
+  if (tray && !tray.isDestroyed()) tray.destroy();
+  tray = null;
 }
 
 function enterTrayMode() {
@@ -1238,9 +1274,7 @@ function enterTrayMode() {
 }
 
 function exitTrayMode() {
-  if (tray && !tray.isDestroyed()) tray.destroy();
-  tray = null;
-  applyMacActivationPolicy();
+  applyMacActivationPolicy({ mainWindowVisible: true });
   if (mainWindow && !mainWindow.isDestroyed()) {
     if (typeof mainWindow.setSkipTaskbar === 'function') mainWindow.setSkipTaskbar(false);
     if (typeof mainWindow.setVisibleOnAllWorkspaces === 'function') {
@@ -1256,6 +1290,8 @@ function exitTrayMode() {
     mainWindow.show();
     mainWindow.focus();
   }
+  if (!shouldCreateTray(settings)) destroyTray();
+  else ensureTray();
 }
 
 function startMode() {
@@ -1592,9 +1628,15 @@ function createWindow(boundsOverride, options = {}) {
   win.on('resized', persistBoundsSoon);
   win.on('moved', persistBoundsSoon);
   win.on('close', (event) => {
-    if (settings?.trayMode && !quitRequested) {
+    if (quitRequested) return;
+    const action = mainWindowCloseAction(settings, { platform: process.platform });
+    if (action === 'hidePopover') {
       event.preventDefault();
       hidePopover();
+    } else if (action === 'hideWindow') {
+      event.preventDefault();
+      win.hide();
+      applyMacActivationPolicy({ mainWindowVisible: false });
     }
   });
   win.webContents.on('before-input-event', handleZoomShortcut);
@@ -1780,6 +1822,7 @@ app.whenReady().then(() => {
   syncLoginItemSettingFromOs();
   configureWindowToggleShortcut();
   cleanupStaleStaging().catch((error) => console.log(`[tokscale] staging cleanup failed: ${error.message}`));
+  ensureTray();
   if (settings.trayMode) enterTrayMode();
   startMode();
   if (settings.discordRpcEnabled) startDiscordRpc();
@@ -1800,6 +1843,7 @@ app.whenReady().then(() => {
     const previousHistoryEnabled = settings.historyEnabled;
     const previousDeepSeekApiKey = settings.deepseekApiKey;
     const previousDiscordRpcEnabled = settings.discordRpcEnabled;
+    const previousShowTrayIcon = settings.showTrayIcon;
     const previousTrayMode = settings.trayMode;
     const previousTrayContent = settings.trayContent;
     const previousCurrency = settings.currency;
@@ -1840,7 +1884,10 @@ app.whenReady().then(() => {
       limitsRefreshMs: normalizeLimitsRefreshMs(patch.limitsRefreshMs ?? settings.limitsRefreshMs),
       showLimitSource: parseBoolean(patch.showLimitSource ?? settings.showLimitSource, false),
       zoomFactor: clampZoom(patch.zoomFactor ?? settings.zoomFactor),
-      trayMode: parseBoolean(patch.trayMode ?? settings.trayMode, false),
+      ...normalizeTrayModeSettings({
+        showTrayIcon: patch.showTrayIcon ?? settings.showTrayIcon,
+        trayMode: patch.trayMode ?? settings.trayMode
+      }),
       trayContent: normalizeTrayContent(patch.trayContent ?? settings.trayContent),
       floatingBubbleContent: normalizeTrayContent(patch.floatingBubbleContent ?? settings.floatingBubbleContent, 'icon'),
       windowToggleShortcut: normalizeWindowToggleShortcut(patch.windowToggleShortcut ?? settings.windowToggleShortcut),
@@ -1888,6 +1935,10 @@ app.whenReady().then(() => {
       settings.deepseekApiKey !== previousDeepSeekApiKey
     ) {
       startMode();
+    }
+    if (settings.showTrayIcon !== previousShowTrayIcon) {
+      if (settings.showTrayIcon) ensureTray();
+      else destroyTray();
     }
     if (settings.trayMode !== previousTrayMode) {
       if (settings.trayMode) enterTrayMode();

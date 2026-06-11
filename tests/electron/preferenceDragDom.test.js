@@ -200,7 +200,24 @@ test('main section holds views; appearance is its own section; window holds beha
 
   const presenceGroup = windowSection.slice(presenceIndex);
   assert.match(presenceGroup, /id="floatingBubbleInput"/);
+  assert.match(presenceGroup, /id="showTrayIconInput"/);
   assert.match(presenceGroup, /id="trayModeInput"/);
+
+  const showTrayIconIndex = presenceGroup.indexOf('id="showTrayIconInput"');
+  const trayIconOptionsIndex = presenceGroup.indexOf('id="trayIconOptions"');
+  const trayTextIndex = presenceGroup.indexOf('id="trayContentInput"');
+  const trayModeIndex = presenceGroup.indexOf('id="trayModeInput"');
+  const trayIconOptionsCloseIndex = presenceGroup.indexOf('</div>\n              </div>', trayIconOptionsIndex);
+  assert.ok(showTrayIconIndex >= 0, 'show tray icon toggle should be present');
+  assert.ok(trayIconOptionsIndex > showTrayIconIndex, 'tray text options should belong to the tray icon toggle');
+  assert.ok(trayTextIndex > trayIconOptionsIndex, 'tray text select should be inside tray icon options');
+  assert.ok(trayModeIndex > trayIconOptionsIndex, 'tray-only mode should depend on the tray icon toggle');
+  assert.ok(trayModeIndex < trayIconOptionsCloseIndex, 'tray-only mode should be inside tray icon options');
+  assert.doesNotMatch(
+    presenceGroup,
+    /id="trayIconOptions"[\s\S]*?<\/div>\s*<label class="checkbox-label"><input id="trayModeInput"/,
+    'tray-only mode should not sit beside tray icon options'
+  );
 });
 
 test('Trends has a master toggle separate from main-screen visibility', () => {
