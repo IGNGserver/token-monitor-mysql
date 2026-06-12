@@ -269,10 +269,23 @@ function applySessionTimestamps(periods, home, deps = {}) {
   }
 }
 
+// Cursor/antigravity usage only changes when these syncs run, so re-running them
+// on every tick is pure overhead — each one spawns a subprocess and rewrites the
+// tokscale cache (issue #15). Keep them on their own slow cadence.
+const SYNC_MIN_INTERVAL_MS = 5 * 60 * 1000;
+const lastSyncAt = { cursor: 0, antigravity: 0 };
+
+function syncDue(kind, nowMs = Date.now()) {
+  if (nowMs - lastSyncAt[kind] < SYNC_MIN_INTERVAL_MS) return false;
+  lastSyncAt[kind] = nowMs;
+  return true;
+}
+
 async function maybeSyncCursor(clientsCsv, logger) {
   const enabled = new Set(normalizeClientsCsv(clientsCsv).split(',').filter(Boolean));
   if (!enabled.has('cursor')) return;
   if (!cursorAuth.readActiveAccount()) return;
+  if (!syncDue('cursor')) return;
   try {
     await cursorAuth.runCursorSync();
   } catch (err) {
@@ -280,9 +293,19 @@ async function maybeSyncCursor(clientsCsv, logger) {
   }
 }
 
-async function maybeSyncAntigravity(clientsCsv, logger) {
+// tokscale's antigravity sync reads the IDE's native session roots under
+// ~/.gemini/; when none exist there is nothing to sync, so don't spawn at all.
+const ANTIGRAVITY_DATA_ROOTS = ['antigravity', 'antigravity-ide', 'antigravity-backup'];
+
+function antigravityDataPresent(home) {
+  return ANTIGRAVITY_DATA_ROOTS.some((name) => dirExists(path.join(home, '.gemini', name)));
+}
+
+async function maybeSyncAntigravity(clientsCsv, logger, home = os.homedir()) {
   const enabled = new Set(normalizeClientsCsv(clientsCsv).split(',').filter(Boolean));
   if (!enabled.has('antigravity')) return;
+  if (!antigravityDataPresent(home)) return;
+  if (!syncDue('antigravity')) return;
   const { bin, prefixArgs, env } = tokscaleCommand();
   await new Promise((resolve) => {
     const child = spawn(bin, [...prefixArgs, 'antigravity', 'sync'], { env, windowsHide: true });
@@ -324,7 +347,6 @@ function shouldIncludeHistory(nowMs, lastHistoryAtMs, historyIntervalMs, force, 
   if (force) return true;
   return nowMs - (lastHistoryAtMs || 0) >= historyIntervalMs;
 }
-
 async function collectUsageOnce(options) {
   const { clients, allTimeSince, commandTimeoutMs, deviceId, agentVersion = appVersion(), agentRuntime = '' } = options;
   const normalizedClients = normalizeClientsCsv(clients);
@@ -333,14 +355,13 @@ async function collectUsageOnce(options) {
   let allTime = emptyPeriod();
   if (normalizedClients) {
     await maybeSyncCursor(normalizedClients, options.logger);
-    await maybeSyncAntigravity(normalizedClients, options.logger);
-    // The three windows are independent read-only scans of the same data dirs,
-    // so run them concurrently — wall-clock drops from sum() to max() of the three.
-    const [todayJson, monthJson, allTimeJson] = await Promise.all([
-      runTokscale({ clients: normalizedClients, flags: ['--today'], commandTimeoutMs }),
-      runTokscale({ clients: normalizedClients, flags: ['--month'], commandTimeoutMs }),
-      runTokscale({ clients: normalizedClients, flags: ['--since', allTimeSince], commandTimeoutMs })
-    ]);
+    await maybeSyncAntigravity(normalizedClients, options.logger, options.homeDir || os.homedir());
+    // Serial on purpose: concurrent scans triple the peak fd/CPU load, and on
+    // macOS the simultaneous Gatekeeper assessments of the ad-hoc-signed binary
+    // can exhaust syspolicyd's fds and break spctl system-wide (issue #15).
+    const todayJson = await runTokscale({ clients: normalizedClients, flags: ['--today'], commandTimeoutMs });
+    const monthJson = await runTokscale({ clients: normalizedClients, flags: ['--month'], commandTimeoutMs });
+    const allTimeJson = await runTokscale({ clients: normalizedClients, flags: ['--since', allTimeSince], commandTimeoutMs });
     today = extractUsageFromTokscale(todayJson);
     month = extractUsageFromTokscale(monthJson);
     allTime = extractUsageFromTokscale(allTimeJson);
@@ -385,8 +406,8 @@ function dirExists(dir) {
   try { return fs.statSync(dir).isDirectory(); } catch (_) { return false; }
 }
 
-// Per-client watch-dir candidates, keyed by client. The same map drives both the
-// chokidar watch list and the detection-status derivation, so the two never drift.
+// Per-client data-dir candidates, keyed by client. Drives the detection-status
+// derivation and (minus the self-synced clients below) the chokidar watch list.
 function clientWatchCandidates(clientsCsv) {
   const home = os.homedir();
   const enabled = new Set(String(clientsCsv || '').split(',').map((value) => value.trim().toLowerCase()).filter(Boolean));
@@ -409,9 +430,16 @@ function clientWatchCandidates(clientsCsv) {
   return byClient;
 }
 
+// Clients whose dirs are tokscale caches written only by our own maybeSync* calls.
+// Watching them turns every tick into the trigger for the next one (issue #15).
+const SELF_SYNCED_CLIENTS = new Set(['cursor', 'antigravity']);
+
 function watchPathsForClients(clientsCsv) {
   const candidates = [];
-  for (const dirs of Object.values(clientWatchCandidates(clientsCsv))) candidates.push(...dirs);
+  for (const [client, dirs] of Object.entries(clientWatchCandidates(clientsCsv))) {
+    if (SELF_SYNCED_CLIENTS.has(client)) continue;
+    candidates.push(...dirs);
+  }
   return candidates.filter(dirExists);
 }
 
@@ -519,7 +547,13 @@ function startCollector(options) {
   function scheduleTick(reason) {
     if (stopped) return;
     if (debounceTimer) clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(() => { debounceTimer = null; runTick(reason); }, watchDebounceMs);
+    debounceTimer = setTimeout(() => {
+      debounceTimer = null;
+      // Re-arm instead of queueing onto the in-flight tick: the coalesce path
+      // would re-run immediately on completion, stacking scans back-to-back.
+      if (tickInFlight) { scheduleTick(reason); return; }
+      runTick(reason);
+    }, watchDebounceMs);
   }
 
   function setupWatchers() {
