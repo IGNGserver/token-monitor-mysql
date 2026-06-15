@@ -122,3 +122,54 @@ test('settings-position label exists in all three locales', () => {
   const occurrences = i18n.match(/'settings\.appearance\.settingsInTitlebar':/g) || [];
   assert.equal(occurrences.length, 3, 'en / zh-TW / zh-CN each define the label');
 });
+
+test('refresh button exposes busy, success, and error feedback states', () => {
+  const app = readRendererFile('app.js');
+  const css = readRendererFile('styles.css');
+
+  assert.match(app, /refreshBusy: false/, 'renderer tracks refresh busy state');
+  assert.match(app, /refreshFeedbackTimer: null/, 'renderer tracks transient feedback cleanup');
+  assert.match(app, /function setRefreshButtonState\(/, 'refresh feedback is centralized');
+  assert.match(app, /is-refreshing/, 'busy state class is applied from renderer');
+  assert.match(app, /is-refreshed/, 'success state class is applied from renderer');
+  assert.match(app, /is-refresh-error/, 'error state class is applied from renderer');
+  assert.match(app, /aria-busy/, 'busy state is exposed to assistive tech');
+  assert.match(app, /els\.refreshButton\.disabled = status === 'refreshing'/, 'refreshing disables repeat clicks');
+
+  const body = functionBody(app, 'refreshStats', 'publishViewState');
+  assert.match(body, /options\.feedback === true/, 'button feedback is opt-in, not tied to every forced refresh');
+  assert.match(body, /setRefreshButtonState\('refreshing'/, 'feedback refresh starts button feedback immediately');
+  assert.match(body, /settleRefreshButtonState\('refreshed'/, 'feedback refresh shows success feedback');
+  assert.match(body, /settleRefreshButtonState\('error'/, 'feedback refresh shows error feedback');
+  assert.match(app, /refreshStats\(\{ force: true, feedback: true \}\)/, 'Reload click opts into button feedback');
+
+  assert.doesNotMatch(cssRule(css, '.refresh-button.is-refreshing'), /cursor:\s*progress/, 'loading state should not alter the pointer cursor');
+  assert.equal(declaration(cssRule(css, '.refresh-button:disabled'), 'cursor'), 'default', 'disabled refresh keeps the normal arrow cursor');
+  const html = readRendererFile('index.html');
+  assert.match(html, /class="refresh-button-icon"/, 'refresh glyph has its own animation target');
+  assert.match(html, /class="refresh-button-spinner"/, 'loading glyph uses a dedicated SVG spinner');
+  assert.match(html, /viewBox="0 0 24 24"/, 'spinner is a standard 24px icon');
+  assert.equal((html.match(/class="refresh-button-spinner-bar"/g) || []).length, 6, 'spinner uses svg-spinners bars-rotate-fade style bars');
+  assert.match(html, /opacity="\.14"/, 'spinner has a very transparent trailing bar');
+  assert.match(html, /opacity="\.86"/, 'spinner has a nearly saturated leading bar');
+  assert.match(html, /rx="1\.5"/, 'spinner bars use rounded ends');
+  assert.doesNotMatch(css, /\.refresh-button::after/, 'refresh loading should not add a competing ring layer');
+  assert.doesNotMatch(css, /repeating-conic-gradient/, 'loading glyph should not be hand-drawn in CSS');
+  assert.match(css, /@keyframes refresh-spinner-spin/);
+  assert.equal(declaration(cssRule(css, '.refresh-button-spinner'), 'width'), '0.94em', 'spinner should stay close to the reload glyph without feeling oversized');
+  assert.equal(declaration(cssRule(css, '.refresh-button-spinner'), 'height'), '0.94em', 'spinner should stay close to the reload glyph without feeling oversized');
+  assert.match(cssRule(css, '.refresh-button-spinner'), /display:\s*none/, 'spinner stays hidden while idle');
+  assert.match(cssRule(css, '.refresh-button.is-refreshing .refresh-button-icon'), /display:\s*none/, 'loading state hides the reload glyph');
+  assert.match(css, /\.refresh-button\.is-refreshing \.refresh-button-spinner\s*\{[\s\S]*?animation:\s*refresh-spinner-spin/);
+  assert.match(cssRule(css, '.refresh-button.is-refreshed'), /border-color:\s*rgba\(var\(--accent-rgb\)/);
+  assert.match(cssRule(css, '.refresh-button.is-refresh-error'), /border-color:\s*rgba\(255,\s*99,\s*99/);
+  assert.match(css, /prefers-reduced-motion:\s*reduce[\s\S]*?\.refresh-button\.is-refreshing \.refresh-button-spinner[\s\S]*?animation:\s*none/);
+
+  const notice = readRendererFile('icons/settings/THIRD_PARTY_NOTICES.md');
+  assert.match(notice, /inline refresh loading icon: bars-rotate-fade/);
+  assert.match(notice, /svg-spinners/);
+  assert.match(notice, /svg-spinners license:/);
+  assert.match(notice, /Copyright \(c\) Utkarsh Verma/);
+  assert.match(notice, /Copyright \(c\) Ryan Halliwell/);
+  assert.equal(fs.existsSync(path.join(rendererDir, 'icons', 'THIRD_PARTY_NOTICES.md')), false, 'icon notices stay in the existing settings notice file');
+});

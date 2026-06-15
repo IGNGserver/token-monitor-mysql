@@ -127,6 +127,7 @@ const SERVICE_STATUS_PLACEHOLDERS = [
 const SERVICE_PROVIDER_OPTIONS = SERVICE_STATUS_PLACEHOLDERS.map((entry) => ({ id: entry.id, label: entry.label }));
 const serviceStatusProviderPreferencesApi = window.TokenMonitorServiceStatusProviderPreferences;
 const SETTINGS_SECTION_IDS = ['general', 'main', 'window', 'appearance', 'tools', 'limits', 'accounts', 'sync'];
+const REFRESH_BUTTON_FEEDBACK_MS = 700;
 const initialFloatingBubble = window.__TOKEN_MONITOR_INITIAL_FLOATING_BUBBLE__ || { collapsed: false, side: null };
 const initialViewState = window.__TOKEN_MONITOR_INITIAL_VIEW_STATE__ || {};
 let initialBreakdownPreferenceApplied = typeof initialViewState.breakdown === 'string';
@@ -136,7 +137,7 @@ function normalizeInitialViewValue(value, allowed, fallback) {
   return allowed.has(raw) ? raw : fallback;
 }
 
-const state = { period: normalizeInitialViewValue(initialViewState.period, viewPeriodValues, 'today'), appUpdate: null, breakdown: normalizeInitialViewValue(initialViewState.breakdown, viewBreakdownValues, 'tool'), settings: null, stats: null, serviceStatus: null, serviceStatusBusy: false, serviceProvidersExpanded: false, trendSettingsExpanded: false, serviceStatusTicker: null, refreshTimer: null, currentTotal: 0, rowSignature: '', streamConnected: false, mode: 'idle', appInfo: null, tokscaleStatus: null, tokscaleCheck: null, tokscaleBusy: false, hubInfo: null, cursorAccount: { status: null, error: '' }, cursorAccountExpanded: false, codexAccountExpanded: false, codexAccountError: '', opencodeAccount: { status: null, error: '' }, opencodeCookieExpanded: false, deepseekAccountExpanded: false, deepseekPendingCheckSince: 0, floatingBubble: initialFloatingBubble, suppressInitialNumberAnimation: window.__TOKEN_MONITOR_SUPPRESS_INITIAL_NUMBER_ANIMATION__ === true, openSession: null, detailSort: 'time', recordingWindowShortcut: false, windowShortcutInvalid: false };
+const state = { period: normalizeInitialViewValue(initialViewState.period, viewPeriodValues, 'today'), appUpdate: null, breakdown: normalizeInitialViewValue(initialViewState.breakdown, viewBreakdownValues, 'tool'), settings: null, stats: null, serviceStatus: null, serviceStatusBusy: false, serviceProvidersExpanded: false, trendSettingsExpanded: false, serviceStatusTicker: null, refreshTimer: null, refreshBusy: false, refreshFeedbackTimer: null, currentTotal: 0, rowSignature: '', streamConnected: false, mode: 'idle', appInfo: null, tokscaleStatus: null, tokscaleCheck: null, tokscaleBusy: false, hubInfo: null, cursorAccount: { status: null, error: '' }, cursorAccountExpanded: false, codexAccountExpanded: false, codexAccountError: '', opencodeAccount: { status: null, error: '' }, opencodeCookieExpanded: false, deepseekAccountExpanded: false, deepseekPendingCheckSince: 0, floatingBubble: initialFloatingBubble, suppressInitialNumberAnimation: window.__TOKEN_MONITOR_SUPPRESS_INITIAL_NUMBER_ANIMATION__ === true, openSession: null, detailSort: 'time', recordingWindowShortcut: false, windowShortcutInvalid: false };
 state.settingsSections = Object.fromEntries(SETTINGS_SECTION_IDS.map((id) => [id, false]));
 const defaultAppearance = { glassOpacity: 68, glassBlur: 32, zoomFactor: 1, systemGlass: true, showLiveDot: true, showToolIcons: true, titleIconOnly: false, settingsInTitlebar: false };
 let preferenceDrag = null;
@@ -1592,7 +1593,7 @@ function render() {
   }
   state.currentTotal = nextTotal;
   els.cost.textContent = formatCost(period.costUsd || 0);
-  els.refreshButton.title = `Stats refreshed ${formatTime(state.stats.updatedAt)}`;
+  if (!state.refreshBusy && !state.refreshFeedbackTimer) setRefreshButtonState('idle');
   const devices = state.stats.devices || [];
   const staleCount = devices.filter((device) => device.stale).length;
   const tDevice = t('views.device');
@@ -1678,7 +1679,59 @@ function pulseLiveDot() {
   dot.classList.add('pulse');
 }
 
+function refreshButtonIdleTitle() {
+  if (state.stats?.updatedAt) return t('refreshButton.refreshedAt', { time: formatTime(state.stats.updatedAt) });
+  return t('refreshButton.label');
+}
+
+function clearRefreshButtonFeedbackTimer() {
+  if (!state.refreshFeedbackTimer) return;
+  clearTimeout(state.refreshFeedbackTimer);
+  state.refreshFeedbackTimer = null;
+}
+
+function setRefreshButtonState(status = 'idle') {
+  if (!els.refreshButton) return;
+  els.refreshButton.classList.toggle('is-refreshing', status === 'refreshing');
+  els.refreshButton.classList.toggle('is-refreshed', status === 'refreshed');
+  els.refreshButton.classList.toggle('is-refresh-error', status === 'error');
+  els.refreshButton.disabled = status === 'refreshing';
+  if (status === 'refreshing') {
+    els.refreshButton.title = t('refreshButton.refreshing');
+    els.refreshButton.setAttribute('aria-label', t('refreshButton.refreshing'));
+    els.refreshButton.setAttribute('aria-busy', 'true');
+  } else if (status === 'refreshed') {
+    els.refreshButton.title = t('refreshButton.refreshed');
+    els.refreshButton.setAttribute('aria-label', t('refreshButton.refreshed'));
+    els.refreshButton.setAttribute('aria-busy', 'false');
+  } else if (status === 'error') {
+    els.refreshButton.title = t('refreshButton.failed');
+    els.refreshButton.setAttribute('aria-label', t('refreshButton.failed'));
+    els.refreshButton.setAttribute('aria-busy', 'false');
+  } else {
+    els.refreshButton.title = refreshButtonIdleTitle();
+    els.refreshButton.setAttribute('aria-label', t('refreshButton.label'));
+    els.refreshButton.removeAttribute('aria-busy');
+  }
+}
+
+function settleRefreshButtonState(status) {
+  clearRefreshButtonFeedbackTimer();
+  setRefreshButtonState(status);
+  state.refreshFeedbackTimer = setTimeout(() => {
+    state.refreshFeedbackTimer = null;
+    setRefreshButtonState('idle');
+  }, REFRESH_BUTTON_FEEDBACK_MS);
+}
+
 async function refreshStats(options = {}) {
+  const feedback = options.feedback === true;
+  if (feedback) {
+    if (state.refreshBusy) return;
+    state.refreshBusy = true;
+    clearRefreshButtonFeedbackTimer();
+    setRefreshButtonState('refreshing');
+  }
   try {
     state.stats = await window.tokenMonitor.getStats(options);
     setStatus(statusTextFor(state.mode, state.streamConnected));
@@ -1687,8 +1740,28 @@ async function refreshStats(options = {}) {
     renderToolPreferences();
     renderDeepseekStatus();
     maybeUpdateBarsIcon();
+    if (feedback) settleRefreshButtonState('refreshed');
   } catch (error) {
     setStatus(error.message, true);
+    if (feedback) settleRefreshButtonState('error');
+  } finally {
+    if (feedback) state.refreshBusy = false;
+  }
+}
+
+async function refreshStatusViewManually() {
+  if (state.refreshBusy || state.serviceStatusBusy) return;
+  state.refreshBusy = true;
+  clearRefreshButtonFeedbackTimer();
+  setRefreshButtonState('refreshing');
+  try {
+    await refreshServiceStatus({ force: true });
+    settleRefreshButtonState('refreshed');
+  } catch (error) {
+    setStatus(error.message, true);
+    settleRefreshButtonState('error');
+  } finally {
+    state.refreshBusy = false;
   }
 }
 
@@ -3447,8 +3520,8 @@ els.downloadTokscaleButton?.addEventListener('click', downloadTokscaleFromNpm);
 els.resetTokscaleButton?.addEventListener('click', resetTokscaleToBundled);
 els.openTokscaleLinkButton?.addEventListener('click', () => window.tokenMonitor.openExternal?.('https://github.com/junhoyeo/tokscale'));
 els.refreshButton.addEventListener('click', () => {
-  if (state.breakdown === 'status') refreshServiceStatus({ force: true }).catch(() => {});
-  else refreshStats({ force: true });
+  if (state.breakdown === 'status') refreshStatusViewManually().catch(() => {});
+  else refreshStats({ force: true, feedback: true });
 });
 els.minButton.addEventListener('click', () => window.tokenMonitor.minimize());
 els.closeButton.addEventListener('click', () => window.tokenMonitor.close());
