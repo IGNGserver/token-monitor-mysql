@@ -133,18 +133,67 @@ test('DeepSeek account panel provides a first-class API key entry', () => {
   assert.match(renderBody, /refreshBtn\.classList\.toggle\('hidden', !configured\)/);
 });
 
-test('MiniMax API key entry shares the DeepSeek manual input styling', () => {
+test('MiniMax key entry shares DeepSeek styling and Copilot uses the folded token entry', () => {
   const app = readRendererFile('app.js');
   const css = readRendererFile('styles.css');
 
   const animationBody = functionBodyBeforeMarker(app, 'initSettingsAnimationWrappers', '\ninitSettingsAnimationWrappers();');
   assert.match(animationBody, /'#deepseekManualPanel',\n\s*'#minimaxManualPanel'/);
+  assert.doesNotMatch(animationBody, /'#copilotManualPanel'/);
 
   assert.match(css, /#deepseekManualPanel\.hidden,\n#minimaxManualPanel\.hidden,/);
-  assert.match(css, /#deepseekErrorMessage\.hidden,\n#minimaxErrorMessage\.hidden\s*\{/);
-  assert.match(css, /#deepseekManualPanel,\n#minimaxManualPanel\s*\{\n\s*min-width: 0;/);
+  assert.match(css, /#minimaxManualPanel\.hidden,\n#copilotManualPanel\.hidden,/);
+  assert.match(css, /#copilotManualPanel\.hidden,\n#copilotManualDetails\.hidden,/);
+  assert.match(css, /#deepseekErrorMessage\.hidden,\n#minimaxErrorMessage\.hidden,\n#copilotErrorMessage\.hidden,/);
+  assert.match(css, /#deepseekManualPanel,\n#minimaxManualPanel,\n#copilotManualPanel\s*\{\n\s*min-width: 0;/);
   assert.match(css, /#deepseekManualPanel > \.accordion-animation-inner,\n#minimaxManualPanel > \.accordion-animation-inner\s*\{\n\s*display: grid;/);
-  assert.match(css, /#deepseekManualPanel input,\n#minimaxManualPanel input\s*\{[\s\S]*?font-family: monospace;[\s\S]*?font-size: 12px;/);
+  assert.doesNotMatch(css, /#copilotManualPanel > \.accordion-animation-inner/);
+  assert.match(css, /#deepseekManualPanel input,\n#minimaxManualPanel input,\n#copilotManualDetails input\s*\{[\s\S]*?font-family: monospace;[\s\S]*?font-size: 12px;/);
+});
+
+test('Copilot account panel provides GitHub sign-in plus manual token fallback', () => {
+  const html = readRendererFile('index.html');
+  const details = html.match(/<div id="copilotSettingsDetails"[\s\S]*?<div id="copilotErrorMessage" class="settings-note error hidden"><\/div>/)?.[0] || '';
+  assert.match(details, /<button id="copilotSignInButton"[\s\S]*data-i18n="settings\.copilot\.signIn">/);
+  assert.match(details, /<button id="copilotCancelSignInButton" class="hidden" data-i18n="settings\.common\.cancel">/);
+  assert.match(details, /<button id="copilotLogoutButton" class="hidden" data-i18n="settings\.copilot\.logout">/);
+  assert.match(details, /<pre id="copilotLoginStatus" class="codex-login-output hidden"><\/pre>/);
+  assert.match(details, /<button id="copilotManualToggle"[\s\S]*aria-controls="copilotManualDetails"/);
+  assert.match(details, /<div id="copilotManualDetails" class="opencode-add-details accordion-animated-container hidden">/);
+  assert.match(details, /<input id="copilotApiTokenInput" type="password"[\s\S]*data-i18n-placeholder="settings\.copilot\.apiTokenPlaceholder"/);
+  assert.match(details, /<button id="copilotApiTokenSubmit"[\s\S]*data-i18n="settings\.copilot\.saveToken">/);
+
+  const app = readRendererFile('app.js');
+  const setupBody = functionBodyBeforeMarker(app, 'setupCursorAccountUI', '\nsetupCursorAccountUI();');
+  assert.match(setupBody, /const flowId = nextCopilotSignInFlowId\(\);/);
+  assert.match(setupBody, /state\.copilotSignInFlowId = flowId;/);
+  assert.match(setupBody, /window\.tokenMonitor\.copilot\.signIn\(\{ flowId \}\)/);
+  assert.match(setupBody, /isCurrentCopilotSignInFlow\(status\.flowId\)/);
+  assert.match(setupBody, /isCurrentCopilotSignInFlow\(result\?\.flowId \|\| flowId\)/);
+  assert.match(setupBody, /window\.tokenMonitor\.copilot\.cancelSignIn\(\{ flowId \}\)/);
+  assert.match(setupBody, /state\.copilotSignInFlowId = '';/);
+  assert.match(setupBody, /state\.copilotSignInCancelable = true;/);
+  assert.match(setupBody, /status\.phase === 'success'[\s\S]*?state\.copilotSignInCancelable = false;/);
+  assert.match(setupBody, /state\.copilotAuthorizeMessage = t\('settings\.copilot\.authorize'/);
+  assert.match(setupBody, /\[state\.copilotAuthorizeMessage, t\('settings\.copilot\.polling'\)\]\.filter\(Boolean\)\.join\('\\n\\n'\)/);
+  assert.match(setupBody, /setCopilotManualExpanded\(false\)/);
+  assert.match(setupBody, /saveSettings\(\{ copilotApiToken: input\.value \}\)/);
+  assert.match(setupBody, /saveSettings\(\{ copilotApiToken: '' \}\)/);
+
+  const renderBody = functionBody(app, 'renderCopilotStatus', 'renderDeepseekStatus');
+  assert.match(renderBody, /cancelBtn\.classList\.toggle\('hidden', !state\.copilotSignInBusy \|\| !state\.copilotSignInCancelable \|\| linked\)/);
+  assert.match(renderBody, /refreshBtn\.classList\.toggle\('hidden', !configured \|\| \(state\.copilotSignInBusy && !linked\)\)/);
+  assert.match(renderBody, /errorEl\.textContent = state\.copilotErrorMessage \|\| '';/);
+  assert.doesNotMatch(renderBody, /errorEl\.textContent = '';/);
+
+  const statusBody = functionBody(app, 'copilotAccountStatusText', 'apiKeyAccountStatusText');
+  assert.match(statusBody, /provider\?\.accountName/);
+  assert.match(statusBody, /settings\.copilot\.statusSet/);
+
+  const flowBody = functionBody(app, 'isCurrentCopilotSignInFlow', 'copilotAccountStatusText');
+  assert.match(flowBody, /const current = String\(state\.copilotSignInFlowId \|\| ''\);/);
+  assert.match(flowBody, /const incoming = String\(flowId \|\| ''\);/);
+  assert.match(flowBody, /return current && incoming === current;/);
 });
 
 test('DeepSeek account linked state requires a validated API key', () => {

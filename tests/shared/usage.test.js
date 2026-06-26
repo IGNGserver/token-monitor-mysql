@@ -83,6 +83,104 @@ test('mergeDeviceRecord supports limitsOnly updates without wiping usage periods
   assert.equal(merged.limits.providers[0].status, 'unauthorized');
 });
 
+test('mergeDeviceRecord keeps widget Copilot limits when a headless agent reports no local token', () => {
+  const existing = recordWithLimits({
+    agentRuntime: 'electron-widget',
+    limits: {
+      updatedAt: '2026-06-26T08:00:00.000Z',
+      refreshMs: 300000,
+      providers: [
+        {
+          provider: 'copilot',
+          accountKey: 'sha256:copilot-token',
+          accountLabel: 'Pro',
+          status: 'ok',
+          source: 'api',
+          updatedAt: '2026-06-26T08:00:00.000Z',
+          windows: [{ kind: 'billing', label: 'Premium requests', usedPercent: 20 }]
+        }
+      ]
+    }
+  });
+  const incoming = {
+    deviceId: 'macbook',
+    agentRuntime: 'headless-agent',
+    updatedAt: '2026-06-26T08:01:00.000Z',
+    receivedAt: '2026-06-26T08:01:00.000Z',
+    limits: {
+      updatedAt: '2026-06-26T08:01:00.000Z',
+      refreshMs: 300000,
+      providers: [{ provider: 'copilot', status: 'notConfigured', source: 'api', updatedAt: '2026-06-26T08:01:00.000Z', windows: [] }]
+    }
+  };
+
+  const merged = mergeDeviceRecord(existing, incoming);
+  assert.equal(merged.limits.providers.length, 1);
+  assert.equal(merged.limits.providers[0].provider, 'copilot');
+  assert.equal(merged.limits.providers[0].status, 'ok');
+  assert.equal(merged.limits.providers[0].accountKey, 'sha256:copilot-token');
+});
+
+test('mergeDeviceRecord allows the same runtime to clear Copilot limits', () => {
+  const existing = recordWithLimits({
+    agentRuntime: 'electron-widget',
+    limits: {
+      updatedAt: '2026-06-26T08:00:00.000Z',
+      refreshMs: 300000,
+      providers: [
+        { provider: 'copilot', accountKey: 'sha256:copilot-token', status: 'ok', source: 'api', updatedAt: '2026-06-26T08:00:00.000Z', windows: [] }
+      ]
+    }
+  });
+  const incoming = {
+    deviceId: 'macbook',
+    agentRuntime: 'electron-widget',
+    updatedAt: '2026-06-26T08:01:00.000Z',
+    receivedAt: '2026-06-26T08:01:00.000Z',
+    limits: {
+      updatedAt: '2026-06-26T08:01:00.000Z',
+      refreshMs: 300000,
+      providers: [{ provider: 'copilot', status: 'notConfigured', source: 'api', updatedAt: '2026-06-26T08:01:00.000Z', windows: [] }]
+    }
+  };
+
+  const merged = mergeDeviceRecord(existing, incoming);
+  assert.equal(merged.limits.providers.length, 1);
+  assert.equal(merged.limits.providers[0].provider, 'copilot');
+  assert.equal(merged.limits.providers[0].status, 'notConfigured');
+});
+
+test('mergeDeviceRecord preserves distinct Codex and OpenCode accounts from the same incoming limits payload', () => {
+  const existing = recordWithLimits({
+    limits: {
+      updatedAt: '2026-06-26T08:00:00.000Z',
+      refreshMs: 300000,
+      providers: []
+    }
+  });
+  const incoming = {
+    deviceId: 'macbook',
+    updatedAt: '2026-06-26T08:01:00.000Z',
+    receivedAt: '2026-06-26T08:01:00.000Z',
+    limits: {
+      updatedAt: '2026-06-26T08:01:00.000Z',
+      refreshMs: 300000,
+      providers: [
+        { provider: 'codex', accountKey: 'sha256:codex-a', accountEmail: 'a@example.com', status: 'ok', source: 'rpc', updatedAt: '2026-06-26T08:01:00.000Z', windows: [] },
+        { provider: 'codex', accountKey: 'sha256:codex-b', accountEmail: 'b@example.com', status: 'ok', source: 'rpc', updatedAt: '2026-06-26T08:01:00.000Z', windows: [] },
+        { provider: 'opencode', accountKey: 'sha256:opencode-a', accountLabel: 'work', status: 'ok', source: 'web', updatedAt: '2026-06-26T08:01:00.000Z', windows: [] },
+        { provider: 'opencode', accountKey: 'sha256:opencode-b', accountLabel: 'personal', status: 'ok', source: 'web', updatedAt: '2026-06-26T08:01:00.000Z', windows: [] }
+      ]
+    }
+  };
+
+  const merged = mergeDeviceRecord(existing, incoming);
+  assert.deepEqual(
+    merged.limits.providers.map((provider) => `${provider.provider}:${provider.accountKey}`),
+    ['codex:sha256:codex-a', 'codex:sha256:codex-b', 'opencode:sha256:opencode-a', 'opencode:sha256:opencode-b']
+  );
+});
+
 test('mergeDeviceRecord preserves usage for clients omitted by the active tracked-client list', () => {
   const existing = {
     deviceId: 'macbook',

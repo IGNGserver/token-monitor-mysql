@@ -1987,6 +1987,10 @@ body.floating-bubble-collapsed-right .floating-bubble-tab {
   -webkit-mask-image: url(../../../assets/icons/minimax.svg);
   mask-image: url(../../../assets/icons/minimax.svg);
 }
+.limit-icon-copilot {
+  -webkit-mask-image: url(../../../assets/icons/copilot.svg);
+  mask-image: url(../../../assets/icons/copilot.svg);
+}
 .row-label {
   display: grid;
   min-width: 0;
@@ -2559,14 +2563,19 @@ body.floating-bubble-collapsed-right .floating-bubble-tab {
 #opencodeManualPanel.hidden,
 #deepseekManualPanel.hidden,
 #minimaxManualPanel.hidden,
+#copilotManualPanel.hidden,
+#copilotManualDetails.hidden,
 #cursorErrorMessage.hidden,
 #opencodeErrorMessage.hidden,
 #deepseekErrorMessage.hidden,
-#minimaxErrorMessage.hidden { display: none; }
+#minimaxErrorMessage.hidden,
+#copilotErrorMessage.hidden,
+#copilotLoginStatus.hidden { display: none; }
 #cursorManualPanel,
 #opencodeManualPanel,
 #deepseekManualPanel,
-#minimaxManualPanel {
+#minimaxManualPanel,
+#copilotManualPanel {
   min-width: 0;
 }
 #cursorManualPanel > .accordion-animation-inner,
@@ -2580,7 +2589,8 @@ body.floating-bubble-collapsed-right .floating-bubble-tab {
 #cursorManualPanel textarea,
 #opencodeManualPanel textarea,
 #deepseekManualPanel input,
-#minimaxManualPanel input {
+#minimaxManualPanel input,
+#copilotManualDetails input {
   width: 100%;
   font-family: monospace;
   font-size: 12px;

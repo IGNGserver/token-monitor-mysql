@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const crypto = require('node:crypto');
 const os = require('node:os');
 const path = require('node:path');
-const { app, BrowserWindow, globalShortcut, ipcMain, nativeImage, screen, session, shell } = require('electron');
+const { app, BrowserWindow, clipboard, globalShortcut, ipcMain, nativeImage, screen, session, shell } = require('electron');
 const { defaultDeviceId, generateHubSecret, lanIpv4Addresses, loadDotEnv, pidFilePath, sharedDataDir } = require('../shared/config');
 const { appVersion } = require('../shared/appVersion');
 const { DEFAULT_CLIENTS, clientsCsvForSetting } = require('../shared/clientTracking');
@@ -12,7 +12,8 @@ const { startCollector, lookupModelPricing } = require('../shared/collector');
 const { customPricingPath } = require('../shared/tokscaleConfig');
 const { applyCustomPricing, normalizeCustomPricingSetting } = require('../shared/tokscaleCustomPricing');
 const { createHub } = require('../hub/server');
-const { deepseekToken, normalizeLimitsRefreshMs, parseBoolean, parseLimitProviders, runCodexLogin, minimaxToken } = require('../shared/limitCollector');
+const { deepseekToken, normalizeLimitsRefreshMs, parseBoolean, parseLimitProviders, runCodexLogin, minimaxToken, copilotToken } = require('../shared/limitCollector');
+const { copilotLoginErrorMessage, isAllowedVerificationUrl, runCopilotDeviceFlowLogin } = require('../shared/copilotDeviceFlow');
 const { codexAuthIdentity, hashAccountKey } = require('../shared/codexAuth');
 const {
   normalizeClientDisplayOrder,
@@ -190,6 +191,8 @@ function defaultSettings() {
     opencodeProfiles: {},
     deepseekApiKey: '',
     minimaxApiKey: '',
+    copilotApiToken: '',
+    copilotEnterpriseHost: '',
     codexManagedAccounts: [],
     appUpdate: {
       lastCheckedAt: null,
@@ -223,7 +226,21 @@ function currentMinimaxApiKey() {
   return settings?.minimaxApiKey || minimaxToken(process.env);
 }
 
+function normalizeCopilotApiToken(value) {
+  return copilotToken({}, { copilotApiToken: String(value || '') });
+}
+
+function currentCopilotApiToken() {
+  return settings?.copilotApiToken || copilotToken(process.env);
+}
+
+function normalizeCopilotEnterpriseHost(value) {
+  return String(value || '').trim().replace(/^https?:\/\//i, '').split('/')[0].toLowerCase();
+}
+
 let codexLoginInFlight = false;
+let copilotLoginController = null;
+let copilotLoginFlowId = '';
 
 function normalizeCodexManagedAccounts(value) {
   if (!Array.isArray(value)) return [];
@@ -1134,6 +1151,8 @@ function startSyncCollector() {
     opencodeProfiles: settings.opencodeProfiles || {},
     deepseekApiKey: settings.deepseekApiKey || '',
     minimaxApiKey: settings.minimaxApiKey || '',
+    copilotApiToken: settings.copilotApiToken || '',
+    copilotEnterpriseHost: settings.copilotEnterpriseHost || '',
     codexManagedAccounts: codexManagedAccountsForCollector(),
     onUpdate: async (summary) => {
       const visibleSummary = summaryWithArchivedClientUsage(summary);
@@ -1174,6 +1193,8 @@ function startHostCollector() {
     opencodeProfiles: settings.opencodeProfiles || {},
     deepseekApiKey: settings.deepseekApiKey || '',
     minimaxApiKey: settings.minimaxApiKey || '',
+    copilotApiToken: settings.copilotApiToken || '',
+    copilotEnterpriseHost: settings.copilotEnterpriseHost || '',
     codexManagedAccounts: codexManagedAccountsForCollector(),
     onUpdate: (summary) => {
       const visibleSummary = summaryWithArchivedClientUsage(summary);
@@ -1340,6 +1361,8 @@ function startLocalCollector() {
     opencodeProfiles: settings.opencodeProfiles || {},
     deepseekApiKey: settings.deepseekApiKey || '',
     minimaxApiKey: settings.minimaxApiKey || '',
+    copilotApiToken: settings.copilotApiToken || '',
+    copilotEnterpriseHost: settings.copilotEnterpriseHost || '',
     codexManagedAccounts: codexManagedAccountsForCollector(),
     onUpdate: (summary, reason) => {
       const visibleSummary = summaryWithArchivedClientUsage(summary);
@@ -1535,10 +1558,16 @@ function settingsForRenderer() {
     : minimaxToken(process.env)
       ? 'env'
       : '';
+  const copilotApiTokenSource = settings?.copilotApiToken
+    ? 'settings'
+    : copilotToken(process.env)
+      ? 'env'
+      : '';
   return {
     ...settings,
     deepseekApiKey: '',
     minimaxApiKey: '',
+    copilotApiToken: '',
     // Never ship OpenCode session cookies to the renderer; the UI only needs to
     // know whether a cookie is configured, not its value.
     opencodeCookie: settings?.opencodeCookie ? 'set' : '',
@@ -1550,6 +1579,8 @@ function settingsForRenderer() {
     deepseekApiKeySource,
     minimaxApiKeyConfigured: Boolean(currentMinimaxApiKey()),
     minimaxApiKeySource,
+    copilotApiTokenConfigured: Boolean(currentCopilotApiToken()),
+    copilotApiTokenSource,
     currencyRatesEffective: effectiveRates || resolveEffectiveRates(rateCache?.rates || {}, settings?.currencyRates || {}),
     currencyRateInfo: rateCache ? { source: rateCache.source, date: rateCache.date, fetchedAt: rateCache.fetchedAt } : null,
     windowToggleShortcutStatus: currentWindowToggleShortcutStatus()
@@ -1924,6 +1955,8 @@ function isAllowedExternalUrl(value) {
   try { parsed = new URL(String(value || '')); }
   catch (_) { return false; }
   if (parsed.protocol !== 'https:') return false;
+  const enterpriseHost = settings?.copilotEnterpriseHost || process.env.COPILOT_ENTERPRISE_HOST || process.env.GITHUB_ENTERPRISE_HOST || '';
+  if (isAllowedVerificationUrl(value, enterpriseHost)) return true;
   if (parsed.hostname === 'github.com' && parsed.pathname.startsWith('/junhoyeo/tokscale')) return true;
   if (parsed.hostname === 'www.npmjs.com' && parsed.pathname.startsWith('/package/@tokscale/')) return true;
   if (parsed.hostname === 'github.com' && parsed.pathname.startsWith('/Javis603/token-monitor')) return true;
@@ -2264,6 +2297,8 @@ app.whenReady().then(() => {
     const previousHistoryEnabled = settings.historyEnabled;
     const previousDeepSeekApiKey = settings.deepseekApiKey;
     const previousMinimaxApiKey = settings.minimaxApiKey;
+    const previousCopilotApiToken = settings.copilotApiToken;
+    const previousCopilotEnterpriseHost = settings.copilotEnterpriseHost;
     const previousDiscordRpcEnabled = settings.discordRpcEnabled;
     const previousShowTrayIcon = settings.showTrayIcon;
     const previousTrayMode = settings.trayMode;
@@ -2278,6 +2313,8 @@ app.whenReady().then(() => {
     if (patch.clients !== undefined) normalizedPatch.clients = clientsCsvForSetting(patch.clients, '');
     if (patch.deepseekApiKey !== undefined) normalizedPatch.deepseekApiKey = normalizeDeepSeekApiKey(patch.deepseekApiKey);
     if (patch.minimaxApiKey !== undefined) normalizedPatch.minimaxApiKey = normalizeMinimaxApiKey(patch.minimaxApiKey);
+    if (patch.copilotApiToken !== undefined) normalizedPatch.copilotApiToken = normalizeCopilotApiToken(patch.copilotApiToken);
+    if (patch.copilotEnterpriseHost !== undefined) normalizedPatch.copilotEnterpriseHost = normalizeCopilotEnterpriseHost(patch.copilotEnterpriseHost);
     settings = normalizeWindowBehaviorSettings({
       ...settings,
       ...normalizedPatch,
@@ -2324,6 +2361,8 @@ app.whenReady().then(() => {
       startAtLogin: loginItemEnabledHere() ? parseBoolean(patch.startAtLogin ?? settings.startAtLogin, false) : false,
       deepseekApiKey: patch.deepseekApiKey !== undefined ? normalizeDeepSeekApiKey(patch.deepseekApiKey) : (settings.deepseekApiKey || ''),
       minimaxApiKey: patch.minimaxApiKey !== undefined ? normalizeMinimaxApiKey(patch.minimaxApiKey) : (settings.minimaxApiKey || ''),
+      copilotApiToken: patch.copilotApiToken !== undefined ? normalizeCopilotApiToken(patch.copilotApiToken) : (settings.copilotApiToken || ''),
+      copilotEnterpriseHost: patch.copilotEnterpriseHost !== undefined ? normalizeCopilotEnterpriseHost(patch.copilotEnterpriseHost) : (settings.copilotEnterpriseHost || ''),
       customModelPricing: patch.customModelPricing !== undefined
         ? normalizeCustomPricingSetting(patch.customModelPricing)
         : normalizeCustomPricingSetting(settings.customModelPricing)
@@ -2369,7 +2408,9 @@ app.whenReady().then(() => {
       settings.limitsRefreshMs !== previousLimitsRefreshMs ||
       settings.historyEnabled !== previousHistoryEnabled ||
       settings.deepseekApiKey !== previousDeepSeekApiKey ||
-      settings.minimaxApiKey !== previousMinimaxApiKey
+      settings.minimaxApiKey !== previousMinimaxApiKey ||
+      settings.copilotApiToken !== previousCopilotApiToken ||
+      settings.copilotEnterpriseHost !== previousCopilotEnterpriseHost
     ) {
       startMode();
     }
@@ -2745,6 +2786,56 @@ app.whenReady().then(() => {
     }
   });
   ipcMain.handle('codex:removeAccount', async (_event, id) => removeCodexManagedAccount(id));
+  ipcMain.handle('copilot:signIn', async (event, request = {}) => {
+    if (copilotLoginController) return { ok: false, error: 'A GitHub Copilot sign-in is already in progress.', flowId: copilotLoginFlowId };
+    const controller = new AbortController();
+    const flowId = String(request?.flowId || '').trim();
+    copilotLoginController = controller;
+    copilotLoginFlowId = flowId;
+    const sendStatus = (payload) => {
+      if (copilotLoginController !== controller) return;
+      if (!event.sender.isDestroyed()) event.sender.send('copilot:loginStatus', { ...payload, flowId });
+    };
+    try {
+      const result = await runCopilotDeviceFlowLogin({
+        enterpriseHost: settings?.copilotEnterpriseHost || process.env.COPILOT_ENTERPRISE_HOST || process.env.GITHUB_ENTERPRISE_HOST || '',
+        signal: controller.signal,
+        onStatus: sendStatus
+      }, {
+        openExternal: (url) => shell.openExternal(url),
+        copyToClipboard: (text) => clipboard.writeText(String(text || '')),
+        fetch
+      });
+      if (copilotLoginController !== controller) {
+        return { ok: false, error: copilotLoginErrorMessage({ status: 'cancelled' }), flowId };
+      }
+      settings.copilotApiToken = normalizeCopilotApiToken(result.accessToken);
+      saveSettings();
+      pushSettingsToRenderer();
+      startMode();
+      return { ok: true, flowId };
+    } catch (error) {
+      const message = copilotLoginErrorMessage(error);
+      sendStatus({ phase: 'error', error: message });
+      return { ok: false, error: message, flowId };
+    } finally {
+      if (copilotLoginController === controller) {
+        copilotLoginController = null;
+        copilotLoginFlowId = '';
+      }
+    }
+  });
+  ipcMain.handle('copilot:cancelSignIn', (_event, request = {}) => {
+    const flowId = String(request?.flowId || '').trim();
+    if (flowId && copilotLoginFlowId && flowId !== copilotLoginFlowId) return { ok: true };
+    const controller = copilotLoginController;
+    controller?.abort();
+    if (copilotLoginController === controller) {
+      copilotLoginController = null;
+      copilotLoginFlowId = '';
+    }
+    return { ok: true };
+  });
   ipcMain.on('window:minimize', () => {
     if (settings?.trayMode) hidePopover();
     else mainWindow?.minimize();

@@ -64,7 +64,8 @@ const LIMIT_PROVIDERS = [
   { id: 'opencode', label: 'OpenCode' },
   { id: 'deepseek', label: 'DeepSeek' },
   { id: 'minimax', label: 'Minimax' },
-  { id: 'grok', label: 'Grok' }
+  { id: 'grok', label: 'Grok' },
+  { id: 'copilot', label: 'GitHub Copilot' }
 ];
 const DEFAULT_LIMIT_PROVIDER_ORDER = LIMIT_PROVIDERS.map((provider) => provider.id).join(',');
 const limitProviderOrderApi = window.TokenMonitorLimitProviderOrder;
@@ -100,6 +101,8 @@ const LIMIT_CAPABILITY_TAG_KEYS = {
   Subscription: 'settings.limits.capability.subscription',
   'Token Plan': 'settings.limits.capability.tokenPlan',
   'API key': 'settings.limits.capability.apiKey',
+  'GitHub OAuth': 'settings.limits.capability.githubOAuth',
+  API: 'settings.limits.capability.api',
   'Add API key': 'settings.limits.status.addApiKey',
   'Update API key': 'settings.limits.status.updateApiKey',
   Live: 'settings.limits.status.live',
@@ -165,7 +168,7 @@ function normalizeInitialViewValue(value, allowed, fallback) {
   return allowed.has(raw) ? raw : fallback;
 }
 
-const state = { period: normalizeInitialViewValue(initialViewState.period, viewPeriodValues, 'today'), appUpdate: null, breakdown: normalizeInitialViewValue(initialViewState.breakdown, viewBreakdownValues, 'home'), viewSwitcherOpen: false, settings: null, stats: null, homeHistory: null, homeHistoryBusy: false, homeHistoryRequested: false, homeActivityScrollLeft: null, homeActivityFollowEnd: true, homeActivityResizeObserver: null, serviceStatus: null, serviceStatusBusy: false, serviceProvidersExpanded: false, trendSettingsExpanded: false, homeSettingsExpanded: false, serviceStatusTicker: null, refreshTimer: null, refreshBusy: false, refreshFeedbackTimer: null, currentTotal: 0, rowSignature: '', streamConnected: false, streamFailure: null, mode: 'idle', appInfo: null, tokscaleStatus: null, tokscaleCheck: null, tokscaleBusy: false, hubInfo: null, cursorAccount: { status: null, error: '' }, cursorAccountExpanded: false, codexAccountExpanded: false, codexAccountError: '', customPricingExpanded: false, opencodeProfileCount: 0, opencodeCookieExpanded: false, deepseekAccountExpanded: false, deepseekPendingCheckSince: 0, minimaxAccountExpanded: false, minimaxPendingCheckSince: 0, floatingBubble: initialFloatingBubble, suppressInitialNumberAnimation: window.__TOKEN_MONITOR_SUPPRESS_INITIAL_NUMBER_ANIMATION__ === true, openSession: null, detailSort: 'time', recordingWindowShortcut: false, windowShortcutInvalid: false };
+const state = { period: normalizeInitialViewValue(initialViewState.period, viewPeriodValues, 'today'), appUpdate: null, breakdown: normalizeInitialViewValue(initialViewState.breakdown, viewBreakdownValues, 'home'), viewSwitcherOpen: false, settings: null, stats: null, homeHistory: null, homeHistoryBusy: false, homeHistoryRequested: false, homeActivityScrollLeft: null, homeActivityFollowEnd: true, homeActivityResizeObserver: null, serviceStatus: null, serviceStatusBusy: false, serviceProvidersExpanded: false, trendSettingsExpanded: false, homeSettingsExpanded: false, serviceStatusTicker: null, refreshTimer: null, refreshBusy: false, refreshFeedbackTimer: null, currentTotal: 0, rowSignature: '', streamConnected: false, streamFailure: null, mode: 'idle', appInfo: null, tokscaleStatus: null, tokscaleCheck: null, tokscaleBusy: false, hubInfo: null, cursorAccount: { status: null, error: '' }, cursorAccountExpanded: false, codexAccountExpanded: false, codexAccountError: '', customPricingExpanded: false, opencodeProfileCount: 0, opencodeCookieExpanded: false, deepseekAccountExpanded: false, deepseekPendingCheckSince: 0, minimaxAccountExpanded: false, minimaxPendingCheckSince: 0, copilotAccountExpanded: false, copilotManualExpanded: false, copilotPendingCheckSince: 0, copilotSignInBusy: false, copilotSignInCancelable: false, copilotSignInFlowId: '', copilotAuthorizeMessage: '', copilotLoginStatus: '', copilotErrorMessage: '', floatingBubble: initialFloatingBubble, suppressInitialNumberAnimation: window.__TOKEN_MONITOR_SUPPRESS_INITIAL_NUMBER_ANIMATION__ === true, openSession: null, detailSort: 'time', recordingWindowShortcut: false, windowShortcutInvalid: false };
 state.settingsSections = Object.fromEntries(SETTINGS_SECTION_IDS.map((id) => [id, false]));
 const defaultAppearance = { glassOpacity: 68, glassBlur: 32, zoomFactor: 1, systemGlass: true, showLiveDot: true, showToolIcons: true, titleIconOnly: false, settingsInTitlebar: false };
 let preferenceDrag = null;
@@ -358,10 +361,11 @@ function settingsSectionSummary(section) {
     const opencodeCount = state.opencodeProfileCount || 0;
     const deepseekLinked = deepseekAccountLinked();
     const minimaxLinked = minimaxAccountLinked();
+    const copilotLinked = copilotAccountLinked();
     const codexLinked = (state.settings?.codexManagedAccounts || []).length > 0;
     return t('settings.summary.accounts', {
-      linked: (codexLinked ? 1 : 0) + (cursorLinked ? 1 : 0) + (opencodeCount > 0 ? 1 : 0) + (deepseekLinked ? 1 : 0) + (minimaxLinked ? 1 : 0),
-      total: 5
+      linked: (codexLinked ? 1 : 0) + (cursorLinked ? 1 : 0) + (opencodeCount > 0 ? 1 : 0) + (deepseekLinked ? 1 : 0) + (minimaxLinked ? 1 : 0) + (copilotLinked ? 1 : 0),
+      total: 6
     });
   }
   if (section === 'limits') {
@@ -1250,6 +1254,14 @@ function renderProviderWindows(provider, color) {
       node.classList.add('limit-window-wide');
       windows.append(node);
     }
+  } else if (provider.provider === 'copilot') {
+    windows.classList.add('limit-windows-copilot');
+    const billingWindows = windowsForKind(provider, 'billing');
+    for (const billing of billingWindows) {
+      const node = limitWindowNode(billing?.label || 'Monthly', billing, color, 0.68);
+      node.classList.add('limit-window-wide');
+      windows.append(node);
+    }
   } else {
     // Default: render only the windows the provider actually has. Providers
     // that only expose a single window shouldn't leave a half-empty bar next to
@@ -1970,6 +1982,10 @@ function homeLimitRows() {
 }
 
 function homeLimitWindowLabel(window) {
+  if (window?.kind === 'billing') {
+    const label = String(window?.label || '').trim();
+    if (label) return label;
+  }
   const key = {
     session: 'home.limit.session',
     weekly: 'home.limit.weekly',
@@ -2430,6 +2446,7 @@ async function refreshStats(options = {}) {
     renderToolPreferences();
     renderDeepseekStatus();
     renderMinimaxStatus();
+    renderCopilotStatus();
     maybeUpdateBarsIcon();
     if (feedback) settleRefreshButtonState('refreshed');
   } catch (error) {
@@ -3244,6 +3261,7 @@ function syncSettingsForm() {
   els.zoomInput.value = String(Math.round((Number(state.settings.zoomFactor) || 1) * 100));
   renderDeepseekStatus();
   renderMinimaxStatus();
+  renderCopilotStatus();
   renderViewPreferences();
   renderToolPreferences();
   renderLimitProviderCheckboxes();
@@ -4425,6 +4443,7 @@ window.tokenMonitor.onStatsPush?.((payload) => {
     renderToolPreferences();
     renderDeepseekStatus();
     renderMinimaxStatus();
+    renderCopilotStatus();
     maybeUpdateBarsIcon();
   }
   restartTimer();
@@ -4654,6 +4673,18 @@ function setDeepseekAccountExpanded(expanded) {
   setAccountGroupExpanded('deepseek', expanded, 'deepseekAccountExpanded');
 }
 
+function setCopilotAccountExpanded(expanded) {
+  setAccountGroupExpanded('copilot', expanded, 'copilotAccountExpanded');
+}
+
+function setCopilotManualExpanded(expanded) {
+  const next = Boolean(expanded);
+  state.copilotManualExpanded = next;
+  document.getElementById('copilotManualToggle')?.setAttribute('aria-expanded', next ? 'true' : 'false');
+  document.getElementById('copilotManualDetails')?.classList.toggle('hidden', !next);
+  document.getElementById('copilotManualPanel')?.classList.toggle('expanded', next);
+}
+
 function setCursorStatusText(el, text) {
   el.textContent = text;
   el.title = text;
@@ -4828,6 +4859,67 @@ function clearMinimaxProviderStatus() {
   state.stats.limits.providers = state.stats.limits.providers.filter((provider) => provider.provider !== 'minimax');
 }
 
+function copilotProviderStatus() {
+  return localProviderStatus('copilot');
+}
+
+function copilotAccountLinked() {
+  const provider = copilotProviderForAccount();
+  return Boolean(state.settings?.copilotApiTokenConfigured) && provider?.status === 'ok';
+}
+
+function copilotProviderForAccount() {
+  const provider = copilotProviderStatus();
+  const pendingSince = Number(state.copilotPendingCheckSince || 0);
+  if (!provider || !pendingSince) return provider;
+  const updatedAt = Date.parse(provider.updatedAt || '');
+  if (!Number.isFinite(updatedAt) || updatedAt < pendingSince) return null;
+  state.copilotPendingCheckSince = 0;
+  return provider;
+}
+
+function markCopilotTokenCheckPending() {
+  state.copilotPendingCheckSince = Date.now();
+  clearCopilotProviderStatus();
+}
+
+function clearCopilotPendingCheck() {
+  state.copilotPendingCheckSince = 0;
+}
+
+function clearCopilotProviderStatus() {
+  if (!Array.isArray(state.stats?.limits?.providers)) return;
+  state.stats.limits.providers = state.stats.limits.providers.filter((provider) => provider.provider !== 'copilot');
+}
+
+function nextCopilotSignInFlowId() {
+  return `copilot-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function isCurrentCopilotSignInFlow(flowId) {
+  const current = String(state.copilotSignInFlowId || '');
+  const incoming = String(flowId || '');
+  return current && incoming === current;
+}
+
+function copilotAccountStatusText(provider, configured, source) {
+  const accountStatus = limitProviderPresentationApi.apiKeyAccountStatus(provider, configured);
+  if (accountStatus === 'linked') {
+    const accountName = String(provider?.accountName || '').trim();
+    return accountName || t(source === 'env' ? 'settings.copilot.statusEnv' : 'settings.copilot.statusSet');
+  }
+  if (accountStatus === 'invalid') return t('settings.copilot.statusInvalid');
+  if (accountStatus === 'notConfigured') return t('settings.copilot.statusNotSet');
+  const statusKeys = {
+    checking: 'settings.common.checking',
+    limited: 'settings.common.limited',
+    unavailable: 'settings.common.unavailable',
+    notChecked: 'settings.common.notChecked',
+    error: 'settings.common.error'
+  };
+  return t(statusKeys[accountStatus] || 'settings.common.error');
+}
+
 function apiKeyAccountStatusText(providerName, provider, configured, source) {
   const accountStatus = limitProviderPresentationApi.apiKeyAccountStatus(provider, configured);
   if (accountStatus === 'linked') {
@@ -4886,6 +4978,35 @@ function renderMinimaxStatus() {
   openBtn.classList.toggle('hidden', linked);
   logoutBtn.classList.toggle('hidden', !linked || source !== 'settings');
   refreshBtn.classList.toggle('hidden', !configured);
+  renderSettingsSummaries();
+}
+
+function renderCopilotStatus() {
+  const statusEl = document.getElementById('copilotApiTokenStatus');
+  const signInBtn = document.getElementById('copilotSignInButton');
+  const cancelBtn = document.getElementById('copilotCancelSignInButton');
+  const logoutBtn = document.getElementById('copilotLogoutButton');
+  const refreshBtn = document.getElementById('copilotRefreshButton');
+  const manualPanel = document.getElementById('copilotManualPanel');
+  const loginStatusEl = document.getElementById('copilotLoginStatus');
+  const errorEl = document.getElementById('copilotErrorMessage');
+  if (!statusEl || !signInBtn || !cancelBtn || !logoutBtn || !refreshBtn || !manualPanel || !loginStatusEl || !errorEl) return;
+
+  const source = state.settings?.copilotApiTokenSource || '';
+  const provider = copilotProviderForAccount();
+  const configured = Boolean(state.settings?.copilotApiTokenConfigured);
+  const linked = copilotAccountLinked();
+  errorEl.textContent = state.copilotErrorMessage || '';
+  errorEl.classList.toggle('hidden', !state.copilotErrorMessage);
+  setCursorStatusText(statusEl, copilotAccountStatusText(provider, configured, source));
+  manualPanel.classList.toggle('hidden', linked);
+  if (linked && state.copilotManualExpanded) setCopilotManualExpanded(false);
+  signInBtn.classList.toggle('hidden', linked || state.copilotSignInBusy);
+  cancelBtn.classList.toggle('hidden', !state.copilotSignInBusy || !state.copilotSignInCancelable || linked);
+  logoutBtn.classList.toggle('hidden', !linked || source !== 'settings');
+  refreshBtn.classList.toggle('hidden', !configured || (state.copilotSignInBusy && !linked));
+  loginStatusEl.classList.toggle('hidden', !state.copilotLoginStatus);
+  loginStatusEl.textContent = state.copilotLoginStatus;
   renderSettingsSummaries();
 }
 
@@ -5585,6 +5706,139 @@ function setupCursorAccountUI() {
         clearMinimaxPendingCheck();
         errorEl.textContent = t('settings.minimax.saveFailed', { message: err.message });
         errorEl.classList.remove('hidden');
+      }
+    });
+  }
+
+  const copilotToggle = document.getElementById('copilotSettingsToggle');
+  if (copilotToggle) {
+    copilotToggle.addEventListener('click', () => setCopilotAccountExpanded(!state.copilotAccountExpanded));
+    document.getElementById('copilotManualToggle')?.addEventListener('click', () => {
+      const details = document.getElementById('copilotManualDetails');
+      setCopilotManualExpanded(details?.classList.contains('hidden'));
+    });
+    setCopilotAccountExpanded(false);
+    setCopilotManualExpanded(false);
+    renderCopilotStatus();
+
+    const errorEl = document.getElementById('copilotErrorMessage');
+    const setCopilotError = (message) => {
+      state.copilotErrorMessage = message || '';
+      if (errorEl) {
+        errorEl.textContent = state.copilotErrorMessage;
+        errorEl.classList.toggle('hidden', !state.copilotErrorMessage);
+      }
+    };
+
+    window.tokenMonitor.copilot?.onLoginStatus?.((status) => {
+      if (!status) return;
+      if (!isCurrentCopilotSignInFlow(status.flowId)) return;
+      if (status.phase === 'authorize') {
+        state.copilotAuthorizeMessage = t('settings.copilot.authorize', { code: status.userCode || '' });
+        state.copilotLoginStatus = state.copilotAuthorizeMessage;
+      } else if (status.phase === 'polling') {
+        state.copilotLoginStatus = [state.copilotAuthorizeMessage, t('settings.copilot.polling')].filter(Boolean).join('\n\n');
+      } else if (status.phase === 'success') {
+        state.copilotSignInCancelable = false;
+        state.copilotAuthorizeMessage = '';
+        state.copilotLoginStatus = t('settings.copilot.loginSuccess');
+      } else if (status.phase === 'error') {
+        state.copilotSignInCancelable = false;
+        state.copilotAuthorizeMessage = '';
+        state.copilotLoginStatus = '';
+        setCopilotError(status.error || t('settings.copilot.loginFailed'));
+      } else {
+        state.copilotAuthorizeMessage = '';
+        state.copilotLoginStatus = t('settings.copilot.loginStarting');
+      }
+      renderCopilotStatus();
+    });
+
+    document.getElementById('copilotSignInButton').addEventListener('click', async () => {
+      if (state.copilotSignInBusy) return;
+      const flowId = nextCopilotSignInFlowId();
+      state.copilotSignInFlowId = flowId;
+      state.copilotSignInBusy = true;
+      state.copilotSignInCancelable = true;
+      state.copilotAuthorizeMessage = '';
+      state.copilotLoginStatus = t('settings.copilot.loginStarting');
+      setCopilotError('');
+      setCopilotManualExpanded(false);
+      renderCopilotStatus();
+      try {
+        const result = await window.tokenMonitor.copilot.signIn({ flowId });
+        if (!isCurrentCopilotSignInFlow(result?.flowId || flowId)) return;
+        if (!result?.ok) {
+          setCopilotError(result?.error || t('settings.copilot.loginFailed'));
+          setCopilotAccountExpanded(true);
+        } else {
+          state.copilotSignInCancelable = false;
+          markCopilotTokenCheckPending();
+          state.copilotAuthorizeMessage = '';
+          state.copilotLoginStatus = '';
+          renderCopilotStatus();
+          await refreshStats({ force: true });
+          if (copilotAccountLinked()) setCopilotAccountExpanded(false);
+        }
+      } catch (err) {
+        if (!isCurrentCopilotSignInFlow(flowId)) return;
+        setCopilotError(err.message);
+      } finally {
+        if (isCurrentCopilotSignInFlow(flowId)) {
+          state.copilotSignInBusy = false;
+          state.copilotSignInCancelable = false;
+          state.copilotSignInFlowId = '';
+          state.copilotAuthorizeMessage = '';
+          state.copilotLoginStatus = '';
+          renderCopilotStatus();
+        }
+      }
+    });
+
+    document.getElementById('copilotCancelSignInButton').addEventListener('click', async () => {
+      const flowId = state.copilotSignInFlowId;
+      await window.tokenMonitor.copilot.cancelSignIn({ flowId });
+      if (!isCurrentCopilotSignInFlow(flowId)) return;
+      state.copilotSignInBusy = false;
+      state.copilotSignInCancelable = false;
+      state.copilotSignInFlowId = '';
+      state.copilotAuthorizeMessage = '';
+      state.copilotLoginStatus = '';
+      renderCopilotStatus();
+    });
+
+    document.getElementById('copilotLogoutButton').addEventListener('click', async () => {
+      await saveSettings({ copilotApiToken: '' });
+      clearCopilotPendingCheck();
+      clearCopilotProviderStatus();
+      renderCopilotStatus();
+      await refreshStats({ force: true });
+    });
+
+    document.getElementById('copilotRefreshButton').addEventListener('click', async () => {
+      await refreshStats({ force: true });
+    });
+
+    document.getElementById('copilotApiTokenSubmit').addEventListener('click', async () => {
+      const input = document.getElementById('copilotApiTokenInput');
+      setCopilotError('');
+      if (!String(input.value || '').trim()) {
+        setCopilotManualExpanded(true);
+        setCopilotError(t('settings.copilot.statusNotSet'));
+        return;
+      }
+      try {
+        markCopilotTokenCheckPending();
+        await saveSettings({ copilotApiToken: input.value });
+        input.value = '';
+        renderCopilotStatus();
+        await refreshStats({ force: true });
+        if (copilotAccountLinked()) setCopilotAccountExpanded(false);
+        else setCopilotAccountExpanded(true);
+        renderCopilotStatus();
+      } catch (err) {
+        clearCopilotPendingCheck();
+        setCopilotError(t('settings.copilot.saveFailed', { message: err.message }));
       }
     });
   }

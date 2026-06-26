@@ -306,7 +306,7 @@
 
   const clientColors = {
     claude: '#cc7c5e', codex: '#49a3b0', hermes: '#d4af37', gemini: '#4285f4',
-    antigravity: '#4285f4', cline: '#323B43', kimi: '#16191e', grok: '#000000', copilot: '#24292f', deepseek: '#4d6bfe', cursor: '#000000', opencode: '#000000',
+    antigravity: '#4285f4', cline: '#323B43', kimi: '#16191e', grok: '#000000', copilot: '#000000', deepseek: '#4d6bfe', cursor: '#000000', opencode: '#000000',
     openclaw: '#ff4d4d', xai: '#000000', meta: '#1d65c1', mistral: '#fa520f', qwen: '#615ced',
     pi: '#000', zed: '#4173e7', kilocode: '#F8F676', micode: '#000000', zcode: '#000000',
     moonshot: '#16191e', zai: '#000000', cohere: '#39594d', xiaomi: '#ff6700', minimax: '#f23f5d',

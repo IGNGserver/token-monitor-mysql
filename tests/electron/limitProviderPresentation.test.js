@@ -69,6 +69,7 @@ test('capability tags explain how each provider is collected in settings', () =>
   assert.deepEqual(limitProviderCapabilityTags('opencode'), ['Local/Web', 'Manual login']);
   assert.deepEqual(limitProviderCapabilityTags('minimax'), ['Token Plan', 'API key']);
   assert.deepEqual(limitProviderCapabilityTags('grok'), ['Auto', 'CLI/Web']);
+  assert.deepEqual(limitProviderCapabilityTags('copilot'), ['Manual login', 'API']);
   assert.deepEqual(limitProviderCapabilityTags('unknown'), []);
 });
 
@@ -325,6 +326,26 @@ test('Grok renders its single Monthly billing window full-width instead of an em
   assert.match(renderProviderWindows, /limit-window-wide/);
 });
 
+test('Copilot renders monthly Premium and Chat quotas as billing windows', () => {
+  const app = readRendererFile('app.js');
+  const renderProviderWindows = functionBody(app, 'renderProviderWindows', 'renderLimitProviderRow');
+
+  assert.match(renderProviderWindows, /provider\.provider === 'copilot'/);
+  assert.match(renderProviderWindows, /const billingWindows = windowsForKind\(provider, 'billing'\);/);
+  assert.match(renderProviderWindows, /for \(const billing of billingWindows\)/);
+  assert.match(renderProviderWindows, /limitWindowNode\(billing\?\.label \|\| 'Monthly', billing, color, 0\.68\)/);
+});
+
+test('Home uses explicit billing labels so Copilot Premium and Chat stay distinct', () => {
+  const app = readRendererFile('app.js');
+  const homeLabel = functionBody(app, 'homeLimitWindowLabel', 'renderHomeLimitModule');
+
+  assert.match(homeLabel, /if \(window\?\.kind === 'billing'\) \{/);
+  assert.match(homeLabel, /const label = String\(window\?\.label \|\| ''\)\.trim\(\);/);
+  assert.match(homeLabel, /if \(label\) return label;/);
+  assert.match(homeLabel, /billing: 'home\.limit\.billing'/);
+});
+
 test('tray bars draw the billing window for a billing-only provider instead of two empty bars', () => {
   // renderBarsIcon used to unconditionally draw session+weekly, painting two
   // empty tracks for a Grok-only selection. It must now branch: session/weekly
@@ -445,13 +466,28 @@ test('Grok is automatic provider UI, while env token remains documented for head
   assert.match(i18n, /'settings\.limits\.status\.runGrokLogin': '运行 grok login'/);
 });
 
-test('Accounts summary counts MiniMax as the fifth managed account group', () => {
+test('Copilot env token is documented in env example, not the README overview', () => {
+  const envExample = fs.readFileSync(path.join(__dirname, '..', '..', '.env.example'), 'utf8');
+  const readme = fs.readFileSync(path.join(__dirname, '..', '..', 'README.md'), 'utf8');
+  const readmeCn = fs.readFileSync(path.join(__dirname, '..', '..', 'README.zh-CN.md'), 'utf8');
+  const readmeTw = fs.readFileSync(path.join(__dirname, '..', '..', 'README.zh-TW.md'), 'utf8');
+
+  assert.match(envExample, /COPILOT_API_TOKEN=/);
+  assert.match(envExample, /GITHUB_COPILOT_TOKEN/);
+  assert.doesNotMatch(readme, /COPILOT_API_TOKEN|GITHUB_COPILOT_TOKEN/);
+  assert.doesNotMatch(readmeCn, /COPILOT_API_TOKEN|GITHUB_COPILOT_TOKEN/);
+  assert.doesNotMatch(readmeTw, /COPILOT_API_TOKEN|GITHUB_COPILOT_TOKEN/);
+});
+
+test('Accounts summary counts Copilot as the sixth managed account group', () => {
   const app = readRendererFile('app.js');
   const summaryBody = functionBody(app, 'settingsSectionSummary', 'renderSettingsSummaries');
 
   assert.match(summaryBody, /const minimaxLinked = minimaxAccountLinked\(\);/);
+  assert.match(summaryBody, /const copilotLinked = copilotAccountLinked\(\);/);
   assert.match(summaryBody, /\(minimaxLinked \? 1 : 0\)/);
-  assert.match(summaryBody, /total: 5/);
+  assert.match(summaryBody, /\(copilotLinked \? 1 : 0\)/);
+  assert.match(summaryBody, /total: 6/);
 });
 
 test('account validation does not use a remote aggregate when the local device lacks the provider', () => {
@@ -509,5 +545,12 @@ test('minimax status copy uses the same API key wording as CodexBar', () => {
   assert.deepEqual(
     presentation.limitProviderStatusLabel({ provider: 'minimax', status: 'unauthorized' }),
     { label: 'Update API key', tone: 'setup' }
+  );
+});
+
+test('copilot setup status asks for sign-in instead of an API key', () => {
+  assert.deepEqual(
+    presentation.limitProviderStatusLabel({ provider: 'copilot', status: 'notConfigured' }),
+    { label: 'Sign in', tone: 'setup' }
   );
 });

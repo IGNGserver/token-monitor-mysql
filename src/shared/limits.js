@@ -1,7 +1,7 @@
 'use strict';
 
 const DEFAULT_LIMITS_REFRESH_MS = 5 * 60 * 1000;
-const VALID_PROVIDERS = new Set(['claude', 'codex', 'cursor', 'antigravity', 'opencode', 'deepseek', 'minimax', 'grok']);
+const VALID_PROVIDERS = new Set(['claude', 'codex', 'cursor', 'antigravity', 'opencode', 'deepseek', 'minimax', 'grok', 'copilot']);
 const VALID_STATUSES = new Set(['ok', 'disabled', 'notConfigured', 'unauthorized', 'rateLimited', 'sourceRateLimited', 'unavailable', 'error']);
 const VALID_SOURCES = new Set(['oauth', 'cli', 'web', 'rpc', 'local', 'api']);
 const VALID_SOURCE_DETAILS = new Set(['app', 'cli', 'managed', 'unknown']);
@@ -46,6 +46,13 @@ function normalizeAccountLabel(value) {
   if (!raw || raw.length > 32 || raw.includes('@') || /^https?:\/\//i.test(raw)) return '';
   const clean = raw.replace(/[^a-z0-9 +._-]/gi, '').replace(/\s+/g, ' ').trim();
   return clean.length <= 32 ? clean : '';
+}
+
+function normalizeAccountName(value) {
+  const raw = String(value || '').trim();
+  if (!raw || raw.length > 64 || raw.includes('@') || /^https?:\/\//i.test(raw)) return '';
+  const clean = raw.replace(/[^a-z0-9 ._-]/gi, '').replace(/\s+/g, ' ').trim();
+  return clean.length <= 64 ? clean : '';
 }
 
 function normalizeAccountEmail(value) {
@@ -148,6 +155,7 @@ function normalizeLimitProvider(input) {
     provider,
     accountKey: input.accountKey ? String(input.accountKey) : '',
     accountLabel: normalizeAccountLabel(input.accountLabel),
+    accountName: normalizeAccountName(input.accountName ?? input.accountLogin ?? input.login),
     accountEmail: normalizeAccountEmail(input.accountEmail ?? input.email),
     status: normalizeStatus(input.status),
     source: normalizeSource(input.source),
@@ -253,8 +261,8 @@ function aggregateLimits(devices, staleAfterMs = 0, nowMs = Date.now()) {
     .sort((a, b) => {
       const providerSort = a.provider.localeCompare(b.provider);
       if (providerSort !== 0) return providerSort;
-      const aLabel = a.accountEmail || a.accountLabel || a.accountKey;
-      const bLabel = b.accountEmail || b.accountLabel || b.accountKey;
+      const aLabel = a.accountEmail || a.accountName || a.accountLabel || a.accountKey;
+      const bLabel = b.accountEmail || b.accountName || b.accountLabel || b.accountKey;
       return aLabel.localeCompare(bLabel);
     });
   return aggregate;
@@ -265,12 +273,12 @@ function publicLimits(limits) {
   return {
     updatedAt: normalized.updatedAt,
     refreshMs: normalized.refreshMs,
-    providers: normalized.providers.map(({ accountKey, accountEmail, accountLabel, ...provider }) => provider)
+    providers: normalized.providers.map(({ accountKey, accountEmail, accountName, accountLabel, ...provider }) => provider)
   };
 }
 
 // Sync to the authenticated hub carries the full account identity (key, email,
-// plan label) so other devices can show which Codex account each limit belongs
+// display name, and plan label) so other devices can show which managed account each limit belongs
 // to. Hub ingest is Secret-protected; the PUBLIC surface is still scrubbed by
 // publicLimits() above, which drops every account identifier including email.
 function syncLimits(limits) {

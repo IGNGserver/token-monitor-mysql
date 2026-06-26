@@ -45,7 +45,7 @@ Token Monitor supports token usage, account-limit checks, and session details se
 | <img src=".github/assets/tools-icon/kimi.png" width="28" alt="Kimi" /> | Kimi CLI / Kimi Code | `~/.kimi/sessions/`, `~/.kimi-code/sessions/` (`KIMI_CODE_HOME`) | ✅ | — | — |
 | <img src=".github/assets/tools-icon/qwen.png" width="28" alt="Qwen" /> | Qwen CLI | `~/.qwen/projects/` | ✅ | — | — |
 | <img src=".github/assets/tools-icon/xai.png" width="28" alt="Grok Build" /> | Grok Build | `$GROK_HOME/sessions/` or `~/.grok/sessions/` | ✅ | ✅ | — |
-| <img src=".github/assets/tools-icon/copilot.png" width="28" alt="GitHub Copilot" /> | GitHub Copilot CLI | `~/.copilot/otel/` | ✅ | — | — |
+| <img src=".github/assets/tools-icon/copilot.png" width="28" alt="GitHub Copilot" /> | GitHub Copilot CLI | `~/.copilot/otel/` | ✅ | ✅ | — |
 | <img src=".github/assets/tools-icon/pi.png" width="28" alt="Pi" /> | Pi | `~/.pi/agent/sessions/`, `~/.omp/agent/sessions/` (Oh My Pi) | ✅ | — | — |
 | <img src=".github/assets/tools-icon/zed.png" width="28" alt="Zed" /> | Zed | `~/.local/share/zed/threads/threads.db` | ✅ | — | — |
 | <img src=".github/assets/tools-icon/kilocode.png" width="28" alt="Kilo Code" /> | Kilo Code | VS Code globalStorage tasks (`.../kilocode.kilo-code/tasks/`) — Linux & remote/WSL only | ✅ | — | — |
@@ -69,11 +69,11 @@ Most usage monitors are useful on the machine they run on. Token Monitor is buil
 - **Cost breakdown** alongside token counts
 - **Cost in your currency** — show costs in USD, TWD, HKD, or CNY; exchange rates auto-update daily and can be manually overridden in Settings
 - **Usage Trends & Dashboard** (opt-in) — a dedicated dashboard window with a GitHub-style activity heatmap, streaks, and stacked per-tool/per-model usage history (bar and K-line views) across all your devices
-- **AI Tool Limits detection** for Claude Code, Codex, Cursor, Antigravity, OpenCode, Grok, and Minimax with session, weekly, billing, and credits windows, plus DeepSeek prepaid balance and today/month spend
+- **AI Tool Limits detection** for Claude Code, Codex, Cursor, Antigravity, OpenCode, Grok, Minimax, and GitHub Copilot with session, weekly, billing, and credits windows, plus DeepSeek prepaid balance and today/month spend
 - **Optional Status view** for Claude, OpenAI, Cursor, and DeepSeek status pages, with manual or interval re-checks
 - **Customizable tool list** to hide, pin, and reorder tools in the main dashboard without changing what gets tracked
 - **Appearance controls** — interface theme switching (incl. a light mode), per-tool vendor colours, glass opacity, blur, and transparent window mode
-- **Menu bar (macOS) and system tray (Windows) popover** with live cost, tokens, or closest Claude/Codex/Cursor/Antigravity/OpenCode/Grok/Minimax limit % next to the icon
+- **Menu bar (macOS) and system tray (Windows) popover** with live cost, tokens, or closest Claude/Codex/Cursor/Antigravity/OpenCode/Grok/Minimax/GitHub Copilot limit % next to the icon
 - **Floating Bubble mode** that collapses the widget into a draggable mini-window with click or hover preview and tray-style content
 - **Recordable global shortcut** to show or hide the window from anywhere
 - **Local-first:** no servers needed for single-device use
@@ -186,10 +186,10 @@ Click the `⚙` button in the widget header to open the Settings panel.
 
 - **Multi-device Sync** — three modes: **Local only** (this device, no hub), **Connect to a hub** (paste another machine's Hub URL + secret), or **Host hub on this device** (open a hub here so other devices can connect; LAN/Tailscale/ZeroTier addresses are listed for you).
 - **Tracked Tools** — choose which AI tools are collected, and independently hide, pin, or reorder tools in the main list.
-- **AI Tool Limits** — choose Claude Code, Codex, Cursor, Antigravity, OpenCode, DeepSeek, Grok, and Minimax limit detection and refresh frequency.
+- **AI Tool Limits** — choose Claude Code, Codex, Cursor, Antigravity, OpenCode, DeepSeek, Grok, Minimax, and GitHub Copilot limit detection and refresh frequency.
 - **Trends** — opt-in usage history; turn it on to collect daily history and open the Usage Dashboard (activity heatmap, streaks, and stacked per-tool/per-model bar and K-line charts).
 - **Window behavior** — choose floating above apps, a normal window, or desktop pinned mode.
-- **Tray Mode** — switch to a menu bar (macOS) or system tray (Windows) popover and choose what shows next to the icon: cost, today's tokens, total tokens, cost + tokens, the closest Claude/Codex/Cursor/Antigravity/OpenCode/Grok/Minimax limit % left, or icon-only.
+- **Tray Mode** — switch to a menu bar (macOS) or system tray (Windows) popover and choose what shows next to the icon: cost, today's tokens, total tokens, cost + tokens, the closest Claude/Codex/Cursor/Antigravity/OpenCode/Grok/Minimax/GitHub Copilot limit % left, or icon-only.
 - **Floating Bubble** — collapse the widget into a draggable mini-window, reopen it by click or hover preview, and choose bubble content from icon, tokens, cost, or AI Tool Limit bars.
 - **Shortcut** — record a global shortcut to show or hide the window.
 - **Appearance** — switch the interface theme between presets (Default, Obsidian, and a Porcelain light mode) or your own custom colours (accent, background, text, muted), set per-tool vendor colours, system glass, live dot, tool icons, Discord Rich Presence, glass opacity, and glass blur.
@@ -208,7 +208,7 @@ TOKEN_MONITOR_DEVICE_ID=             # optional — defaults to hostname
 TOKEN_MONITOR_CLIENTS=               # optional — defaults to all supported tools; set empty to disable tracking
 TOKEN_MONITOR_HISTORY_ENABLED=       # optional — defaults to disabled; set to 1 to collect Trends history
 TOKEN_MONITOR_LIMITS_ENABLED=        # optional — defaults to enabled; set to 0 to skip CLI probing
-TOKEN_MONITOR_LIMIT_PROVIDERS=       # optional — defaults to all supported (claude, codex, cursor, antigravity, opencode, deepseek, minimax, grok)
+TOKEN_MONITOR_LIMIT_PROVIDERS=       # optional — defaults to all supported (claude, codex, cursor, antigravity, opencode, deepseek, minimax, grok, copilot)
 ```
 
 The widget reads the same env vars as first-run defaults, then takes over with its own GUI-managed settings.
@@ -229,7 +229,7 @@ The hub and agent only transmit summary fields:
 - total tokens per period (today / month / all-time)
 - cost totals (when `tokscale` returns cost data)
 - per-client and per-model breakdowns
-- normalized Claude Code/Codex/Cursor/Antigravity/OpenCode/Grok/Minimax limit status when AI Tool Limits is enabled
+- normalized Claude Code/Codex/Cursor/Antigravity/OpenCode/Grok/Minimax/GitHub Copilot limit status when AI Tool Limits is enabled
 
 They do not transmit raw AI logs, prompts, source code, or conversation
 content. They also do not transmit OAuth credentials, access tokens, refresh

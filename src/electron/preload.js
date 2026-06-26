@@ -92,6 +92,15 @@ contextBridge.exposeInMainWorld('tokenMonitor', {
       return () => ipcRenderer.removeListener('codex:loginOutput', handler);
     }
   },
+  copilot: {
+    signIn: (options = {}) => ipcRenderer.invoke('copilot:signIn', options),
+    cancelSignIn: (options = {}) => ipcRenderer.invoke('copilot:cancelSignIn', options),
+    onLoginStatus: (callback) => {
+      const handler = (_event, status) => callback(status);
+      ipcRenderer.on('copilot:loginStatus', handler);
+      return () => ipcRenderer.removeListener('copilot:loginStatus', handler);
+    }
+  },
   minimize: () => ipcRenderer.send('window:minimize'),
   close: () => ipcRenderer.send('window:close')
 });

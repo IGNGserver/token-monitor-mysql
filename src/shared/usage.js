@@ -28,6 +28,7 @@ const CACHE_WRITE_TOKEN_KEYS = ['cacheWrite', 'cacheWriteTokens', 'cache_write_t
 const REASONING_TOKEN_KEYS = ['reasoning', 'reasoningTokens', 'reasoning_tokens'];
 const STARTED_AT_KEYS = ['startedAt', 'started_at', 'createdAt', 'created_at'];
 const LAST_USED_AT_KEYS = ['lastUsedAt', 'last_used_at', 'updatedAt', 'updated_at', 'lastActivityAt', 'last_activity_at', 'timestamp'];
+const GUI_SECRET_LIMIT_PROVIDERS = new Set(['copilot', 'deepseek', 'minimax']);
 
 function asNumber(value) {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
@@ -549,6 +550,51 @@ function preserveUntrackedClientUsage(existingRecord, incomingRecord, trackedCli
   }
 }
 
+function limitProviderMergeKey(provider) {
+  const name = String(provider?.provider || '').trim();
+  if (!name) return '';
+  if (GUI_SECRET_LIMIT_PROVIDERS.has(name)) return name;
+  const accountKey = String(provider?.accountKey || '').trim();
+  if (accountKey) return `${name}:${accountKey}`;
+  const accountEmail = String(provider?.accountEmail || '').trim().toLowerCase();
+  if (accountEmail) return `${name}:email:${accountEmail}`;
+  return `${name}:${String(provider?.status || '').trim()}`;
+}
+
+function isConfiguredLimitProvider(provider) {
+  return Boolean(provider?.accountKey && provider.status !== 'notConfigured' && provider.status !== 'disabled');
+}
+
+function shouldKeepExistingGuiSecretProvider(existingProvider, incomingProvider, existingRecord, incomingRecord) {
+  if (!existingProvider || !incomingProvider) return false;
+  if (!GUI_SECRET_LIMIT_PROVIDERS.has(incomingProvider.provider)) return false;
+  if (incomingProvider.status !== 'notConfigured') return false;
+  if (!isConfiguredLimitProvider(existingProvider)) return false;
+  const existingRuntime = String(existingRecord?.agentRuntime || '').trim();
+  const incomingRuntime = String(incomingRecord?.agentRuntime || '').trim();
+  return Boolean(existingRuntime && incomingRuntime && existingRuntime !== incomingRuntime);
+}
+
+function mergeDeviceLimits(existingRecord, incomingRecord) {
+  const existingLimits = normalizeLimitsSummary(existingRecord?.limits);
+  const incomingLimits = normalizeLimitsSummary(incomingRecord?.limits);
+  if (!incomingLimits.providers.length) return incomingLimits;
+
+  const existingByKey = new Map();
+  for (const provider of existingLimits.providers) {
+    const key = limitProviderMergeKey(provider);
+    if (key) existingByKey.set(key, provider);
+  }
+  return {
+    ...incomingLimits,
+    providers: incomingLimits.providers.map((provider) => {
+      const existing = existingByKey.get(limitProviderMergeKey(provider));
+      if (shouldKeepExistingGuiSecretProvider(existing, provider, existingRecord, incomingRecord)) return existing;
+      return provider;
+    })
+  };
+}
+
 function mergeDeviceRecord(existing, incoming) {
   const hasExisting = existing && typeof existing === 'object';
   const hasIncomingLimits = incoming && typeof incoming === 'object' && Object.prototype.hasOwnProperty.call(incoming, 'limits');
@@ -560,6 +606,7 @@ function mergeDeviceRecord(existing, incoming) {
   const normalizedExisting = normalizeDeviceRecord(existing);
   if (incoming?.limitsOnly === true) normalizedIncoming.periods = normalizedExisting.periods;
   if (!hasIncomingLimits) normalizedIncoming.limits = normalizedExisting.limits;
+  else normalizedIncoming.limits = mergeDeviceLimits(normalizedExisting, normalizedIncoming);
   if (!hasIncomingHistory && hasOwn(normalizedExisting, 'history')) normalizedIncoming.history = normalizedExisting.history;
   if (hasIncomingTrackedClients) {
     preserveUntrackedClientUsage(normalizedExisting, normalizedIncoming, normalizedIncoming.trackedClients || []);

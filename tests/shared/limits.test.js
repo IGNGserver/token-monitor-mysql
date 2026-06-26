@@ -10,6 +10,7 @@ function codexProvider(accountKey, accountEmail, remainingPercent, updatedAt) {
   return {
     provider: 'codex',
     accountKey,
+    accountName: accountEmail.split('@')[0],
     accountEmail,
     accountLabel: 'Plus',
     status: 'ok',
@@ -100,11 +101,12 @@ test('syncLimits carries Codex account key, email and plan label to the authenti
   assert.equal(payload.providers.length, 1);
   assert.equal(payload.providers[0].provider, 'codex');
   assert.equal(payload.providers[0].accountKey, 'sha256:codex-a');
+  assert.equal(payload.providers[0].accountName, 'a');
   assert.equal(payload.providers[0].accountEmail, 'a@example.com');
   assert.equal(payload.providers[0].accountLabel, 'Plus');
 });
 
-test('publicLimits strips Codex account keys and local-only email', () => {
+test('publicLimits strips Codex account identity fields', () => {
   const payload = publicLimits({
     updatedAt: '2026-06-14T10:00:00.000Z',
     providers: [
@@ -115,7 +117,9 @@ test('publicLimits strips Codex account keys and local-only email', () => {
   assert.equal(payload.providers.length, 1);
   assert.equal(payload.providers[0].provider, 'codex');
   assert.equal(Object.hasOwn(payload.providers[0], 'accountKey'), false);
+  assert.equal(Object.hasOwn(payload.providers[0], 'accountName'), false);
   assert.equal(Object.hasOwn(payload.providers[0], 'accountEmail'), false);
+  assert.equal(Object.hasOwn(payload.providers[0], 'accountLabel'), false);
 });
 
 test('collectLimitsOnce flattens multiple providers returned by a provider fetcher', async () => {
