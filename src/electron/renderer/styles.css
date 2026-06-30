@@ -2643,7 +2643,7 @@ body.floating-bubble-collapsed-right .floating-bubble-tab {
   min-width: 0;
   overflow: hidden;
   font-size: 11px;
-  line-height: 1;
+  line-height: 14px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -2716,6 +2716,7 @@ body.floating-bubble-collapsed-right .floating-bubble-tab {
 .view-switcher-menu-label {
   min-width: 0;
   overflow: hidden;
+  line-height: 14px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
