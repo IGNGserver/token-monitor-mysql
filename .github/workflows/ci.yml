@@ -23,5 +23,10 @@ jobs:
           node-version: ${{ matrix.node-version }}
           cache: npm
       - run: npm ci
+      - name: Verify vendored worker shared code is in sync
+        run: |
+          npm run sync:worker
+          git diff --exit-code worker/src/shared \
+            || { echo "::error::worker/src/shared is stale — run 'npm run sync:worker' and commit."; exit 1; }
       - run: npm run lint
       - run: npm test

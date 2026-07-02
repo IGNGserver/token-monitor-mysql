@@ -9,7 +9,8 @@ module.exports = [
   // Respect .gitignore (node_modules, dist, build, tmp, _site, .agents, .claude, data, …)
   includeIgnoreFile(path.resolve(__dirname, '.gitignore')),
   // site/ is a standalone GitHub Pages property with its own browser conventions
-  { ignores: ['site/**'] },
+  // worker/src/shared/ is generated (vendored CommonJS); linted at its src/shared/ source
+  { ignores: ['site/**', 'worker/src/shared/**'] },
 
   js.configs.recommended,
 

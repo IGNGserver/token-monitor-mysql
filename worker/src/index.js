@@ -1,6 +1,6 @@
-import { publicLimits } from '../../src/shared/limits.js';
-import { aggregateDevices, mergeDeviceRecord, aggregateHistory } from '../../src/shared/usage.js';
-import { historyPreview } from '../../src/shared/history.js';
+import { publicLimits } from './shared/limits.js';
+import { aggregateDevices, mergeDeviceRecord, aggregateHistory } from './shared/usage.js';
+import { historyPreview } from './shared/history.js';
 
 const CORS_HEADERS = {
   'access-control-allow-origin': '*',
