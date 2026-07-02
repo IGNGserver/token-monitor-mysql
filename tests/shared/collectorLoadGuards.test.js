@@ -173,6 +173,31 @@ test('watchPathsForClients watches Pi (incl. Oh My Pi), Zed (incl. native macOS)
   }
 });
 
+test('watchPathsForClients watches Hermes profile dirs alongside the home root', () => {
+  const tmp = withTmpHome([path.join('.hermes', 'hermes-agent', 'node_modules')]);
+  const hermesRoot = path.join(tmp, '.hermes');
+  fs.writeFileSync(path.join(hermesRoot, 'state.db'), '');
+  const profileDir = path.join(hermesRoot, 'profiles', 'research');
+  fs.mkdirSync(profileDir, { recursive: true });
+  fs.writeFileSync(path.join(profileDir, 'state.db'), '');
+  const originalHomedir = os.homedir;
+  const previousHermesHome = process.env.HERMES_HOME;
+  os.homedir = () => tmp;
+  try {
+    delete process.env.HERMES_HOME;
+    const { clientDataDirPresence, watchPathsForClients } = freshCollector();
+    const dirs = watchPathsForClients('hermes');
+    assert.deepEqual(dirs, [hermesRoot, profileDir]);
+    assert.deepEqual(clientDataDirPresence('hermes'), { hermes: true });
+  } finally {
+    os.homedir = originalHomedir;
+    if (previousHermesHome === undefined) delete process.env.HERMES_HOME;
+    else process.env.HERMES_HOME = previousHermesHome;
+    delete require.cache[collectorPath];
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
 test('watchPathsForClients watches the Hermes home dir so new state.db sidecars are picked up', () => {
   // Hermes keeps usage in a single SQLite db at the root of HERMES_HOME, but that
   // dir also holds the Desktop App runtime (hermes-agent/node_modules/venv: GBs /
@@ -221,6 +246,40 @@ test('watchIgnoreMatcher prunes the Hermes runtime but keeps the state.db family
     assert.equal(ignored(path.join(hermes, 'cache', 'blob')), true);
     // Other clients' paths are never touched by the matcher.
     assert.equal(ignored(path.join(tmp, '.claude', 'projects', 'p', 'a.jsonl')), false);
+  } finally {
+    os.homedir = originalHomedir;
+    if (previousHermesHome === undefined) delete process.env.HERMES_HOME;
+    else process.env.HERMES_HOME = previousHermesHome;
+    delete require.cache[collectorPath];
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('watchIgnoreMatcher keeps profile dirs and their db family so profile changes still fire', () => {
+  // A profile dir lives under the Hermes home root, so the child-prune must not
+  // ignore it just because its basename isn't a db file — chokidar would then
+  // refuse to watch the explicit profile watch root and profile-db edits would
+  // only surface on the next interval scan, not the promised 3-5 s refresh.
+  const tmp = withTmpHome([path.join('.hermes', 'hermes-agent', 'node_modules')]);
+  const hermesRoot = path.join(tmp, '.hermes');
+  fs.writeFileSync(path.join(hermesRoot, 'state.db'), '');
+  const profileDir = path.join(hermesRoot, 'profiles', 'research');
+  fs.mkdirSync(profileDir, { recursive: true });
+  fs.writeFileSync(path.join(profileDir, 'state.db'), '');
+  const originalHomedir = os.homedir;
+  const previousHermesHome = process.env.HERMES_HOME;
+  os.homedir = () => tmp;
+  try {
+    delete process.env.HERMES_HOME;
+    const { watchIgnoreMatcher } = freshCollector();
+    const ignored = watchIgnoreMatcher('hermes');
+    // The profile dir (an explicit watch root) and its db family stay watched.
+    assert.equal(ignored(profileDir), false);
+    assert.equal(ignored(path.join(profileDir, 'state.db')), false);
+    assert.equal(ignored(path.join(profileDir, 'state.db-wal')), false);
+    assert.equal(ignored(path.join(profileDir, 'state.db-shm')), false);
+    // Junk inside a profile dir is still pruned.
+    assert.equal(ignored(path.join(profileDir, 'logs')), true);
   } finally {
     os.homedir = originalHomedir;
     if (previousHermesHome === undefined) delete process.env.HERMES_HOME;

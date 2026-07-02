@@ -12,6 +12,7 @@ const { normalizeClientsCsv } = require('./clientTracking');
 const { tokscalePackageNameForPlatform, tokscalePlatformKey } = require('./tokscalePlatform');
 const { applyPeriodDelta, emptyPeriod, extractUsageFromTokscale, mergePeriods } = require('./usage');
 const { collectWslUsage: collectWslUsageImpl, emptyWslBundle, probeWslState: probeWslStateImpl } = require('./wslUsage');
+const { hermesProfileWatchDirs, resolveHermesHome, tokscaleEnvFromSpawnArgs } = require('./hermesProfiles');
 const { parseGraphResult, normalizeHistory } = require('./history');
 const { collectLimitsOnce, createLimitsCollector } = require('./limitCollector');
 const cursorAuth = require('./cursorAuth');
@@ -109,10 +110,14 @@ function parseJsonOutput(stdout) {
   throw new Error(`Could not parse tokscale JSON output: ${text.slice(0, 300)}`);
 }
 
-function spawnTokscaleJson(userArgs, commandTimeoutMs) {
+function spawnTokscaleJson(userArgs, commandTimeoutMs, spawnOpts = {}) {
   const { bin, prefixArgs, env } = tokscaleCommand();
+  const childEnv = tokscaleEnvFromSpawnArgs(env, userArgs, {
+    env,
+    homeDir: spawnOpts.homeDir || os.homedir()
+  });
   return new Promise((resolve, reject) => {
-    const child = spawn(bin, [...prefixArgs, ...userArgs], { env, windowsHide: true });
+    const child = spawn(bin, [...prefixArgs, ...userArgs], { env: childEnv, windowsHide: true });
     let stdout = '';
     let stderr = '';
     const timeout = setTimeout(() => { child.kill('SIGTERM'); reject(new Error(`tokscale timed out after ${commandTimeoutMs}ms`)); }, commandTimeoutMs);
@@ -541,7 +546,8 @@ function clientWatchCandidates(clientsCsv) {
   const add = (client, ...dirs) => { if (enabled.has(client)) byClient[client] = dirs; };
   add('claude', path.join(home, '.claude', 'projects'), path.join(home, '.claude', 'transcripts'));
   add('codex', path.join(home, '.codex', 'sessions'));
-  add('hermes', process.env.HERMES_HOME || path.join(home, '.hermes'));
+  const hermesHome = resolveHermesHome({ env: process.env, homeDir: home });
+  add('hermes', hermesHome, ...hermesProfileWatchDirs(hermesHome));
   add('opencode', path.join(home, '.local', 'share', 'opencode'));
   add('openclaw', path.join(home, '.openclaw', 'agents'));
   add('cursor', path.join(home, '.config', 'tokscale', 'cursor-cache'));
@@ -641,10 +647,15 @@ const HERMES_DB_FILES = new Set(['state.db', 'state.db-wal', 'state.db-shm']);
 function watchIgnoreMatcher(clientsCsv) {
   const roots = (clientWatchCandidates(clientsCsv).hermes || []).map((dir) => path.resolve(dir));
   if (roots.length === 0) return undefined;
+  const rootSet = new Set(roots);
   return (target) => {
     const resolved = path.resolve(target);
+    // Every explicit watch root stays watched — the home dir AND each profile
+    // dir. A profile dir lives under the home root, so the child-prune below
+    // would otherwise ignore it (basename isn't a db file) before we recognise
+    // it as a watch root in its own right, silencing profile-db change events.
+    if (rootSet.has(resolved)) return false;
     for (const root of roots) {
-      if (resolved === root) return false; // the watch root itself must stay watched
       if (resolved.startsWith(root + path.sep)) return !HERMES_DB_FILES.has(path.basename(resolved));
     }
     return false; // non-Hermes paths are never ignored
