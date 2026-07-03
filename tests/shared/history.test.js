@@ -10,8 +10,15 @@ const {
 
 function graphFromDays(days) {
   return {
+    timeMetrics: {
+      totalActiveTimeMs: days.reduce((sum, d) => sum + (d.activeTimeMs || 0), 0),
+      longestContinuousMs: 1234,
+      maxConcurrentSessions: 2,
+      sessionCount: days.length
+    },
     contributions: days.map((d) => ({
       date: d.date,
+      activeTimeMs: d.activeTimeMs,
       clients: [{ client: d.client || 'claude', modelId: d.model || 'opus', providerId: 'p',
         tokens: { input: d.tokens || 0, output: 0, cacheRead: 0, cacheWrite: 0, reasoning: 0 },
         cost: d.cost || 0, messages: d.messages || 0 }]
@@ -42,6 +49,7 @@ const SAMPLE = {
       date: '2026-06-06',
       totals: { tokens: 9999, cost: 1.5, messages: 4 },
       intensity: 3,
+      activeTimeMs: 3600000,
       clients: [
         { client: 'claude', modelId: 'opus', providerId: 'anthropic',
           tokens: { input: 10, output: 20, cacheRead: 0, cacheWrite: 0, reasoning: 7 }, cost: 1.0, messages: 3 },
@@ -61,6 +69,7 @@ test('parseGraphResult folds client rows into perClient/perModel and derives day
   assert.equal(day.tokens, 40);
   assert.equal(day.cost, 1.5);
   assert.equal(day.messages, 4);
+  assert.equal(day.activeTimeMs, 3600000);
   assert.deepEqual(day.perClient.claude, { tokens: 30, cost: 1.0, messages: 3 });
   assert.deepEqual(day.perClient.codex, { tokens: 10, cost: 0.5, messages: 1 });
   assert.deepEqual(day.perModel.opus, { tokens: 30, cost: 1.0 });
@@ -73,7 +82,7 @@ test('parseGraphResult is defensive about missing/garbage input', () => {
   assert.deepEqual(parseGraphResult({ contributions: 'x' }), { contributions: [] });
   const out = parseGraphResult({ contributions: [{ date: '2026-01-01' }] });
   assert.deepEqual(out.contributions[0], {
-    date: '2026-01-01', tokens: 0, cost: 0, messages: 0, perClient: {}, perModel: {}
+    date: '2026-01-01', tokens: 0, cost: 0, messages: 0, activeTimeMs: 0, perClient: {}, perModel: {}
   });
 });
 
@@ -140,18 +149,20 @@ test('monthlyRollup sums tokens/cost and merges perClient/perModel by month', ()
 
 test('normalizeHistory caps daily but keeps monthly/summary full', () => {
   const graph = graphFromDays([
-    { date: '2024-01-01', tokens: 100, cost: 5, model: 'opus', messages: 1 },  // old
-    { date: '2026-06-06', tokens: 10, cost: 1, model: 'sonnet', messages: 2 },
-    { date: '2026-06-07', tokens: 30, cost: 3, model: 'opus', messages: 2 }
+    { date: '2024-01-01', tokens: 100, cost: 5, model: 'opus', messages: 1, activeTimeMs: 60000 },  // old
+    { date: '2026-06-06', tokens: 10, cost: 1, model: 'sonnet', messages: 2, activeTimeMs: 120000 },
+    { date: '2026-06-07', tokens: 30, cost: 3, model: 'opus', messages: 2, activeTimeMs: 180000 }
   ]);
   const h = normalizeHistory(parseGraphResult(graph), { capDays: 30, todayKey: '2026-06-07' });
 
   // daily: old day dropped by the 30-day cap, recent two kept, asc
   assert.deepEqual(h.daily.map((d) => d.date), ['2026-06-06', '2026-06-07']);
   assert.equal(h.daily[1].intensity, 4); // highest cost day
+  assert.equal(h.daily[1].activeTimeMs, 180000);
 
   // monthly: uncapped -> includes 2024-01
   assert.deepEqual(h.monthly.map((m) => m.month), ['2024-01', '2026-06']);
+  assert.equal(h.monthly[1].activeTimeMs, 300000);
 
   // summary: lifetime figures from the full set
   assert.equal(h.summary.totalTokens, 140);
@@ -162,6 +173,13 @@ test('normalizeHistory caps daily but keeps monthly/summary full', () => {
   assert.equal(h.summary.favoriteModel, 'opus'); // 100 + 30 tokens
   assert.equal(h.summary.currentStreak, 2);      // 06-06 & 06-07 consecutive, ending today
   assert.equal(h.summary.longestStreak, 2);      // 06-06,06-07
+  assert.equal(h.summary.activeTimeMs, 360000);
+  assert.deepEqual(h.summary.timeMetrics, {
+    totalActiveTimeMs: 360000,
+    longestContinuousMs: 1234,
+    maxConcurrentSessions: 2,
+    sessionCount: 3
+  });
 });
 
 test('normalizeHistory tolerates empty', () => {
@@ -174,11 +192,11 @@ test('normalizeHistory tolerates empty', () => {
 
 test('mergeHistories sums daily across devices and recomputes derived fields', () => {
   const dev1 = normalizeHistory(parseGraphResult(graphFromDays([
-    { date: '2026-06-06', tokens: 10, cost: 1, model: 'opus', client: 'claude', messages: 1 },
-    { date: '2026-06-07', tokens: 20, cost: 2, model: 'opus', client: 'claude', messages: 1 }
+    { date: '2026-06-06', tokens: 10, cost: 1, model: 'opus', client: 'claude', messages: 1, activeTimeMs: 60000 },
+    { date: '2026-06-07', tokens: 20, cost: 2, model: 'opus', client: 'claude', messages: 1, activeTimeMs: 120000 }
   ])), { todayKey: '2026-06-07' });
   const dev2 = normalizeHistory(parseGraphResult(graphFromDays([
-    { date: '2026-06-07', tokens: 5, cost: 0.5, model: 'gpt', client: 'codex', messages: 1 }
+    { date: '2026-06-07', tokens: 5, cost: 0.5, model: 'gpt', client: 'codex', messages: 1, activeTimeMs: 30000 }
   ])), { todayKey: '2026-06-07' });
 
   const m = mergeHistories([dev1, dev2], { todayKey: '2026-06-07' });
@@ -186,12 +204,14 @@ test('mergeHistories sums daily across devices and recomputes derived fields', (
   assert.deepEqual(m.daily.map((d) => d.date), ['2026-06-06', '2026-06-07']);
   const d7 = m.daily.find((d) => d.date === '2026-06-07');
   assert.equal(d7.tokens, 25);                         // 20 + 5
+  assert.equal(d7.activeTimeMs, 150000);                // 120000 + 30000
   assert.deepEqual(d7.perClient.claude, { tokens: 20, cost: 2, messages: 1 });
   assert.deepEqual(d7.perClient.codex, { tokens: 5, cost: 0.5, messages: 1 });
   assert.equal(d7.intensity, 4);                       // highest-cost merged day
   assert.equal(m.summary.totalTokens, 35);
   assert.equal(m.summary.currentStreak, 2);
   assert.equal(m.summary.peakDayTokens, 25);
+  assert.equal(m.summary.activeTimeMs, 210000);
 });
 
 test('mergeHistories handles empty list', () => {
@@ -214,15 +234,15 @@ test('historyPreview keeps recent totals only (no per-client)', () => {
   const daily = [];
   for (let i = 1; i <= 40; i++) {
     const date = `2026-06-${String(i).padStart(2, '0')}`;
-    daily.push({ date, tokens: i, cost: i / 10, intensity: 1, perClient: { claude: { tokens: i } }, perModel: {} });
+    daily.push({ date, tokens: i, cost: i / 10, activeTimeMs: i * 1000, intensity: 1, perClient: { claude: { tokens: i } }, perModel: {} });
   }
   const history = { daily, monthly: [{ month: '2026-05', tokens: 9, cost: 1, perClient: { claude: { tokens: 9 } } }],
     summary: { totalTokens: 100 } };
   const p = historyPreview(history, { dailyDays: 30, monthlyMonths: 12 });
   assert.equal(p.daily.length, 30);                 // last 30 of 40
   assert.equal(p.daily[0].date, '2026-06-11');      // 40 - 30 + 1 = 11th
-  assert.deepEqual(p.daily[29], { date: '2026-06-40', tokens: 40, cost: 4 });
+  assert.deepEqual(p.daily[29], { date: '2026-06-40', tokens: 40, cost: 4, activeTimeMs: 40000 });
   assert.equal(p.daily[0].perClient, undefined);    // stripped
-  assert.deepEqual(p.monthly[0], { month: '2026-05', tokens: 9, cost: 1 });
+  assert.deepEqual(p.monthly[0], { month: '2026-05', tokens: 9, cost: 1, activeTimeMs: 0 });
   assert.deepEqual(p.summary, { totalTokens: 100 });
 });

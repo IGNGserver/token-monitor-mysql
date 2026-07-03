@@ -193,6 +193,7 @@ Response includes:
 - `periods.allTime`
 - `periods.*.clientModels` and `periods.*.clientModelCosts` for preserving model breakdowns when a tracked tool is disabled
 - `periods.*.sessions` keyed by `client:sessionId` for session-level usage when tokscale exposes session groups; widgets may use `lastUsedAt` for recent-first sorting when present
+- `historyPreview.daily[].activeTimeMs`, `historyPreview.monthly[].activeTimeMs`, and `historyPreview.summary.activeTimeMs` when tokscale graph exposes session active-time metrics
 - `limits.providers` aggregated by provider account
 - `devices`
 - stale status for devices that have not reported recently

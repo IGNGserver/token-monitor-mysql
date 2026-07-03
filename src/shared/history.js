@@ -12,6 +12,16 @@ function num(value) {
   return 0;
 }
 
+function normalizeTimeMetrics(value) {
+  if (!value || typeof value !== 'object') return null;
+  return {
+    totalActiveTimeMs: num(value.totalActiveTimeMs ?? value.total_active_time_ms),
+    longestContinuousMs: num(value.longestContinuousMs ?? value.longest_continuous_ms),
+    maxConcurrentSessions: num(value.maxConcurrentSessions ?? value.max_concurrent_sessions),
+    sessionCount: num(value.sessionCount ?? value.session_count)
+  };
+}
+
 // Additive token components. `reasoning` is excluded on purpose: tokscale already
 // folds reasoning into `output`, so adding it would double-count (same rule as usage.js).
 function sumTokens(breakdown) {
@@ -50,9 +60,18 @@ function parseGraphResult(raw) {
       const pm = perModel[model] || (perModel[model] = { tokens: 0, cost: 0 });
       pm.tokens += t; pm.cost += cst;
     }
-    contributions.push({ date, tokens, cost, messages, perClient, perModel });
+    contributions.push({
+      date,
+      tokens,
+      cost,
+      messages,
+      activeTimeMs: num(row.activeTimeMs ?? row.active_time_ms),
+      perClient,
+      perModel
+    });
   }
-  return { contributions };
+  const timeMetrics = normalizeTimeMetrics(raw?.timeMetrics ?? raw?.time_metrics);
+  return timeMetrics ? { contributions, timeMetrics } : { contributions };
 }
 
 // Ported from tokscale calculate_intensities: bucket each day by its cost ratio to the
@@ -115,13 +134,17 @@ function addPerModel(target, source) {
   }
 }
 
+function activeTimeTotal(days) {
+  return (Array.isArray(days) ? days : []).reduce((sum, day) => sum + num(day.activeTimeMs), 0);
+}
+
 function monthlyRollup(days) {
   const byMonth = new Map();
   for (const d of (Array.isArray(days) ? days : [])) {
     const month = String(d.date).slice(0, 7);
     if (month.length !== 7) continue;
-    const m = byMonth.get(month) || { month, tokens: 0, cost: 0, perClient: {}, perModel: {} };
-    m.tokens += num(d.tokens); m.cost += num(d.cost);
+    const m = byMonth.get(month) || { month, tokens: 0, cost: 0, activeTimeMs: 0, perClient: {}, perModel: {} };
+    m.tokens += num(d.tokens); m.cost += num(d.cost); m.activeTimeMs += num(d.activeTimeMs);
     addPerClient(m.perClient, d.perClient);
     addPerModel(m.perModel, d.perModel);
     byMonth.set(month, m);
@@ -169,13 +192,17 @@ function normalizeHistory(graphData, options = {}) {
   const activeDays = full.reduce((s, d) => s + (num(d.tokens) > 0 ? 1 : 0), 0);
   const peakDayTokens = full.reduce((m, d) => Math.max(m, num(d.tokens)), 0);
   const { currentStreak, longestStreak } = computeStreaks(full, todayKey);
+  const timeMetrics = normalizeTimeMetrics(graphData?.timeMetrics);
+  const activeTimeMs = timeMetrics ? timeMetrics.totalActiveTimeMs : activeTimeTotal(full);
 
   return {
     daily,
     monthly,
     summary: {
       totalTokens, totalCost, activeDays, currentStreak, longestStreak,
-      peakDayTokens, favoriteModel: favoriteModelOf(full), messages
+      peakDayTokens, favoriteModel: favoriteModelOf(full), messages,
+      activeTimeMs,
+      ...(timeMetrics ? { timeMetrics } : {})
     }
   };
 }
@@ -185,8 +212,8 @@ function mergeDailyMaps(histories) {
   for (const h of histories) {
     for (const d of (h && Array.isArray(h.daily) ? h.daily : [])) {
       const cur = byDate.get(d.date)
-        || { date: d.date, tokens: 0, cost: 0, messages: 0, perClient: {}, perModel: {} };
-      cur.tokens += num(d.tokens); cur.cost += num(d.cost); cur.messages += num(d.messages);
+        || { date: d.date, tokens: 0, cost: 0, messages: 0, activeTimeMs: 0, perClient: {}, perModel: {} };
+      cur.tokens += num(d.tokens); cur.cost += num(d.cost); cur.messages += num(d.messages); cur.activeTimeMs += num(d.activeTimeMs);
       addPerClient(cur.perClient, d.perClient);
       addPerModel(cur.perModel, d.perModel);
       byDate.set(d.date, cur);
@@ -199,8 +226,8 @@ function mergeMonthlyMaps(histories) {
   const byMonth = new Map();
   for (const h of histories) {
     for (const m of (h && Array.isArray(h.monthly) ? h.monthly : [])) {
-      const cur = byMonth.get(m.month) || { month: m.month, tokens: 0, cost: 0, perClient: {}, perModel: {} };
-      cur.tokens += num(m.tokens); cur.cost += num(m.cost);
+      const cur = byMonth.get(m.month) || { month: m.month, tokens: 0, cost: 0, activeTimeMs: 0, perClient: {}, perModel: {} };
+      cur.tokens += num(m.tokens); cur.cost += num(m.cost); cur.activeTimeMs += num(m.activeTimeMs);
       addPerClient(cur.perClient, m.perClient);
       addPerModel(cur.perModel, m.perModel);
       byMonth.set(m.month, cur);
@@ -230,13 +257,14 @@ function mergeHistories(histories, options = {}) {
   const peakDayTokens = daily.reduce((mx, d) => Math.max(mx, num(d.tokens)), 0);
   const { currentStreak, longestStreak } = computeStreaks(daily, todayKey);
   const favoriteModel = favoriteModelOf(daily);
+  const activeTimeMs = activeTimeTotal(monthly.length ? monthly : daily);
 
   return {
     daily,
     monthly,
     summary: {
       totalTokens, totalCost, activeDays, currentStreak, longestStreak,
-      peakDayTokens, favoriteModel, messages
+      peakDayTokens, favoriteModel, messages, activeTimeMs
     }
   };
 }
@@ -256,8 +284,8 @@ function historyPreview(history, options = {}) {
   const dailyDays = Number.isFinite(options.dailyDays) ? options.dailyDays : 30;
   const monthlyMonths = Number.isFinite(options.monthlyMonths) ? options.monthlyMonths : 12;
   const h = coerceHistory(history);
-  const daily = h.daily.slice(-dailyDays).map((d) => ({ date: d.date, tokens: num(d.tokens), cost: num(d.cost) }));
-  const monthly = h.monthly.slice(-monthlyMonths).map((m) => ({ month: m.month, tokens: num(m.tokens), cost: num(m.cost) }));
+  const daily = h.daily.slice(-dailyDays).map((d) => ({ date: d.date, tokens: num(d.tokens), cost: num(d.cost), activeTimeMs: num(d.activeTimeMs) }));
+  const monthly = h.monthly.slice(-monthlyMonths).map((m) => ({ month: m.month, tokens: num(m.tokens), cost: num(m.cost), activeTimeMs: num(m.activeTimeMs) }));
   return { daily, monthly, summary: h.summary };
 }
 

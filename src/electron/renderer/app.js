@@ -497,6 +497,14 @@ function formatDuration(ms) {
   if (minutes > 0) return `${minutes}m`;
   return '<1m';
 }
+function formatActiveDuration(ms) {
+  const totalMinutes = Math.max(0, Math.round(Number(ms || 0) / 60000));
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  if (minutes > 0) return `${minutes}m`;
+  return '0m';
+}
 function formatUpdatedAge(value) {
   const date = value ? new Date(value) : null;
   if (!date || Number.isNaN(date.getTime())) return 'Update unknown';
@@ -1920,7 +1928,7 @@ function renderTrends() {
   const stats = [
     [t('trends.activeDays'), formatNumber(summary.activeDays)],
     [t('trends.currentStreak'), formatNumber(summary.currentStreak)],
-    [t('trends.longestStreak'), formatNumber(summary.longestStreak)],
+    [t('trends.activeTime'), formatActiveDuration(summary.activeTimeMs)],
     [t('trends.peakDay'), formatCompact(summary.peakDayTokens)]
   ];
   const statsHtml = stats

@@ -195,7 +195,7 @@
     { key: 'totalCost', kind: 'cost' },
     { key: 'activeDays', kind: 'days' },
     { key: 'currentStreak', kind: 'days' },
-    { key: 'longestStreak', kind: 'days' },
+    { key: 'activeTimeMs', kind: 'duration' },
     { key: 'peakDayTokens', kind: 'tokens' },
     { key: 'favoriteModel', kind: 'model' },
     { key: 'messages', kind: 'count' }

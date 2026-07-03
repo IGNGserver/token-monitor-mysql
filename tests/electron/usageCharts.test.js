@@ -140,11 +140,13 @@ test('heatmapSvg scales its corner radius for compact variants', () => {
 test('statsCards returns ordered descriptors with kinds and coerced values', () => {
   const cards = statsCards({
     totalTokens: 100, totalCost: 1.5, activeDays: 3, currentStreak: 2,
-    longestStreak: 5, peakDayTokens: 40, favoriteModel: 'opus', messages: 12
+    activeTimeMs: 3600000, longestStreak: 5, peakDayTokens: 40, favoriteModel: 'opus', messages: 12
   });
   assert.deepEqual(cards.map((c) => c.key),
-    ['totalTokens', 'totalCost', 'activeDays', 'currentStreak', 'longestStreak', 'peakDayTokens', 'favoriteModel', 'messages']);
+    ['totalTokens', 'totalCost', 'activeDays', 'currentStreak', 'activeTimeMs', 'peakDayTokens', 'favoriteModel', 'messages']);
   assert.deepEqual(cards[0], { key: 'totalTokens', kind: 'tokens', value: 100 });
+  assert.deepEqual(cards.find((c) => c.key === 'activeTimeMs'), { key: 'activeTimeMs', kind: 'duration', value: 3600000 });
+  assert.equal(cards.find((c) => c.key === 'longestStreak'), undefined);
   assert.deepEqual(cards.find((c) => c.key === 'favoriteModel'), { key: 'favoriteModel', kind: 'model', value: 'opus' });
   assert.deepEqual(cards.find((c) => c.key === 'messages'), { key: 'messages', kind: 'count', value: 12 });
 });

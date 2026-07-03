@@ -71,6 +71,14 @@ function formatCompact(value) {
   if (abs >= 1e3) return `${(num / 1e3).toFixed(1).replace(/\.0$/, '')}K`;
   return String(num);
 }
+function formatDurationCompact(ms) {
+  const totalMinutes = Math.max(0, Math.round(Number(ms || 0) / 60000));
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  if (minutes > 0) return `${minutes}m`;
+  return '0m';
+}
 function formatCost(usd) { return currencyApi.formatCurrencyFromUsd(usd, currencyApi.normalizeCurrency(state.currency)); }
 function formatCostCompact(usd) {
   const code = currencyApi.normalizeCurrency(state.currency);
@@ -246,12 +254,14 @@ function renderActivity() {
   const LABELS = {
     totalTokens: 'dashboard.stat.totalTokens', totalCost: 'dashboard.stat.totalCost',
     activeDays: 'trends.activeDays', currentStreak: 'trends.currentStreak',
-    longestStreak: 'trends.longestStreak', peakDayTokens: 'trends.peakDay',
+    activeTimeMs: 'trends.activeTime', peakDayTokens: 'trends.peakDay',
     favoriteModel: 'dashboard.stat.favoriteModel', messages: 'dashboard.stat.messages'
   };
   els.cards.innerHTML = charts.statsCardsHtml(cards, {
     label: (k) => t(LABELS[k] || k),
-    format: (c) => (c.kind === 'cost' ? formatCostCompact(c.value) : c.kind === 'model' ? (c.value || '—') : formatCompact(c.value))
+    format: (c) => (c.kind === 'cost' ? formatCostCompact(c.value)
+      : c.kind === 'duration' ? formatDurationCompact(c.value)
+        : c.kind === 'model' ? (c.value || '—') : formatCompact(c.value))
   });
   renderBreakdown();
 }
