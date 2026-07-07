@@ -9,6 +9,7 @@ const vm = require('node:vm');
 const {
   apiKeyAccountStatus,
   isCodexLiveAccount,
+  limitProviderDisplayLabel,
   limitProviderCapabilityTags,
   limitProviderMainDeviceLabel,
   limitProviderProvenance,
@@ -36,6 +37,15 @@ test('isCodexLiveAccount only marks the local live login, not a synced remote de
 test('isCodexLiveAccount stays marked when both devices are signed in but the remote record is selected', () => {
   const liveProvider = { provider: 'codex', status: 'ok', sourceDetail: 'app' };
   assert.equal(isCodexLiveAccount(liveProvider, { selectedIsRemote: true, hasLocalCandidate: true }), true);
+});
+
+test('limitProviderDisplayLabel normalizes short account labels without rewriting identifiers', () => {
+  assert.equal(limitProviderDisplayLabel('plus'), 'Plus');
+  assert.equal(limitProviderDisplayLabel('pro'), 'Pro');
+  assert.equal(limitProviderDisplayLabel('go'), 'Go');
+  assert.equal(limitProviderDisplayLabel('Team'), 'Team');
+  assert.equal(limitProviderDisplayLabel('javis603@gmail.com'), 'javis603@gmail.com');
+  assert.equal(limitProviderDisplayLabel(''), '');
 });
 
 const rendererDir = path.join(__dirname, '..', '..', 'src', 'electron', 'renderer');

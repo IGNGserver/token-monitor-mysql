@@ -1023,7 +1023,7 @@ function limitProviderMeta(provider, provenance = null) {
 
 function limitProviderPlan(provider) {
   const label = String(provider?.accountLabel || '').trim();
-  if (label) return label;
+  if (label) return limitProviderPresentationApi.limitProviderDisplayLabel(label);
   return provider?.status && provider.status !== 'ok' ? limitStatusLabel(provider.status, false) : '';
 }
 
@@ -5755,7 +5755,7 @@ function renderCodexAccounts() {
       right.className = 'managed-account-right';
       const info = document.createElement('span');
       info.className = 'managed-account-info';
-      info.textContent = enabled ? account.accountLabel || '' : t('settings.codex.disabled');
+      info.textContent = enabled ? limitProviderPresentationApi.limitProviderDisplayLabel(account.accountLabel) : t('settings.codex.disabled');
       const remove = document.createElement('button');
       remove.type = 'button';
       remove.className = 'managed-account-remove';

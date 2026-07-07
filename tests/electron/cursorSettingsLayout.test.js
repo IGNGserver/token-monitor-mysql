@@ -163,7 +163,7 @@ test('Codex account panel supports per-account enable toggles without showing ti
   assert.match(body, /input\.checked = account\.enabled !== false/);
   assert.match(body, /window\.tokenMonitor\.codex\.setAccountEnabled\(account\.id, input\.checked\)/);
   assert.match(body, /info\.className = 'managed-account-info'/);
-  assert.match(body, /info\.textContent = enabled \? account\.accountLabel \|\| '' : t\('settings\.codex\.disabled'\);/);
+  assert.match(body, /info\.textContent = enabled \? limitProviderPresentationApi\.limitProviderDisplayLabel\(account\.accountLabel\) : t\('settings\.codex\.disabled'\);/);
   assert.match(body, /right\.append\(info, remove\)/);
   assert.match(body, /row\.append\(input, main, right\)/);
   assert.doesNotMatch(

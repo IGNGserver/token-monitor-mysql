@@ -105,6 +105,12 @@
     return (CAPABILITY_TAGS[providerId(providerOrId)] || []).slice();
   }
 
+  function limitProviderDisplayLabel(value) {
+    const label = String(value || '').trim();
+    if (!label || label.includes('@')) return label;
+    return label.replace(/^[a-z]/, (letter) => letter.toUpperCase());
+  }
+
   // The "live" Codex account is the one THIS device's Codex app/CLI is currently
   // signed into (sourceDetail app/cli/unknown). Managed accounts added inside
   // Token Monitor report sourceDetail 'managed' and are NOT live. A remote
@@ -278,6 +284,7 @@
     apiKeyAccountStatus,
     isCodexLiveAccount,
     limitProviderCapabilityTags,
+    limitProviderDisplayLabel,
     limitProviderMainDeviceLabel,
     limitProviderProvenance,
     limitProviderSourceLabel,
