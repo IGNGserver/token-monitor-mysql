@@ -23,6 +23,7 @@ const { createHub } = require('../hub/server');
 const { collectLimitsOnce, deepseekToken, normalizeLimitsRefreshMs, parseBoolean, parseLimitProviders, runCodexLogin, minimaxToken, copilotToken, zaiToken, zaiRegion, zaiTeamToken, volcengineCredentials, qoderCookie } = require('../shared/limitCollector');
 const { copilotLoginErrorMessage, isAllowedVerificationUrl, runCopilotDeviceFlowLogin } = require('../shared/copilotDeviceFlow');
 const { codexAuthIdentity, hashAccountKey } = require('../shared/codexAuth');
+const { codexLoginUrlFromOutput, isAllowedCodexLoginUrl } = require('../shared/codexLogin');
 const {
   codexAccountMatchesIdentity,
   liveCodexAuthPath,
@@ -367,7 +368,9 @@ function normalizeCopilotEnterpriseHost(value) {
   return String(value || '').trim().replace(/^https?:\/\//i, '').split('/')[0].toLowerCase();
 }
 
-let codexLoginInFlight = false;
+let codexLoginController = null;
+let codexLoginFlowId = '';
+let codexLoginCanCancel = false;
 let copilotLoginController = null;
 let copilotLoginFlowId = '';
 
@@ -411,6 +414,14 @@ function codexManagedAccountsForCollector() {
 
 function codexManagedRoot() {
   return path.join(app.getPath('userData'), 'managed-codex-homes');
+}
+
+function codexManagedHomePath(accountId) {
+  const resolvedRoot = path.resolve(codexManagedRoot());
+  const resolvedHome = path.resolve(resolvedRoot, String(accountId || ''));
+  if (resolvedHome === resolvedRoot) return '';
+  if (!resolvedHome.startsWith(`${resolvedRoot}${path.sep}`)) return '';
+  return resolvedHome;
 }
 
 function codexEmailDerivedAccountKey(account, identity) {
@@ -485,7 +496,8 @@ async function preserveLiveCodexAuthAsManagedAccount(targetIdentity) {
   if (codexAccountMatchesIdentity(targetIdentity, liveMaterial.identity)) return null;
   const accounts = normalizeCodexManagedAccounts(settings.codexManagedAccounts);
   const existing = findExistingCodexAccount(accounts, liveMaterial.identity);
-  const homePath = existing?.homePath || path.join(codexManagedRoot(), codexAccountId(liveMaterial.identity, existing));
+  const homePath = codexManagedHomePath(codexAccountId(liveMaterial.identity, existing));
+  if (!homePath) return null;
   await writeCodexAuthFile(path.join(homePath, 'auth.json'), liveMaterial.data);
   return commitCodexManagedAccount(liveMaterial.identity, homePath, existing, {
     enabled: existing?.enabled ?? true,
@@ -502,23 +514,42 @@ function codexLoginErrorMessage(result) {
       return `Could not start codex login.${detail}`;
     case 'timedOut':
       return `Sign-in timed out. Finish the browser login, then try again.${detail}`;
+    case 'cancelled':
+      return 'Sign-in cancelled.';
     default:
       return `codex login failed.${detail}`;
   }
 }
 
+function cancelledCodexLoginResult() {
+  return {
+    ok: false,
+    error: codexLoginErrorMessage({ outcome: 'cancelled' }),
+    outcome: 'cancelled'
+  };
+}
+
+async function rollbackCodexManagedHome(homePath, backupHomePath, movedToFinal) {
+  if (movedToFinal) await removeManagedHomeIfSafe(homePath);
+  if (backupHomePath) await fs.promises.rename(backupHomePath, homePath);
+}
+
 // Best practice: each account gets its own OAuth grant via an isolated
 // `codex login` (CodexBar/tokscale model), so it never shares a refresh-token
 // lineage with the user's live Codex CLI login.
-async function addCodexManagedAccount(onOutput) {
+async function addCodexManagedAccount(onOutput, options = {}) {
   await fs.promises.mkdir(codexManagedRoot(), { recursive: true });
   const tempHome = path.join(codexManagedRoot(), `pending-${crypto.randomUUID()}`);
   await fs.promises.mkdir(tempHome, { recursive: true });
+  let backupHomePath = '';
+  let movedToFinal = false;
+  let accountCommitted = false;
   try {
-    const result = await runCodexLogin({ homePath: tempHome, onOutput }, { env: process.env });
+    const result = await runCodexLogin({ homePath: tempHome, onOutput, signal: options.signal }, { env: process.env });
     if (result.outcome !== 'success') {
       return { ok: false, error: codexLoginErrorMessage(result), outcome: result.outcome };
     }
+    if (options.signal?.aborted) return cancelledCodexLoginResult();
     let auth;
     try {
       auth = JSON.parse(await fs.promises.readFile(path.join(tempHome, 'auth.json'), 'utf8'));
@@ -529,15 +560,71 @@ async function addCodexManagedAccount(onOutput) {
     if (!identity.accountKey && !identity.email) {
       return { ok: false, error: 'Could not identify the Codex account after sign-in.' };
     }
+    if (options.signal?.aborted) return cancelledCodexLoginResult();
     const existing = findExistingCodexAccount(normalizeCodexManagedAccounts(settings.codexManagedAccounts), identity);
-    const homePath = path.join(codexManagedRoot(), codexAccountId(identity, existing));
+    const homePath = codexManagedHomePath(codexAccountId(identity, existing));
+    if (!homePath) return { ok: false, error: 'The saved Codex account path is invalid.' };
     if (path.resolve(homePath) !== path.resolve(tempHome)) {
-      await removeManagedHomeIfSafe(homePath);
-      await fs.promises.rename(tempHome, homePath);
+      if (options.signal?.aborted) return cancelledCodexLoginResult();
+      const candidateBackupPath = `${homePath}.backup-${crypto.randomUUID()}`;
+      try {
+        await fs.promises.rename(homePath, candidateBackupPath);
+        backupHomePath = candidateBackupPath;
+      } catch (error) {
+        if (error?.code !== 'ENOENT') throw error;
+      }
+      if (options.signal?.aborted) {
+        await rollbackCodexManagedHome(homePath, backupHomePath, movedToFinal);
+        backupHomePath = '';
+        return cancelledCodexLoginResult();
+      }
+      try {
+        await fs.promises.rename(tempHome, homePath);
+        movedToFinal = true;
+      } catch (error) {
+        await rollbackCodexManagedHome(homePath, backupHomePath, movedToFinal);
+        backupHomePath = '';
+        throw error;
+      }
+      if (options.signal?.aborted) {
+        await rollbackCodexManagedHome(homePath, backupHomePath, movedToFinal);
+        backupHomePath = '';
+        movedToFinal = false;
+        return cancelledCodexLoginResult();
+      }
     }
-    return { ok: true, account: commitCodexManagedAccount(identity, homePath, existing) };
+    if (options.signal?.aborted) {
+      await rollbackCodexManagedHome(homePath, backupHomePath, movedToFinal);
+      backupHomePath = '';
+      movedToFinal = false;
+      return cancelledCodexLoginResult();
+    }
+    const previousAccounts = settings.codexManagedAccounts;
+    options.onCommit?.();
+    let account;
+    try {
+      account = commitCodexManagedAccount(identity, homePath, existing, { restart: false });
+      if (backupHomePath) {
+        await removeManagedHomeIfSafe(backupHomePath);
+        backupHomePath = '';
+      }
+      accountCommitted = true;
+    } catch (error) {
+      settings.codexManagedAccounts = previousAccounts;
+      try {
+        saveSettings();
+      } catch (rollbackError) {
+        console.warn('Could not restore Codex account settings:', rollbackError?.message || rollbackError);
+      }
+      await rollbackCodexManagedHome(homePath, backupHomePath, movedToFinal);
+      backupHomePath = '';
+      movedToFinal = false;
+      throw error;
+    }
+    startMode();
+    return { ok: true, account };
   } finally {
-    await removeManagedHomeIfSafe(tempHome).catch(() => {});
+    if (!accountCommitted) await removeManagedHomeIfSafe(tempHome).catch(() => {});
   }
 }
 
@@ -2532,6 +2619,7 @@ function isAllowedExternalUrl(value) {
   if (parsed.protocol !== 'https:') return false;
   const enterpriseHost = settings?.copilotEnterpriseHost || process.env.COPILOT_ENTERPRISE_HOST || process.env.GITHUB_ENTERPRISE_HOST || '';
   if (isAllowedVerificationUrl(value, enterpriseHost)) return true;
+  if (isAllowedCodexLoginUrl(value)) return true;
   if (parsed.hostname === 'github.com' && parsed.pathname.startsWith('/junhoyeo/tokscale')) return true;
   if (parsed.hostname === 'www.npmjs.com' && parsed.pathname.startsWith('/package/@tokscale/')) return true;
   if (parsed.hostname === 'github.com' && parsed.pathname.startsWith('/Javis603/token-monitor')) return true;
@@ -3438,16 +3526,57 @@ app.whenReady().then(() => {
   });
   ipcMain.handle('codex:accounts', () => codexAccountsForRenderer());
   ipcMain.handle('codex:setAccountEnabled', (_event, id, enabled) => setCodexManagedAccountEnabled(id, enabled));
-  ipcMain.handle('codex:addAccount', async (event) => {
-    if (codexLoginInFlight) return { ok: false, error: 'A Codex sign-in is already in progress.' };
-    codexLoginInFlight = true;
+  ipcMain.handle('codex:addAccount', async (event, request = {}) => {
+    const flowId = String(request?.flowId || '').trim();
+    if (codexLoginController) return { ok: false, error: 'A Codex sign-in is already in progress.', flowId };
+    const controller = new AbortController();
+    codexLoginController = controller;
+    codexLoginFlowId = flowId;
+    codexLoginCanCancel = true;
+    let streamed = '';
+    const sendStatus = (payload) => {
+      if (codexLoginController !== controller) return;
+      if (!event.sender.isDestroyed()) {
+        event.sender.send('codex:loginStatus', {
+          ...payload,
+          flowId
+        });
+      }
+    };
     try {
-      return await addCodexManagedAccount((text) => {
-        if (!event.sender.isDestroyed()) event.sender.send('codex:loginOutput', text);
+      const result = await addCodexManagedAccount((text) => {
+        streamed = (streamed + String(text || '')).slice(-8000);
+        sendStatus({
+          phase: 'output',
+          text: String(text || ''),
+          loginUrl: codexLoginUrlFromOutput(streamed)
+        });
+      }, {
+        signal: controller.signal,
+        onCommit: () => {
+          if (codexLoginController === controller) codexLoginCanCancel = false;
+        }
       });
+      if (codexLoginController !== controller) {
+        return { ok: false, error: codexLoginErrorMessage({ outcome: 'cancelled' }), outcome: 'cancelled', flowId };
+      }
+      return { ...result, flowId };
     } finally {
-      codexLoginInFlight = false;
+      if (codexLoginController === controller) {
+        codexLoginController = null;
+        codexLoginFlowId = '';
+        codexLoginCanCancel = false;
+      }
     }
+  });
+  ipcMain.handle('codex:cancelLogin', (_event, request = {}) => {
+    const flowId = String(request?.flowId || '').trim();
+    if (flowId && codexLoginFlowId && flowId !== codexLoginFlowId) return { ok: true, cancelled: false };
+    const controller = codexLoginController;
+    if (!controller) return { ok: true, cancelled: false };
+    if (!codexLoginCanCancel) return { ok: false, cancelled: false, tooLate: true };
+    controller?.abort();
+    return { ok: true, cancelled: true };
   });
   ipcMain.handle('codex:removeAccount', async (_event, id) => removeCodexManagedAccount(id));
   ipcMain.handle('codex:switchSystemAccount', async (_event, id) => switchCodexSystemAccount(id));
