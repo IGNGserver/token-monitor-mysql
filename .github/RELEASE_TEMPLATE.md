@@ -1,30 +1,34 @@
 # English
 
-**Open-source build.** macOS builds are signed and notarized. Windows signing is still being prepared, so Windows may show SmartScreen on first launch. Linux AppImage downloads may need executable permission — instructions below.
+**Open-source build.** macOS is signed and notarized; Windows is unsigned (SmartScreen may appear); Linux AppImages need executable permission — see notes below.
 
 ## What's changed
 
 ### Added
-- **MiMo account tracking:** AI Tool Limits now supports MiMo (Xiaomi), with cookie-based sign-in and multi-account tracking for balance and Token Plan quota. (#97)
-- **Kimi Code account tracking:** AI Tool Limits now supports Kimi Code, with API-key-based quota checks. (#91)
+- **Ollama Cloud account tracking:** AI Tool Limits now supports Ollama Cloud, with cookie-based usage and quota tracking. (#98)
+- **Proma usage tracking:** Local Proma token usage, model breakdowns, and costs are now tracked across desktop and WSL environments. (#108)
+- **Session history:** Deleted or cleared sessions now keep their token totals by default; pause preservation or clear retained data anytime. (#119)
+
+### Improved
+- **Client secret entry:** Multi-device Sync now includes a paste button for the client-side secret field. (#129)
 
 ### Fixed
-- **Codex quota refreshes:** Session and weekly percentages no longer flicker to empty or incorrect values during transient refresh failures (rate limiting, temporary unavailability); the last known-good values are kept until a real update lands. (#116)
-- **Multi-device sync payloads:** Oversized usage payloads are now rejected with a clear error instead of failing unpredictably, and synced data drops the unbounded all-time session history while keeping all totals and breakdowns intact. (#121)
-- **Total tokens display:** Long total-token numbers now scale to fit the available width instead of clipping. (#117)
+- **Usage history:** Trends now retain history from offline devices, and an open Usage Dashboard refreshes when history changes. (#127)
+- **Codex account status:** The active-account indicator now follows the local Codex login in multi-device setups, and account bars remain available through collector restarts and transient refresh failures. (#126, #128)
 
-## Which file should I download?
+## Download
 
-- **macOS (Apple Silicon, M1 and later)** — the `.dmg` file
-- **Windows 10/11** — `Token Monitor Setup ….exe` (installer, recommended)
-- **Windows portable** — `Token Monitor ….exe` (runs without installing)
-- **Linux x64** — the `.AppImage` file
+- **macOS Apple Silicon** — [Token-Monitor-0.26.0-arm64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.26.0/Token-Monitor-0.26.0-arm64.dmg)
+- **Windows Installer** — [Token-Monitor-Setup-0.26.0.exe](https://github.com/Javis603/token-monitor/releases/download/v0.26.0/Token-Monitor-Setup-0.26.0.exe)
+- **Windows Portable** — [Token-Monitor-0.26.0.exe](https://github.com/Javis603/token-monitor/releases/download/v0.26.0/Token-Monitor-0.26.0.exe)
+- **Linux x64** — [Token-Monitor-0.26.0.AppImage](https://github.com/Javis603/token-monitor/releases/download/v0.26.0/Token-Monitor-0.26.0.AppImage)
 
-Other platforms are not pre-built — run from source per the [README](https://github.com/Javis603/token-monitor#readme). The macOS `.zip` is the same app repackaged; ignore it unless you specifically need it.
+<details>
+<summary><strong>First launch and other notes</strong></summary>
 
-## First launch
+### First launch
 
-**macOS:** open the `.dmg`, drag Token Monitor to Applications, then launch normally.
+**macOS:** open the `.dmg`, drag Token Monitor to Applications.
 
 **Windows:** SmartScreen → More info → Run anyway.
 
@@ -35,41 +39,51 @@ chmod +x "Token Monitor"*.AppImage
 ./"Token Monitor"*.AppImage
 ```
 
-## tokscale dependency
+### Other notes
+
+Other platforms are not pre-built — run from source per the [README](https://github.com/Javis603/token-monitor#readme). The macOS `.zip` is the same app repackaged; ignore it unless you specifically need it.
+
+### tokscale dependency
 
 Tokscale is bundled with this app. See **Settings → Tokscale** for the exact version
 and the option to download a newer version directly from npm. Tokscale is MIT,
 open-source: https://github.com/junhoyeo/tokscale
 
+</details>
+
 ---
 
 # 中文
 
-**这是开源构建。** macOS 构建已签名并 notarize。Windows 签名还在准备中，所以 Windows 首次启动时可能会显示 SmartScreen；Linux AppImage 下载后可能需要先赋予执行权限，操作说明见下方。
+**这是开源构建。** macOS 已签名并 notarize；Windows 尚未签名（可能跳出 SmartScreen）；Linux AppImage 需要先赋予执行权限，说明见下方。
 
 ## 更新内容
 
 ### 新增
-- **MiMo 账号追踪：** AI 工具额度现已支持 MiMo（小米），通过 Cookie 登录并支持多账号追踪余额与 Token Plan 额度。（#97）
-- **Kimi Code 账号追踪：** AI 工具额度现已支持 Kimi Code，通过 API 密钥查询额度。（#91）
+- **Ollama Cloud 账号追踪：** AI 工具额度现已支持 Ollama Cloud，通过 Cookie 追踪用量与额度。（#98）
+- **Proma 用量追踪：** 现已支持追踪桌面与 WSL 环境中的 Proma 本地 Token 用量、模型明细与费用。（#108）
+- **会话记录：** 来源工具删除或清除会话后，默认仍会保留其 Token 用量，可随时暂停保留或清除已保留的数据。（#119）
+
+### 改进
+- **客户端密钥输入：** 多设备同步的客户端密钥输入框现已加入粘贴按钮。（#129）
 
 ### 修复
-- **Codex 额度刷新：** 在额度刷新出现暂时性失败（限流、暂不可用）时，单次与每周百分比不再闪烁为空白或错误数值，会保留最近一次的正确数据，直到下一次真正更新。（#116）
-- **多设备同步负载：** 超大用量负载现在会返回明确的错误，而不是不可预期地失败；同步数据不再包含无上限增长的全部时间会话记录，但仍保留全部汇总与明细。（#121）
-- **总 Token 显示：** 较长的总 Token 数字现在会自动缩放以适应显示宽度，不再被裁切。（#117）
+- **用量历史：** 趋势现会保留离线设备的历史记录，用量仪表板打开时也会随历史变化刷新。（#127）
+- **Codex 账号状态：** 多设备同步时，当前账号标记现会正确跟随本机 Codex 登录；收集器重启或暂时刷新失败时，账号额度条也会继续保留。（#126、#128）
 
-## 应该下载哪个文件？
+## 下载
 
-- **macOS（苹果芯片，M1 及之后机型）** — 下载 `.dmg` 安装包
-- **Windows 10/11** — 下载 `Token Monitor Setup ….exe`（安装版，推荐）
-- **Windows 便携版** — 下载 `Token Monitor ….exe`（无需安装，直接运行）
-- **Linux x64** — 下载 `.AppImage` 文件
+- **macOS Apple Silicon** — [Token-Monitor-0.26.0-arm64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.26.0/Token-Monitor-0.26.0-arm64.dmg)
+- **Windows 安装版** — [Token-Monitor-Setup-0.26.0.exe](https://github.com/Javis603/token-monitor/releases/download/v0.26.0/Token-Monitor-Setup-0.26.0.exe)
+- **Windows 便携版** — [Token-Monitor-0.26.0.exe](https://github.com/Javis603/token-monitor/releases/download/v0.26.0/Token-Monitor-0.26.0.exe)
+- **Linux x64** — [Token-Monitor-0.26.0.AppImage](https://github.com/Javis603/token-monitor/releases/download/v0.26.0/Token-Monitor-0.26.0.AppImage)
 
-其他平台暂不提供预构建版本，请参考 [README](https://github.com/Javis603/token-monitor#readme) 从源码运行。macOS 的 `.zip` 只是同一个 app 的重新打包版本，除非你明确需要，否则可以忽略。
+<details>
+<summary><strong>首次启动与其他说明</strong></summary>
 
-## 首次启动
+### 首次启动
 
-**macOS：** 打开 `.dmg`，把 Token Monitor 拖到 Applications，然后正常启动即可。
+**macOS：** 打开 `.dmg`，把 Token Monitor 拖到 Applications。
 
 **Windows：** SmartScreen → 更多信息 → 仍要运行。
 
@@ -80,8 +94,14 @@ chmod +x "Token Monitor"*.AppImage
 ./"Token Monitor"*.AppImage
 ```
 
-## tokscale 依赖
+### 其他说明
+
+其他平台暂不提供预构建版本，请参考 [README](https://github.com/Javis603/token-monitor#readme) 从源码运行。macOS 的 `.zip` 只是同一个 app 的重新打包版本，除非你明确需要，否则可以忽略。
+
+### tokscale 依赖
 
 Tokscale 已随应用内置。你可以在 **设置 → Tokscale** 查看确切版本，
 也可以直接从 npm 下载更新版本。Tokscale 是 MIT 开源项目：
 https://github.com/junhoyeo/tokscale
+
+</details>
