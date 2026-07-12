@@ -393,6 +393,16 @@ test('Qoder renders its single Credits billing window full-width', () => {
   assert.match(renderProviderWindows, /limit-window-wide/);
 });
 
+test('Ollama renders Session and Weekly usage windows', () => {
+  const app = readRendererFile('app.js');
+  const renderProviderWindows = functionBody(app, 'renderProviderWindows', 'renderLimitProviderRow');
+  assert.match(renderProviderWindows, /provider\.provider === 'ollama'/);
+  assert.match(renderProviderWindows, /windowForKind\(provider, 'session'\)/);
+  assert.match(renderProviderWindows, /windowForKind\(provider, 'weekly'\)/);
+  assert.match(renderProviderWindows, /limitWindowNode\('Session', session/);
+  assert.match(renderProviderWindows, /limitWindowNode\('Weekly', weekly/);
+});
+
 test('Volcengine renders 5-hour, Weekly, and Monthly quota windows', () => {
   const app = readRendererFile('app.js');
   const renderProviderWindows = functionBody(app, 'renderProviderWindows', 'renderLimitProviderRow');
@@ -638,7 +648,7 @@ test('settings provider status waits for stats and refreshes when stats arrive',
     assert.match(statsPush, new RegExp(`${fn}\\(\\);`), `${fn} missing from onStatsPush`);
     assert.match(syncSettings, new RegExp(`${fn}\\(\\);`), `${fn} missing from syncSettingsForm`);
   }
-  for (const provider of ['zai', 'volcengine', 'qoder', 'kimi']) {
+  for (const provider of ['zai', 'volcengine', 'qoder', 'kimi', 'ollama']) {
     assert.match(refreshStats, new RegExp(`renderExternalProviderStatus\\('${provider}'\\);`), `${provider} missing from refreshStats`);
     assert.match(statsPush, new RegExp(`renderExternalProviderStatus\\('${provider}'\\);`), `${provider} missing from onStatsPush`);
     assert.match(syncSettings, new RegExp(`renderExternalProviderStatus\\('${provider}'\\);`), `${provider} missing from syncSettingsForm`);
@@ -647,6 +657,43 @@ test('settings provider status waits for stats and refreshes when stats arrive',
     assert.doesNotMatch(settingsPush, new RegExp(`${fn}\\(\\);`), `${fn} should not be duplicated in onSettingsPush (syncSettingsForm covers it)`);
   }
   assert.doesNotMatch(app, /renderGrokStatus|grokAccountLinked|grokAccountExpanded/);
+});
+
+test('saving Ollama credentials enables its provider and always settles validation', () => {
+  const app = readRendererFile('app.js');
+  const renderExternalStatus = functionBody(app, 'renderExternalProviderStatus', 'setMinimaxAccountExpanded');
+  const selection = functionBody(app, 'limitProviderSelectionIncluding', 'missingLimitProviderStatus');
+  const setup = functionBody(app, 'setupCursorAccountUI', 'initSettingsAnimationWrappers');
+  const ollamaSetup = setup.slice(
+    setup.indexOf("document.getElementById('ollamaCookieSubmit')"),
+    setup.indexOf('const kimiToggle')
+  );
+  assert.match(selection, /selected\.add\(providerName\)/);
+  assert.match(selection, /\.filter\(\(id\) => selected\.has\(id\)\)/);
+  assert.match(ollamaSetup, /limitProviders: limitProviderSelectionIncluding\('ollama'\)/);
+  assert.match(ollamaSetup, /limitsEnabled: true/);
+  assert.match(ollamaSetup, /await window\.tokenMonitor\.ollama\.validateCookie\(input\.value\)/);
+  assert.match(ollamaSetup, /if \(!validation\?\.ok\)/);
+  assert.doesNotMatch(ollamaSetup, /await refreshStats\(\{ force: true \}\);/);
+  assert.match(ollamaSetup, /clearExternalProviderCheckPending\('ollama'\);/);
+  assert.match(renderExternalStatus, /pending \? t\('settings\.common\.checking'\)/);
+  assert.match(
+    renderExternalStatus,
+    /providerName === 'ollama' && wasPending && !pending && linked[\s\S]*?setExternalAccountExpanded\('ollama', false\)/,
+    'Ollama should collapse only after a fresh provider confirms the account is linked'
+  );
+  assert.doesNotMatch(
+    ollamaSetup,
+    /input\.value = '';[\s\S]*?clearExternalProviderCheckPending\('ollama'\);[\s\S]*?setExternalAccountExpanded\('ollama', false\);/,
+    'a successful save must stay pending until the collector publishes a fresh provider'
+  );
+  assert.doesNotMatch(
+    ollamaSetup,
+    /input\.value = '';[\s\S]*?setExternalAccountExpanded\('ollama', false\);/,
+    'the setup panel must remain open while validation is pending'
+  );
+  assert.match(ollamaSetup, /catch \(err\) \{[\s\S]*?clearExternalProviderCheckPending\('ollama'\);[\s\S]*?renderExternalProviderStatus\('ollama'\);/);
+  assert.match(ollamaSetup, /ollamaValidationError\(validation\)/);
 });
 
 test('account validation reads the local device raw limits, not the collapsed aggregate', () => {
@@ -725,7 +772,7 @@ test('Copilot env token is documented in env example, not the README overview', 
   assert.doesNotMatch(readmeTw, /COPILOT_API_TOKEN|GITHUB_COPILOT_TOKEN/);
 });
 
-test('Accounts summary counts all managed account groups including MiMo', () => {
+test('Accounts summary counts all managed account groups including MiMo and Ollama', () => {
   const app = readRendererFile('app.js');
   const mimoLinkedBody = functionBody(app, 'mimoAccountLinked', 'renderMimoStatus');
   const summaryBody = functionBody(app, 'settingsSectionSummary', 'renderSettingsSummaries');
@@ -737,6 +784,7 @@ test('Accounts summary counts all managed account groups including MiMo', () => 
   assert.match(summaryBody, /const volcengineLinked = externalProviderAccountLinked\('volcengine'\);/);
   assert.match(summaryBody, /const qoderLinked = externalProviderAccountLinked\('qoder'\);/);
   assert.match(summaryBody, /const kimiLinked = externalProviderAccountLinked\('kimi'\);/);
+  assert.match(summaryBody, /const ollamaLinked = externalProviderAccountLinked\('ollama'\);/);
   assert.match(summaryBody, /const mimoLinked = mimoAccountLinked\(\);/);
   assert.match(summaryBody, /const copilotLinked = copilotAccountLinked\(\);/);
   assert.match(summaryBody, /\(minimaxLinked \? 1 : 0\)/);
@@ -745,9 +793,10 @@ test('Accounts summary counts all managed account groups including MiMo', () => 
   assert.match(summaryBody, /\(volcengineLinked \? 1 : 0\)/);
   assert.match(summaryBody, /\(qoderLinked \? 1 : 0\)/);
   assert.match(summaryBody, /\(kimiLinked \? 1 : 0\)/);
+  assert.match(summaryBody, /\(ollamaLinked \? 1 : 0\)/);
   assert.match(summaryBody, /\(mimoLinked \? 1 : 0\)/);
   assert.match(summaryBody, /\(copilotLinked \? 1 : 0\)/);
-  assert.match(summaryBody, /total: 12/);
+  assert.match(summaryBody, /total: 13/);
 });
 
 test('account validation does not use a remote aggregate when the local device lacks the provider', () => {
@@ -885,13 +934,15 @@ test('copilot setup status asks for sign-in instead of an API key', () => {
   );
 });
 
-test('Z.ai, Volcengine, and Qoder source labels and setup statuses', () => {
+test('Z.ai, Volcengine, Qoder, and Ollama source labels and setup statuses', () => {
   assert.deepEqual(presentation.limitProviderCapabilityTags('zai'), ['Coding Plan', 'API key']);
   assert.deepEqual(presentation.limitProviderCapabilityTags('volcengine'), ['Coding Plan', 'API key']);
   assert.deepEqual(presentation.limitProviderCapabilityTags('qoder'), ['Manual login', 'Web']);
+  assert.deepEqual(presentation.limitProviderCapabilityTags('ollama'), ['Manual login', 'Web']);
   assert.equal(presentation.limitProviderSourceLabel({ provider: 'zai', source: 'api' }), 'API');
   assert.equal(presentation.limitProviderSourceLabel({ provider: 'volcengine', source: 'api' }), 'API');
   assert.equal(presentation.limitProviderSourceLabel({ provider: 'qoder', source: 'web' }), 'Web');
+  assert.equal(presentation.limitProviderSourceLabel({ provider: 'ollama', source: 'web' }), 'Web');
   assert.deepEqual(
     presentation.limitProviderStatusLabel({ provider: 'zai', status: 'notConfigured' }),
     { label: 'Add API key', tone: 'setup' }
@@ -906,6 +957,14 @@ test('Z.ai, Volcengine, and Qoder source labels and setup statuses', () => {
   );
   assert.deepEqual(
     presentation.limitProviderStatusLabel({ provider: 'qoder', status: 'unauthorized' }),
+    { label: 'Sign in again', tone: 'setup' }
+  );
+  assert.deepEqual(
+    presentation.limitProviderStatusLabel({ provider: 'ollama', status: 'notConfigured' }),
+    { label: 'Sign in', tone: 'setup' }
+  );
+  assert.deepEqual(
+    presentation.limitProviderStatusLabel({ provider: 'ollama', status: 'unauthorized' }),
     { label: 'Sign in again', tone: 'setup' }
   );
 });

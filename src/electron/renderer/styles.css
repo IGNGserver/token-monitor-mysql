@@ -2205,6 +2205,7 @@ body.floating-bubble-collapsed-right .floating-bubble-tab {
 .row-icon-doubao     { -webkit-mask-image: url(../../../assets/icons/doubao.svg);        mask-image: url(../../../assets/icons/doubao.svg); }
 .row-icon-volcengine     { -webkit-mask-image: url(../../../assets/icons/volcengine.svg);        mask-image: url(../../../assets/icons/volcengine.svg); }
 .row-icon-qoder      { -webkit-mask-image: url(../../../assets/icons/qoder.svg);         mask-image: url(../../../assets/icons/qoder.svg); }
+.row-icon-ollama     { -webkit-mask-image: url(../../../assets/icons/ollama.svg);        mask-image: url(../../../assets/icons/ollama.svg); }
 .row-icon-os-apple   { -webkit-mask-image: url(../../../assets/icons/os-apple.svg);      mask-image: url(../../../assets/icons/os-apple.svg); }
 .row-icon-os-linux   { -webkit-mask-image: url(../../../assets/icons/os-linux.svg);      mask-image: url(../../../assets/icons/os-linux.svg); }
 .row-icon-os-windows { -webkit-mask-image: url(../../../assets/icons/os-windows.svg);    mask-image: url(../../../assets/icons/os-windows.svg); }
@@ -2276,6 +2277,11 @@ body.floating-bubble-collapsed-right .floating-bubble-tab {
 .limit-icon-qoder {
   -webkit-mask-image: url(../../../assets/icons/qoder.svg);
   mask-image: url(../../../assets/icons/qoder.svg);
+}
+
+.limit-icon-ollama {
+  -webkit-mask-image: url(../../../assets/icons/ollama.svg);
+  mask-image: url(../../../assets/icons/ollama.svg);
 }
 .limit-icon-kimi {
   -webkit-mask-image: url(../../../assets/icons/moonshot.svg);
@@ -3164,6 +3170,7 @@ html.is-windows .limit-live-badge {
 #zaiteamManualPanel.hidden,
 #volcengineManualPanel.hidden,
 #qoderManualPanel.hidden,
+#ollamaManualPanel.hidden,
 #mimoManualPanel.hidden,
 #kimiManualPanel.hidden,
 #copilotManualPanel.hidden,
@@ -3176,6 +3183,7 @@ html.is-windows .limit-live-badge {
 #zaiteamErrorMessage.hidden,
 #volcengineErrorMessage.hidden,
 #qoderErrorMessage.hidden,
+#ollamaErrorMessage.hidden,
 #kimiErrorMessage.hidden,
 #copilotErrorMessage.hidden,
 #copilotLoginStatus.hidden { display: none; }
@@ -3187,6 +3195,7 @@ html.is-windows .limit-live-badge {
 #zaiteamManualPanel,
 #volcengineManualPanel,
 #qoderManualPanel,
+#ollamaManualPanel,
 #mimoManualPanel,
 #kimiManualPanel,
 #copilotManualPanel {
@@ -3200,6 +3209,7 @@ html.is-windows .limit-live-badge {
 #zaiteamManualPanel > .accordion-animation-inner,
 #volcengineManualPanel > .accordion-animation-inner,
 #qoderManualPanel > .accordion-animation-inner,
+#ollamaManualPanel > .accordion-animation-inner,
 #mimoManualPanel > .accordion-animation-inner,
 #kimiManualPanel > .accordion-animation-inner {
   display: grid;
@@ -3216,6 +3226,7 @@ html.is-windows .limit-live-badge {
 #volcengineManualPanel input,
 #qoderManualPanel textarea,
 #qoderManualPanel select,
+#ollamaManualPanel textarea,
 #mimoManualPanel input,
 #mimoManualPanel textarea,
 #kimiManualPanel input,
@@ -3231,6 +3242,7 @@ html.is-windows .limit-live-badge {
 #zaiteamManualPanel input,
 #volcengineManualPanel input,
 #qoderManualPanel textarea,
+#ollamaManualPanel textarea,
 #mimoManualPanel input,
 #mimoManualPanel textarea,
 #kimiManualPanel input,

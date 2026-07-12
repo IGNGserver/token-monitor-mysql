@@ -469,14 +469,14 @@ test('API key account entries share styling and Copilot uses the folded token en
   assert.doesNotMatch(animationBody, /'#copilotManualPanel'/);
 
   assert.match(css, /#deepseekManualPanel\.hidden,\n#minimaxManualPanel\.hidden,/);
-  assert.match(css, /#minimaxManualPanel\.hidden,\n#zaiManualPanel\.hidden,\n#zaiteamManualPanel\.hidden,\n#volcengineManualPanel\.hidden,\n#qoderManualPanel\.hidden,\n#mimoManualPanel\.hidden,\n#kimiManualPanel\.hidden,\n#copilotManualPanel\.hidden,/);
+  assert.match(css, /#minimaxManualPanel\.hidden,\n#zaiManualPanel\.hidden,\n#zaiteamManualPanel\.hidden,\n#volcengineManualPanel\.hidden,\n#qoderManualPanel\.hidden,\n#ollamaManualPanel\.hidden,\n#mimoManualPanel\.hidden,\n#kimiManualPanel\.hidden,\n#copilotManualPanel\.hidden,/);
   assert.match(css, /#copilotManualPanel\.hidden,\n#copilotManualDetails\.hidden,/);
-  assert.match(css, /#deepseekErrorMessage\.hidden,\n#minimaxErrorMessage\.hidden,\n#zaiErrorMessage\.hidden,\n#zaiteamErrorMessage\.hidden,\n#volcengineErrorMessage\.hidden,\n#qoderErrorMessage\.hidden,\n#kimiErrorMessage\.hidden,\n#copilotErrorMessage\.hidden,/);
-  assert.match(css, /#deepseekManualPanel,\n#minimaxManualPanel,\n#zaiManualPanel,\n#zaiteamManualPanel,\n#volcengineManualPanel,\n#qoderManualPanel,\n#mimoManualPanel,\n#kimiManualPanel,\n#copilotManualPanel\s*\{\n\s*min-width: 0;/);
-  assert.match(css, /#deepseekManualPanel > \.accordion-animation-inner,\n#minimaxManualPanel > \.accordion-animation-inner,\n#zaiManualPanel > \.accordion-animation-inner,\n#zaiteamManualPanel > \.accordion-animation-inner,\n#volcengineManualPanel > \.accordion-animation-inner,\n#qoderManualPanel > \.accordion-animation-inner,\n#mimoManualPanel > \.accordion-animation-inner,\n#kimiManualPanel > \.accordion-animation-inner\s*\{\n\s*display: grid;/);
+  assert.match(css, /#deepseekErrorMessage\.hidden,\n#minimaxErrorMessage\.hidden,\n#zaiErrorMessage\.hidden,\n#zaiteamErrorMessage\.hidden,\n#volcengineErrorMessage\.hidden,\n#qoderErrorMessage\.hidden,\n#ollamaErrorMessage\.hidden,\n#kimiErrorMessage\.hidden,\n#copilotErrorMessage\.hidden,/);
+  assert.match(css, /#deepseekManualPanel,\n#minimaxManualPanel,\n#zaiManualPanel,\n#zaiteamManualPanel,\n#volcengineManualPanel,\n#qoderManualPanel,\n#ollamaManualPanel,\n#mimoManualPanel,\n#kimiManualPanel,\n#copilotManualPanel\s*\{\n\s*min-width: 0;/);
+  assert.match(css, /#deepseekManualPanel > \.accordion-animation-inner,\n#minimaxManualPanel > \.accordion-animation-inner,\n#zaiManualPanel > \.accordion-animation-inner,\n#zaiteamManualPanel > \.accordion-animation-inner,\n#volcengineManualPanel > \.accordion-animation-inner,\n#qoderManualPanel > \.accordion-animation-inner,\n#ollamaManualPanel > \.accordion-animation-inner,\n#mimoManualPanel > \.accordion-animation-inner,\n#kimiManualPanel > \.accordion-animation-inner\s*\{\n\s*display: grid;/);
   assert.doesNotMatch(css, /#copilotManualPanel > \.accordion-animation-inner/);
-  assert.match(css, /#deepseekManualPanel input,\n#minimaxManualPanel input,\n#zaiManualPanel input,\n#zaiteamManualPanel input,\n#zaiApiRegionInput,\n#volcengineManualPanel input,\n#qoderManualPanel textarea,\n#qoderManualPanel select,\n#mimoManualPanel input,\n#mimoManualPanel textarea,\n#kimiManualPanel input,\n#copilotManualDetails input\s*\{[\s\S]*?font-size: 12px;/);
-  assert.match(css, /#deepseekManualPanel input,\n#minimaxManualPanel input,\n#zaiManualPanel input,\n#zaiteamManualPanel input,\n#volcengineManualPanel input,\n#qoderManualPanel textarea,\n#mimoManualPanel input,\n#mimoManualPanel textarea,\n#kimiManualPanel input,\n#copilotManualDetails input\s*\{[\s\S]*?font-family: monospace;/);
+  assert.match(css, /#deepseekManualPanel input,\n#minimaxManualPanel input,\n#zaiManualPanel input,\n#zaiteamManualPanel input,\n#zaiApiRegionInput,\n#volcengineManualPanel input,\n#qoderManualPanel textarea,\n#qoderManualPanel select,\n#ollamaManualPanel textarea,\n#mimoManualPanel input,\n#mimoManualPanel textarea,\n#kimiManualPanel input,\n#copilotManualDetails input\s*\{[\s\S]*?font-size: 12px;/);
+  assert.match(css, /#deepseekManualPanel input,\n#minimaxManualPanel input,\n#zaiManualPanel input,\n#zaiteamManualPanel input,\n#volcengineManualPanel input,\n#qoderManualPanel textarea,\n#ollamaManualPanel textarea,\n#mimoManualPanel input,\n#mimoManualPanel textarea,\n#kimiManualPanel input,\n#copilotManualDetails input\s*\{[\s\S]*?font-family: monospace;/);
 });
 
 test('Copilot account panel provides GitHub sign-in plus manual token fallback', () => {
@@ -524,11 +524,19 @@ test('Copilot account panel provides GitHub sign-in plus manual token fallback',
   assert.match(flowBody, /return current && incoming === current;/);
 });
 
-test('Z.ai, Volcengine, and Qoder account panels are exposed in settings', () => {
+test('Z.ai, Volcengine, Qoder, and Ollama account panels are exposed in settings', () => {
   const html = readRendererFile('index.html');
   assert.match(html, /<div id="zaiAccountGroup"[\s\S]*?<select id="zaiApiRegionInput">[\s\S]*?<input id="zaiApiKeyInput" type="password"[\s\S]*?<button id="zaiApiKeySubmit"[\s\S]*data-i18n="settings\.zai\.saveApiKey">/);
   assert.match(html, /<div id="volcengineAccountGroup"[\s\S]*?data-i18n="settings\.volcengine\.accessKeyId">API key \/ Access key ID[\s\S]*?<input id="volcengineAccessKeyInput" type="password"[\s\S]*placeholder="ark-\.\.\. or AKLT\.\.\."[\s\S]*?<input id="volcengineSecretAccessKeyInput" type="password"[\s\S]*?<input id="volcengineRegionInput" type="text"[\s\S]*?<button id="volcengineCredentialsSubmit"[\s\S]*data-i18n="settings\.volcengine\.saveCredentials">/);
   assert.match(html, /<div id="qoderAccountGroup"[\s\S]*?<select id="qoderSiteInput">[\s\S]*?<textarea id="qoderCookieInput"[\s\S]*?<button id="qoderCookieSubmit"[\s\S]*data-i18n="settings\.qoder\.saveCookie">/);
+  assert.match(html, /<div id="ollamaAccountGroup"[\s\S]*?<textarea id="ollamaCookieInput"[\s\S]*?<button id="ollamaCookieSubmit"[\s\S]*data-i18n="settings\.ollama\.saveCookie">/);
+  const ollamaDetails = html.match(/<div id="ollamaSettingsDetails"[\s\S]*?<div id="ollamaErrorMessage" class="settings-note error hidden"><\/div>/)?.[0] || '';
+  assert.match(ollamaDetails, /<strong>1\.<\/strong> <span data-i18n="settings\.ollama\.step1">/);
+  assert.match(ollamaDetails, /<strong>2\.<\/strong> <span data-i18n="settings\.ollama\.step2">/);
+  assert.match(ollamaDetails, /<strong>3\.<\/strong> <span data-i18n="settings\.ollama\.step3">/);
+  assert.match(ollamaDetails, /<strong>4\.<\/strong> <span data-i18n="settings\.ollama\.step4">/);
+  assert.match(ollamaDetails, /placeholder="wos-session=\.\.\."/);
+  assert.doesNotMatch(ollamaDetails, /settings\.ollama\.note/);
   const qoderDetails = html.match(/<div id="qoderSettingsDetails"[\s\S]*?<div id="qoderErrorMessage" class="settings-note error hidden"><\/div>/)?.[0] || '';
   assert.match(qoderDetails, /<strong>1\.<\/strong> <span data-i18n="settings\.qoder\.step1Before">[\s\S]*?<code id="qoderUsagePageHint">qoder\.com\/account\/usage<\/code>[\s\S]*?<span data-i18n="settings\.qoder\.step1After">/);
   assert.doesNotMatch(qoderDetails, /<\/code>\s*\/\s*<code>qoder\.com\.cn\/account\/usage<\/code>/);
@@ -550,6 +558,26 @@ test('Z.ai, Volcengine, and Qoder account panels are exposed in settings', () =>
   assert.match(setupBody, /window\.tokenMonitor\.openExternal\(zaiPlatformUrl\(\)\)/);
   assert.match(setupBody, /window\.tokenMonitor\.openExternal\(volcenginePlatformUrl\(\)\)/);
   assert.match(setupBody, /window\.tokenMonitor\.openExternal\(qoderPlatformUrl\(\)\)/);
+  assert.match(setupBody, /ollamaCookie: input\.value/);
+  assert.match(setupBody, /const validation = await window\.tokenMonitor\.ollama\.validateCookie\(input\.value\);/);
+  assert.match(setupBody, /if \(!validation\?\.ok\) \{[\s\S]*?clearExternalProviderCheckPending\('ollama'\);[\s\S]*?ollamaValidationError\(validation\);[\s\S]*?return;/);
+  assert.match(setupBody, /limitProviders: limitProviderSelectionIncluding\('ollama'\)/);
+  assert.match(setupBody, /limitsEnabled: true/);
+  assert.match(setupBody, /clearExternalProviderCheckPending\('ollama'\);/);
+  assert.match(setupBody, /window\.tokenMonitor\.openExternal\(ollamaPlatformUrl\(\)\)/);
+
+  const preload = fs.readFileSync(path.join(rendererDir, '..', 'preload.js'), 'utf8');
+  assert.match(preload, /validateCookie: \(cookie\) => ipcRenderer\.invoke\('ollama:validateCookie', cookie\)/);
+
+  const main = fs.readFileSync(path.join(rendererDir, '..', 'main.js'), 'utf8');
+  const validationHandler = main.slice(
+    main.indexOf("ipcMain.handle('ollama:validateCookie'"),
+    main.indexOf("ipcMain.handle('opencode:saveCookie'")
+  );
+  assert.match(validationHandler, /const cookie = normalizeOllamaCookie\(raw\);/);
+  assert.match(validationHandler, /await fetchOllamaLimits\(\{ ollamaCookie: cookie \}, \{ bypassValidationCache: true \}\)/);
+  assert.match(validationHandler, /rememberOllamaValidation\(cookie, provider\);/);
+  assert.match(validationHandler, /return \{ ok: provider\.status === 'ok', status: provider\.status \};/);
 
   const qoderSiteBody = functionBody(app, 'selectedQoderSite', 'qoderUsagePagePath');
   assert.match(qoderSiteBody, /document\.getElementById\('qoderSiteInput'\)\?\.value/);
@@ -584,6 +612,7 @@ test('Kimi account panel opens the allowlisted Code console', () => {
   const main = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'electron', 'main.js'), 'utf8');
   const allowlist = functionBody(main, 'isAllowedExternalUrl', 'revealWindow');
   assert.match(allowlist, /parsed\.hostname === 'kimi\.com' \|\| parsed\.hostname === 'www\.kimi\.com'/);
+  assert.match(allowlist, /parsed\.hostname === 'ollama\.com' \|\| parsed\.hostname === 'www\.ollama\.com'/);
   assert.match(allowlist, /parsed\.pathname\.startsWith\('\/code'\)/);
 });
 
@@ -895,6 +924,7 @@ test('main collectors pass GUI limit credentials in every widget mode', () => {
     assert.match(collector, /volcengineRegion: settings\.volcengineRegion \|\| ''/);
     assert.match(collector, /qoderCookie: settings\.qoderCookie \|\| ''/);
     assert.match(collector, /qoderSite: settings\.qoderSite \|\| 'global'/);
+    assert.match(collector, /ollamaCookie: settings\.ollamaCookie \|\| ''/);
   }
 });
 
