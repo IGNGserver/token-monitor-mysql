@@ -323,6 +323,28 @@ test('Projects view separates visibility from metadata collection', () => {
   assert.match(app, /function onProjectVisibilityToggle/);
 });
 
+test('project identity helpers load before the Projects row renderer', () => {
+  const html = readRendererFile('index.html');
+  const projectKeyIndex = html.indexOf('../../shared/projectKey.js');
+  const projectRowsIndex = html.indexOf('projectRows.js');
+  assert.ok(projectKeyIndex >= 0);
+  assert.ok(projectRowsIndex >= 0);
+  assert.ok(projectKeyIndex < projectRowsIndex);
+});
+
+test('Projects TOTAL view explains an incomplete cross-device breakdown', () => {
+  const app = readRendererFile('app.js');
+  const css = readRendererFile('styles.css');
+  assert.match(app, /projectRowsApi\.projectBreakdownIncomplete\(state\.stats, state\.period\)/);
+  assert.match(app, /hint\.className = 'project-incomplete-hint'/);
+  assert.doesNotMatch(app, /hint\.dataset\.key/);
+  assert.match(app, /children\.filter\(\(child\) => child !== existingHint\)/);
+  assert.match(app, /JSON\.stringify\(\[state\.breakdown, hintText, rows\.map\(\(row\) => row\.key\)\]\)/);
+  assert.match(app, /hint\.setAttribute\('role', 'status'\)/);
+  assert.match(app, /t\('projects\.incomplete'\)/);
+  assert.match(cssRule(css, '.project-incomplete-hint'), /color:\s*var\(--muted\)/);
+});
+
 test('project rows use a fuller icon without changing the navigation icon', () => {
   const css = readRendererFile('styles.css');
   assert.match(css, /\.view-icon-project\s*\{[^}]*icons\/views\/project\.svg/);

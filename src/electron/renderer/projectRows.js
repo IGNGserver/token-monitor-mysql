@@ -1,10 +1,19 @@
 'use strict';
 
 (function exposeProjectRows(root, factory) {
-  const api = factory();
+  const projectKeyApi = typeof module === 'object' && module.exports
+    ? require('../../shared/projectKey')
+    : root?.TokenMonitorProjectKey;
+  const api = factory(projectKeyApi);
   if (typeof module === 'object' && module.exports) module.exports = api;
   if (root) root.TokenMonitorProjectRows = api;
-})(typeof window !== 'undefined' ? window : null, function createProjectRowsApi() {
+})(typeof window !== 'undefined' ? window : null, function createProjectRowsApi(projectKeyApi) {
+  const { canonicalProjectKey, deterministicProjectLabel } = projectKeyApi;
+
+  function projectBreakdownIncomplete(stats, period) {
+    return period === 'allTime' && stats?.projectsIncomplete === true;
+  }
+
   function clientGradient(clients, colorFor, fallbackColor = '#73bdf5') {
     const entries = Object.entries(clients || {})
       .map(([client, value]) => ({ client, value: Math.max(0, Number(value || 0)) }))
@@ -30,18 +39,43 @@
 
   function projectRowsForPeriod(period, options = {}) {
     const projects = new Map();
-    for (const session of Object.values(period?.sessions || {})) {
-      const key = String(session?.projectId || '').trim();
-      const label = String(session?.projectLabel || '').trim();
-      if (!key || !label) continue;
-      if (!projects.has(key)) projects.set(key, { key, name: label, value: 0, cost: 0, clients: new Set(), clientTokens: Object.create(null) });
-      const project = projects.get(key);
-      const sessionTokens = Math.max(0, Number(session.totalTokens || 0));
-      project.value += sessionTokens;
-      project.cost += Number(session.costUsd || 0);
-      if (session.client) {
-        project.clients.add(session.client);
-        project.clientTokens[session.client] = (project.clientTokens[session.client] || 0) + sessionTokens;
+    const rollupEntries = Object.entries(period?.projects || {});
+    if (rollupEntries.length > 0) {
+      for (const [rawKey, entry] of rollupEntries) {
+        if (!entry || typeof entry !== 'object') continue;
+        const name = String(entry.label || rawKey || '').trim().normalize('NFC');
+        const key = canonicalProjectKey(name || rawKey);
+        if (!key || !name) continue;
+        const clientTokens = Object.create(null);
+        for (const [client, value] of Object.entries(entry.clients || {})) {
+          const tokens = Math.max(0, Number(value || 0));
+          if (tokens > 0) clientTokens[client] = tokens;
+        }
+        if (!projects.has(key)) projects.set(key, { key, name, value: 0, cost: 0, clients: new Set(), clientTokens: Object.create(null) });
+        const project = projects.get(key);
+        project.name = deterministicProjectLabel(project.name, name);
+        project.value += Math.max(0, Number(entry.tokens || 0));
+        project.cost += Number(entry.costUsd || 0);
+        for (const [client, tokens] of Object.entries(clientTokens)) {
+          project.clients.add(client);
+          project.clientTokens[client] = (Object.prototype.hasOwnProperty.call(project.clientTokens, client) ? project.clientTokens[client] : 0) + tokens;
+        }
+      }
+    } else {
+      for (const session of Object.values(period?.sessions || {})) {
+        const label = String(session?.projectLabel || '').trim().normalize('NFC');
+        const key = canonicalProjectKey(label);
+        if (!key || !label) continue;
+        if (!projects.has(key)) projects.set(key, { key, name: label, value: 0, cost: 0, clients: new Set(), clientTokens: Object.create(null) });
+        const project = projects.get(key);
+        project.name = deterministicProjectLabel(project.name, label);
+        const sessionTokens = Math.max(0, Number(session.totalTokens || 0));
+        project.value += sessionTokens;
+        project.cost += Number(session.costUsd || 0);
+        if (session.client) {
+          project.clients.add(session.client);
+          project.clientTokens[session.client] = (Object.prototype.hasOwnProperty.call(project.clientTokens, session.client) ? project.clientTokens[session.client] : 0) + sessionTokens;
+        }
       }
     }
     return Array.from(projects.values()).map((project) => {
@@ -77,5 +111,5 @@
     }).sort((a, b) => b.cost - a.cost || b.value - a.value || a.name.localeCompare(b.name));
   }
 
-  return { clientGradient, projectRowsForPeriod };
+  return { canonicalProjectKey, clientGradient, projectBreakdownIncomplete, projectRowsForPeriod };
 });
