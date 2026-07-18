@@ -1976,7 +1976,7 @@ html.is-windows .settings-panel select option {
 }
 .breakdown.hidden { display: none; }
 .breakdown::-webkit-scrollbar { width: 0; height: 0; }
-.project-incomplete-hint {
+.breakdown-incomplete-hint {
   margin: 0;
   padding: 0 2px 1px;
   color: var(--muted);

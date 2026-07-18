@@ -1419,8 +1419,8 @@ function applyHomeListMark(mark, iconKind, color) {
   mark.style.background = color;
 }
 
-function renderRows(rows, { showProjectIncompleteHint = false } = {}) {
-  if (rows.length === 0 && !showProjectIncompleteHint) {
+function renderRows(rows, { incompleteHint = '' } = {}) {
+  if (rows.length === 0 && !incompleteHint) {
     els.breakdown.replaceChildren();
     state.rowSignature = '';
     return;
@@ -1429,16 +1429,16 @@ function renderRows(rows, { showProjectIncompleteHint = false } = {}) {
   const liveMotionSnapshot = !state.periodMotionActive && !state.animateBarsFromZero
     ? captureBreakdownMotion()
     : null;
-  const hintText = showProjectIncompleteHint ? t('projects.incomplete') : '';
+  const hintText = incompleteHint ? t(incompleteHint) : '';
   const signature = JSON.stringify([state.breakdown, hintText, rows.map((row) => row.key)]);
   const children = Array.from(els.breakdown.children);
-  const existingHint = children.find((child) => child.classList.contains('project-incomplete-hint'));
+  const existingHint = children.find((child) => child.classList.contains('breakdown-incomplete-hint'));
   const existing = new Map(children.filter((child) => child !== existingHint).map((child) => [child.dataset.key, child]));
   if (signature !== state.rowSignature) {
     const nodes = rows.map((row) => existing.get(row.key) || rowTemplate(row));
-    if (showProjectIncompleteHint) {
+    if (incompleteHint) {
       const hint = existingHint || document.createElement('p');
-      hint.className = 'project-incomplete-hint';
+      hint.className = 'breakdown-incomplete-hint';
       hint.setAttribute('role', 'status');
       hint.textContent = hintText;
       nodes.unshift(hint);
@@ -1447,7 +1447,7 @@ function renderRows(rows, { showProjectIncompleteHint = false } = {}) {
     state.rowSignature = signature;
   }
   const current = new Map(Array.from(els.breakdown.children)
-    .filter((child) => !child.classList.contains('project-incomplete-hint'))
+    .filter((child) => !child.classList.contains('breakdown-incomplete-hint'))
     .map((child) => [child.dataset.key, child]));
   for (const rowData of rows) {
     const row = current.get(rowData.key);
@@ -4041,10 +4041,13 @@ function render() {
     els.trendsPanel.classList.add('hidden');
     els.breakdown.classList.remove('hidden');
     const rows = rowsForPeriod(period);
-    renderRows(rows, {
-      showProjectIncompleteHint: state.breakdown === 'project'
-        && projectRowsApi.projectBreakdownIncomplete(state.stats, state.period)
-    });
+    let incompleteHint = '';
+    if (state.breakdown === 'project' && projectRowsApi.projectBreakdownIncomplete(state.stats, state.period)) {
+      incompleteHint = 'projects.incomplete';
+    } else if (state.breakdown === 'session' && sessionRowsApi.sessionBreakdownIncomplete(state.stats, state.period)) {
+      incompleteHint = 'sessions.incomplete';
+    }
+    renderRows(rows, { incompleteHint });
   }
   
   renderFloatingBubbleContent();
