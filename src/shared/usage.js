@@ -612,7 +612,7 @@ function extractUsageFromTokscale(json) {
   return period;
 }
 
-function normalizeSessionDetailsOmitted(value) {
+function normalizePeriodOmissionCounts(value) {
   if (!value || typeof value !== 'object') return null;
   const normalized = {};
   for (const periodName of ['today', 'month']) {
@@ -642,8 +642,12 @@ function normalizeDeviceRecord(record) {
   if (hasOwn(record, 'allTimeProjectsOmitted')) normalized.allTimeProjectsOmitted = record.allTimeProjectsOmitted === true;
   if (hasOwn(record, 'allTimeProjectsIncomplete')) normalized.allTimeProjectsIncomplete = record.allTimeProjectsIncomplete === true;
   if (hasOwn(record, 'sessionDetailsOmitted')) {
-    const omitted = normalizeSessionDetailsOmitted(record.sessionDetailsOmitted);
+    const omitted = normalizePeriodOmissionCounts(record.sessionDetailsOmitted);
     if (omitted) normalized.sessionDetailsOmitted = omitted;
+  }
+  if (hasOwn(record, 'periodProjectsOmitted')) {
+    const omitted = normalizePeriodOmissionCounts(record.periodProjectsOmitted);
+    if (omitted) normalized.periodProjectsOmitted = omitted;
   }
   if (hasOwn(record, 'syncUploadIntervalMs')) normalized.syncUploadIntervalMs = normalizeSyncUploadIntervalMs(record.syncUploadIntervalMs);
   if (hasOwn(record, 'history')) normalized.history = coerceHistory(record.history);
@@ -802,6 +806,7 @@ function mergeDeviceRecord(existing, incoming) {
     if (hasOwn(normalizedExisting, 'allTimeProjectsOmitted')) normalizedIncoming.allTimeProjectsOmitted = normalizedExisting.allTimeProjectsOmitted;
     if (hasOwn(normalizedExisting, 'allTimeProjectsIncomplete')) normalizedIncoming.allTimeProjectsIncomplete = normalizedExisting.allTimeProjectsIncomplete;
     if (hasOwn(normalizedExisting, 'sessionDetailsOmitted')) normalizedIncoming.sessionDetailsOmitted = normalizedExisting.sessionDetailsOmitted;
+    if (hasOwn(normalizedExisting, 'periodProjectsOmitted')) normalizedIncoming.periodProjectsOmitted = normalizedExisting.periodProjectsOmitted;
     if (!hasOwn(normalizedIncoming, 'syncUploadIntervalMs') && hasOwn(normalizedExisting, 'syncUploadIntervalMs')) {
       normalizedIncoming.syncUploadIntervalMs = normalizedExisting.syncUploadIntervalMs;
     }
@@ -916,6 +921,7 @@ function isPeriodExpired(record, periodName, nowMs) {
 function aggregateDevices(devices, staleAfterMs, nowMs = Date.now()) {
   const aggregate = { updatedAt: new Date().toISOString(), periods: {}, devices: [], projectsIncomplete: false };
   const sessionDetailsOmitted = {};
+  const periodProjectsOmitted = {};
   for (const periodName of PERIODS) aggregate.periods[periodName] = emptyPeriod();
   const now = nowMs;
   for (const record of devices) {
@@ -940,6 +946,7 @@ function aggregateDevices(devices, staleAfterMs, nowMs = Date.now()) {
       ...(hasOwn(normalized, 'allTimeProjectsOmitted') ? { allTimeProjectsOmitted: normalized.allTimeProjectsOmitted } : {}),
       ...(hasOwn(normalized, 'allTimeProjectsIncomplete') ? { allTimeProjectsIncomplete: normalized.allTimeProjectsIncomplete } : {}),
       ...(hasOwn(normalized, 'sessionDetailsOmitted') ? { sessionDetailsOmitted: normalized.sessionDetailsOmitted } : {}),
+      ...(hasOwn(normalized, 'periodProjectsOmitted') ? { periodProjectsOmitted: normalized.periodProjectsOmitted } : {}),
       ...(hasOwn(normalized, 'syncUploadIntervalMs') ? { syncUploadIntervalMs: normalized.syncUploadIntervalMs } : {}),
       ...(hasOwn(normalized, 'periodWindows') ? { periodWindows: normalized.periodWindows } : {}),
       periods: normalized.periods,
@@ -954,6 +961,10 @@ function aggregateDevices(devices, staleAfterMs, nowMs = Date.now()) {
       if (isPeriodExpired(normalized, periodName, now)) continue;
       sessionDetailsOmitted[periodName] = (sessionDetailsOmitted[periodName] || 0) + count;
     }
+    for (const [periodName, count] of Object.entries(normalized.periodProjectsOmitted || {})) {
+      if (isPeriodExpired(normalized, periodName, now)) continue;
+      periodProjectsOmitted[periodName] = (periodProjectsOmitted[periodName] || 0) + count;
+    }
     for (const periodName of PERIODS) {
       if (isPeriodExpired(normalized, periodName, now)) continue;
       addPeriodInto(aggregate.periods[periodName], normalizePeriod(normalized.periods[periodName]));
@@ -961,6 +972,7 @@ function aggregateDevices(devices, staleAfterMs, nowMs = Date.now()) {
   }
   aggregate.limits = aggregateLimits(aggregate.devices, staleAfterMs, now);
   if (Object.keys(sessionDetailsOmitted).length > 0) aggregate.sessionDetailsOmitted = sessionDetailsOmitted;
+  if (Object.keys(periodProjectsOmitted).length > 0) aggregate.periodProjectsOmitted = periodProjectsOmitted;
   aggregate.devices.sort((a, b) => a.deviceId.localeCompare(b.deviceId));
   for (const periodName of PERIODS) {
     aggregate.periods[periodName].totalTokens = Math.round(aggregate.periods[periodName].totalTokens);

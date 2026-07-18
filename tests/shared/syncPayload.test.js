@@ -230,6 +230,32 @@ test('bounded session detail keeps project metadata private when tracking is dis
   assert.equal(summary.month.sessions['codex:s0'].projectLabel, 'Private App');
 });
 
+test('serializeSyncPayload omits an oversized period project rollup as a final fallback', () => {
+  const sessions = Object.fromEntries(Array.from({ length: 20 }, (_, index) => [
+    `codex:s${index}`,
+    { client: 'codex', sessionId: `s${index}`, totalTokens: 100, lastUsedAt: `2026-07-${String(index + 1).padStart(2, '0')}T00:00:00.000Z`, projectId: `sha256:p${index}`, projectLabel: `Project ${index}` }
+  ]));
+  const projects = Object.fromEntries(Array.from({ length: 30 }, (_, index) => [
+    `project-${index}`,
+    { label: `Project ${index} ${'x'.repeat(256)}`, tokens: 100, costUsd: 0.1, clients: { codex: 100 } }
+  ]));
+  const summary = {
+    deviceId: 'many-projects',
+    month: { totalTokens: 2000, costUsd: 2, clients: { codex: 2000 }, sessions, projects },
+    allTime: { totalTokens: 2000 }
+  };
+
+  const { payload, bytes } = serializeSyncPayload(summary, { maxBytes: 2200 });
+
+  assert.ok(bytes <= 2200, `expected ${bytes} bytes to fit the test budget`);
+  assert.equal(payload.month.totalTokens, 2000);
+  assert.equal(payload.month.costUsd, 2);
+  assert.equal(Object.hasOwn(payload.month, 'projects'), false);
+  assert.equal(payload.periodProjectsOmitted.month, 30);
+  assert.ok(payload.sessionDetailsOmitted.month > 0);
+  assert.equal(Object.keys(summary.month.projects).length, 30);
+});
+
 test('postSyncPayload reports omitted session detail without changing period totals', async () => {
   const sessions = Object.fromEntries(Array.from({ length: 2600 }, (_, index) => [
     `claude:s${index}`,

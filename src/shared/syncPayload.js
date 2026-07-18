@@ -43,17 +43,16 @@ function setSessionOmission(payload, periodName, omitted) {
   else delete payload.sessionDetailsOmitted;
 }
 
-function fitPeriodSessions(payload, summary, periodName, maxBytes) {
-  const period = payload?.[periodName];
-  const entries = recentSessionEntries(period?.sessions);
-  if (!period || entries.length === 0) return;
+function setPeriodProjectOmission(payload, periodName, omitted) {
+  const next = { ...(payload.periodProjectsOmitted || {}) };
+  if (omitted > 0) next[periodName] = omitted;
+  else delete next[periodName];
+  if (Object.keys(next).length > 0) payload.periodProjectsOmitted = next;
+  else delete payload.periodProjectsOmitted;
+}
 
-  // Once session detail becomes partial, carry the authoritative project rollup
-  // instead of asking the hub to rebuild an incomplete one from the retained rows.
-  if (summary.projectsEnabled !== false && summary?.[periodName]?.projects && typeof summary[periodName].projects === 'object') {
-    period.projects = summary[periodName].projects;
-  }
-
+function fitRecentSessionEntries(payload, periodName, entries, maxBytes) {
+  const period = payload[periodName];
   let low = 0;
   let high = entries.length;
   while (low < high) {
@@ -65,6 +64,26 @@ function fitPeriodSessions(payload, summary, periodName, maxBytes) {
   }
   period.sessions = Object.fromEntries(entries.slice(0, low));
   setSessionOmission(payload, periodName, entries.length - low);
+}
+
+function fitPeriodSessions(payload, summary, periodName, maxBytes) {
+  const period = payload?.[periodName];
+  const entries = recentSessionEntries(period?.sessions);
+  if (!period || entries.length === 0) return;
+
+  // Once session detail becomes partial, carry the authoritative project rollup
+  // instead of asking the hub to rebuild an incomplete one from the retained rows.
+  if (summary.projectsEnabled !== false && summary?.[periodName]?.projects && typeof summary[periodName].projects === 'object') {
+    period.projects = summary[periodName].projects;
+  }
+
+  fitRecentSessionEntries(payload, periodName, entries, maxBytes);
+  if (jsonBytes(payload) > maxBytes && projectEntries(period) > 0) {
+    const omittedProjects = projectEntries(period);
+    delete period.projects;
+    setPeriodProjectOmission(payload, periodName, omittedProjects);
+    fitRecentSessionEntries(payload, periodName, entries, maxBytes);
+  }
 }
 
 function sessionsWithoutProjectMetadata(sessions) {
@@ -91,6 +110,7 @@ function buildSyncPayload(summary, { omitAllTimeProjects = false } = {}) {
   delete payload.allTimeProjectsOmitted;
   delete payload.allTimeProjectsIncomplete;
   delete payload.sessionDetailsOmitted;
+  delete payload.periodProjectsOmitted;
 
   for (const periodName of ['today', 'month']) {
     const period = summary[periodName];
@@ -156,6 +176,12 @@ async function postSyncPayload(fetchFn, url, { headers = {}, summary, logger } =
       .map(([period, count]) => `${period}: ${count}`)
       .join(', ');
     logger(`session detail omitted for sync (${omitted}); payload reduced to ${serialized.bytes} bytes (budget ${SYNC_PAYLOAD_BUDGET_BYTES})`);
+  }
+  if (serialized.payload?.periodProjectsOmitted && typeof logger === 'function') {
+    const omitted = Object.entries(serialized.payload.periodProjectsOmitted)
+      .map(([period, count]) => `${period}: ${count}`)
+      .join(', ');
+    logger(`project detail omitted for sync (${omitted}); payload reduced to ${serialized.bytes} bytes (budget ${SYNC_PAYLOAD_BUDGET_BYTES})`);
   }
   let response = await fetchFn(url, { method: 'POST', headers, body: serialized.body });
   const canRetryWithoutProjects = response.status === 413
