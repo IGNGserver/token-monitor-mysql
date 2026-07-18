@@ -189,6 +189,18 @@ npm run pack       # unpacked app dir (no installer), for quick local testing
 
 Output lands in `dist/`. Windows and Linux use the matching `dist:*` script above on the target OS. Packaging the macOS release build requires a local Developer ID Application signing identity; use `npm start` for local development or unsupported platforms.
 
+### Android client
+
+The native Android client lives in [`android/`](android/). Open that directory in Android Studio, or build it with a local Android SDK:
+
+```bash
+cd android
+./gradlew assembleDebug
+./gradlew test
+```
+
+It uses Kotlin, Jetpack Compose Material 3, Hilt, Retrofit/kotlinx.serialization, and OkHttp SSE to connect to the existing Hub; it does not collect local usage or write event records. Session details deliberately show only the current `/api/stats` snapshot because the Hub does not yet expose a time-range query for an individual session's append-only event history. A dedicated Hub session-history endpoint is required before the Android client can render that finer-grained trend.
+
 ### MySQL hub tests
 
 The normal `npm test` suite runs fast unit coverage without a database. For the MySQL integration test, configure the `MYSQL_TEST_*` values in `.env`, then run:
