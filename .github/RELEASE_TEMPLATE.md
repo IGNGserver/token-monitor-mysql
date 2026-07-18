@@ -1,6 +1,6 @@
 # English
 
-**Open-source build.** macOS is signed and notarized; Windows is unsigned (SmartScreen may appear); Linux AppImages need executable permission — see notes below.
+**Open-source build.** macOS is signed and notarized; both Windows builds are signed under our [Code signing policy](https://github.com/Javis603/token-monitor/blob/main/docs/code-signing.md) (certificate by SignPath Foundation); Linux AppImages need executable permission — see notes below.
 
 ## What's changed
 
@@ -30,7 +30,7 @@
 
 **macOS:** open the `.dmg`, drag Token Monitor to Applications.
 
-**Windows:** SmartScreen → More info → Run anyway.
+**Windows:** both executables are signed, but you may still see a brief SmartScreen prompt on the first few releases while the certificate builds reputation with Microsoft — More info → Run anyway.
 
 **Linux:** mark the AppImage executable, then run it:
 
@@ -55,7 +55,7 @@ open-source: https://github.com/junhoyeo/tokscale
 
 # 中文
 
-**这是开源构建。** macOS 已签名并 notarize；Windows 尚未签名（可能跳出 SmartScreen）；Linux AppImage 需要先赋予执行权限，说明见下方。
+**这是开源构建。** macOS 已签名并 notarize；Windows 安装版与便携版均已根据我们的[代码签名政策](https://github.com/Javis603/token-monitor/blob/main/docs/code-signing.md)签名（证书由 SignPath Foundation 提供）；Linux AppImage 需要先赋予执行权限，说明见下方。
 
 ## 更新内容
 
@@ -85,7 +85,7 @@ open-source: https://github.com/junhoyeo/tokscale
 
 **macOS：** 打开 `.dmg`，把 Token Monitor 拖到 Applications。
 
-**Windows：** SmartScreen → 更多信息 → 仍要运行。
+**Windows：** 两个可执行文件均已签名，但在证书刚建立信誉的最初几个版本，仍可能短暂出现 SmartScreen 提示 → 更多信息 → 仍要运行。
 
 **Linux：** 先给 AppImage 执行权限，然后运行：
 

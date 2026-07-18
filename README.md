@@ -107,7 +107,7 @@ Most usage monitors are useful on the machine they run on. Token Monitor is buil
 Download from [GitHub Releases](https://github.com/Javis603/token-monitor/releases).
 
 - **macOS (Apple Silicon)** — `.dmg`, signed and notarized
-- **Windows 10/11** — setup `.exe`; signing is being prepared, so SmartScreen may appear
+- **Windows 10/11** — setup and portable `.exe`, signed via [SignPath Foundation](docs/code-signing.md)
 - **Linux x64** — `.AppImage`
 
 Packaged builds check GitHub Releases automatically. When an update is available, the app shows an update indicator; supported platforms can also install from Settings → General.
@@ -249,6 +249,21 @@ npm run agent -- --clients=claude,codex,opencode --once
 
 ## Privacy
 
+Token Monitor processes usage logs locally and does not include analytics or
+telemetry that reports usage to the project maintainer. It makes outbound
+requests only for product features described in the app or documentation:
+
+- packaged builds automatically check GitHub Releases for updates
+- exchange-rate and public service-status views fetch their public data sources
+- enabled AI Tool Limits providers contact that provider's API; credentials are
+  sent only to the corresponding provider
+- multi-device sync sends summary data to the hub URL configured by the operator
+
+Those services process requests under their own privacy policies, including the
+[GitHub Privacy Statement](https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement)
+for update checks. Review the applicable provider's privacy policy before
+enabling provider-backed account or quota checks.
+
 The hub and agent only transmit summary fields:
 
 - device id, hostname, platform
@@ -286,6 +301,7 @@ Issues and PRs are welcome. Project conventions, architecture notes, and the com
 
 - [tokscale](https://github.com/junhoyeo/tokscale) for log parsing and token accounting.
 - [CodexBar](https://github.com/steipete/CodexBar) for AI Tool Limits research.
+- [SignPath Foundation](https://signpath.org/) for the free Windows code-signing certificate — see our [code signing policy](docs/code-signing.md).
 
 ## License
 
