@@ -28,6 +28,8 @@
 
 A desktop widget that shows live token usage and AI Tool Limits across various AI coding tools (Claude Code, Codex, Hermes Agent, OpenCode, OpenClaw, Cursor, Antigravity, Cline, and more) with real-time multi-device sync, historical usage trends, and breakdowns by tool, device, model, or session.
 
+> This repository is forked from [Javis603/token-monitor](https://github.com/Javis603/token-monitor) and remains distributed under the original [MIT License](LICENSE). The original tokscale and CodexBar acknowledgments are retained below.
+
 ## Supported Tools
 
 Token Monitor supports token usage, account-limit checks, and session details separately:
@@ -120,20 +122,28 @@ Local mode is the default: launch the app and it starts tracking this device. No
 
 Pick ONE hub backend that all your devices (and any headless agents) connect to. On each device, open the widget and pick a mode under Settings → Multi-device Sync. The widget contributes this device's usage automatically; run `npm run agent` only on machines without a widget.
 
-#### Option A — Host the hub from the widget (easiest, no CLI)
+#### Option A — Host the hub from the widget (requires reachable MySQL)
 
-In the widget on one always-on machine, open Settings → Multi-device Sync and pick **Host hub on this device**. The widget generates a random secret and lists the LAN URLs other devices can connect to (Tailscale or ZeroTier addresses appear here too). On every other device, pick **Connect to a hub** and paste the URL + secret.
+In the widget on one always-on machine, configure the same `MYSQL_*` connection values that the Node hub uses, then open Settings → Multi-device Sync and pick **Host hub on this device**. The widget generates a random secret and lists the LAN URLs other devices can connect to (Tailscale or ZeroTier addresses appear here too). On every other device, pick **Connect to a hub** and paste the URL + secret. For a standalone deployment, the Compose option below is the recommended path.
 
 The hub runs while Token Monitor is running — quitting (not just closing the window) stops it for all connected devices.
 
-#### Option B — Self-hosted Node hub (always-on headless machine)
+#### Option B — Self-hosted MySQL hub (always-on headless machine)
 
 ```bash
 # on the always-on machine
 cp .env.example .env
-# set TOKEN_MONITOR_SECRET to something private, then:
-npm run hub
+# Set TOKEN_MONITOR_SECRET, MYSQL_PASSWORD, and MYSQL_ROOT_PASSWORD to unique strong values, then:
+docker compose up -d --build
 ```
+
+The Compose stack runs MySQL 8.4 and the Node Hub, applies the versioned SQL migrations before the hub listens, and exposes port `17321` by default (`TOKEN_MONITOR_PORT` changes the host port). For a non-container deployment, install dependencies, set the same `MYSQL_*` variables, run `npm run migrate`, then run `npm run hub`.
+
+The MySQL hub stores the latest normalized device snapshot to preserve the existing widget API, alongside an append-only `usage_events` ledger. Each ledger row is the change observed between device snapshots for a client/session/model combination, not an individual AI API request. Synchronized all-time payloads intentionally omit unbounded session maps; those aggregate entries are marked with `snapshot:<client>:<model>` session ids instead of claiming request-level provenance. Events use a MySQL `BIGINT` auto-increment id for efficient ordered audit queries. Events are never updated or removed automatically. Removing a device removes its live snapshot and mutable session rollup, but its historical event rows remain in the database with a null device foreign key.
+
+Schema changes are reviewed SQL files in `migrations/`, applied by the small `npm run migrate` runner and recorded in `schema_migrations`. This keeps the original lightweight Node architecture without adding an ORM while retaining explicit, repeatable schema versions. The price catalog is unique by model because the public Hub route and tokscale's upstream lookup are model-based; an event copies the resolved values instead of referencing the mutable catalog row.
+
+Model prices are configured through the hub API and copied into every event at ingest time. Later price changes do not alter historical event costs. If a model has no configured price, the hub records the payload's tokscale `costUsd` delta with `pricingSource: "payload_fallback"` rather than inventing a zero cost.
 
 #### Option C — Cloudflare Worker hub (across networks, including iPhone)
 
@@ -150,6 +160,8 @@ npx wrangler deploy
 ```
 
 Paste the deployed URL into each device's widget at Settings → Multi-device Sync. See [worker/README.md](worker/README.md) for the iOS widget recipe and endpoint reference, or [docs/API.md](docs/API.md) for the hub HTTP API.
+
+The Cloudflare Worker remains on its existing non-MySQL storage implementation in this branch. It keeps the prior protocol but does not expose the MySQL pricing or event-ledger features.
 
 ## App data
 
@@ -174,6 +186,17 @@ npm run pack       # unpacked app dir (no installer), for quick local testing
 ```
 
 Output lands in `dist/`. Windows and Linux use the matching `dist:*` script above on the target OS. Packaging the macOS release build requires a local Developer ID Application signing identity; use `npm start` for local development or unsupported platforms.
+
+### MySQL hub tests
+
+The normal `npm test` suite runs fast unit coverage without a database. For the MySQL integration test, configure the `MYSQL_TEST_*` values in `.env`, then run:
+
+```bash
+docker compose -f docker-compose.test.yml up -d
+npm run test:mysql
+```
+
+For a full deploy check after `docker compose up -d --build`, export `TOKEN_MONITOR_SECRET` and run `./scripts/smoke-test.sh`. The script posts a representative ingest snapshot, verifies `/api/stats`, writes a manual model price, then asks tokscale for the same model's upstream price.
 
 ## How it works
 

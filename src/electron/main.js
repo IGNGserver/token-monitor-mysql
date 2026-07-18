@@ -1895,7 +1895,7 @@ function startHostCollector() {
     ollamaCookie: settings.ollamaCookie || '',
     codexManagedAccounts: codexManagedAccountsForCollector(),
     mimoManagedAccounts: mimoManagedAccountsForCollector(),
-    onUpdate: (summary) => {
+    onUpdate: async (summary) => {
       if (isExternalAgentActive()) { sessionUsageArchive = null; return; }
       const visibleSummary = summaryWithArchivedClientUsage(summary);
       lastCollectedDevice = { ...visibleSummary, receivedAt: new Date().toISOString() };
@@ -1903,13 +1903,13 @@ function startHostCollector() {
       try {
         const stale = settings.lastPostedDeviceId;
         if (stale && stale !== visibleSummary.deviceId) {
-          embeddedHub.hub.deleteDevice(stale);
+          await embeddedHub.hub.deleteDevice(stale);
         }
         const payload = syncPayload(visibleSummary);
         if (payload.allTimeProjectsOmitted === true) {
           console.log('[host-ingest] all-time project breakdown omitted to reduce the sync snapshot size');
         }
-        embeddedHub.hub.ingest(payload);
+        await embeddedHub.hub.ingest(payload);
         if (settings.lastPostedDeviceId !== visibleSummary.deviceId) {
           settings.lastPostedDeviceId = visibleSummary.deviceId;
           saveSettings();
@@ -1928,7 +1928,7 @@ function stopHostStats() {
   embeddedHubUnsub = null;
 }
 
-function startHostStats() {
+async function startHostStats() {
   stopHostStats();
   if (!embeddedHub) return;
   // Host mode presents the same multi-device hub aggregate as connecting to a
@@ -1943,7 +1943,7 @@ function startHostStats() {
   embeddedHubUnsub = embeddedHub.hub.onStats((stats, reason) => emit(stats, reason || 'hub'));
   // Prime the renderer with the current snapshot so it isn't blank until the
   // first collector tick lands.
-  emit(embeddedHub.hub.getStats(), 'snapshot');
+  emit(await embeddedHub.hub.getStats(), 'snapshot');
 }
 
 // Detection status is about this machine's local files, so stamp the freshly
@@ -2753,7 +2753,7 @@ function startMode() {
         startLocalCollector();
         return;
       }
-      startHostStats();
+      await startHostStats();
       startHostCollector();
       return;
     }
@@ -2855,7 +2855,7 @@ async function fetchStats(options = {}) {
     if (force && syncCollectorHandle && !isExternalAgentActive()) {
       await syncCollectorHandle.tick('manual', tickOptions);
     }
-    return injectLocalDeviceStatus(embeddedHub.hub.getStats());
+    return injectLocalDeviceStatus(await embeddedHub.hub.getStats());
   }
   if (force && syncCollectorHandle && !isExternalAgentActive()) {
     await syncCollectorHandle.tick('manual', tickOptions);
