@@ -50,16 +50,26 @@ function signingInputPaths(names) {
   };
 }
 
+function assertExactTopLevelWindowsArtifacts(distDir, names) {
+  const expected = [names.installer, names.portable].sort();
+  const actual = fs
+    .readdirSync(distDir, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && entry.name.toLowerCase().endsWith('.exe'))
+    .map((entry) => entry.name)
+    .sort();
+
+  if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+    throw new Error(
+      `Top-level Windows artifacts must be exactly ${expected.join(', ')}; found ` +
+        (actual.length ? actual.join(', ') : 'no executable files')
+    );
+  }
+}
+
 function prepareUnsignedWindowsArtifacts({ distDir, inputDir, packageJsonPath }) {
   const names = expectedWindowsArtifacts(packageJsonPath);
   const relativePaths = signingInputPaths(names);
-
-  for (const fileName of [names.installer, names.portable]) {
-    const source = path.join(distDir, fileName);
-    if (!fs.statSync(source, { throwIfNoEntry: false })?.isFile()) {
-      throw new Error(`Expected unsigned Windows artifact is missing: ${source}`);
-    }
-  }
+  assertExactTopLevelWindowsArtifacts(distDir, names);
 
   fs.rmSync(inputDir, { recursive: true, force: true });
   for (const kind of ['installer', 'portable']) {
@@ -172,13 +182,7 @@ async function applySignedWindowsArtifacts({ distDir, signedDir, packageJsonPath
         (actualExePaths.length ? actualExePaths.join(', ') : 'no executable files')
     );
   }
-
-  for (const kind of ['installer', 'portable']) {
-    const target = path.join(distDir, names[kind]);
-    if (!fs.statSync(target, { throwIfNoEntry: false })?.isFile()) {
-      throw new Error(`No unsigned counterpart found for ${names[kind]} in ${distDir}`);
-    }
-  }
+  assertExactTopLevelWindowsArtifacts(distDir, names);
 
   for (const kind of ['installer', 'portable']) {
     const source = path.join(signedDir, ...relativePaths[kind].split('/'));
@@ -259,6 +263,7 @@ if (require.main === module) {
 module.exports = {
   expectedWindowsArtifacts,
   signingInputPaths,
+  assertExactTopLevelWindowsArtifacts,
   prepareUnsignedWindowsArtifacts,
   patchLatestYamlForSignedFile,
   listExeFiles,

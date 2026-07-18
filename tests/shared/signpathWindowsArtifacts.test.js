@@ -108,11 +108,19 @@ test('prepareUnsignedWindowsArtifacts creates a strict two-directory signing inp
   );
 });
 
-test('prepareUnsignedWindowsArtifacts fails when either expected build is absent', (t) => {
+test('prepareUnsignedWindowsArtifacts fails when an expected build is absent', (t) => {
   const fixture = makeFixture(t);
   fs.writeFileSync(path.join(fixture.distDir, INSTALLER), 'unsigned-installer');
 
-  assert.throws(() => prepareUnsignedWindowsArtifacts(fixture), /Expected unsigned Windows artifact is missing/);
+  assert.throws(() => prepareUnsignedWindowsArtifacts(fixture), /Top-level Windows artifacts must be exactly/);
+});
+
+test('prepareUnsignedWindowsArtifacts rejects an extra top-level executable that final upload would publish', (t) => {
+  const fixture = makeFixture(t);
+  writeUnsignedArtifacts(fixture);
+  fs.writeFileSync(path.join(fixture.distDir, 'unexpected-helper.exe'), 'unsigned-extra');
+
+  assert.throws(() => prepareUnsignedWindowsArtifacts(fixture), /unexpected-helper\.exe/);
 });
 
 test('patchLatestYamlForSignedFile updates sha512/size and removes stale blockMapSize', () => {
@@ -188,13 +196,18 @@ test('applySignedWindowsArtifacts rejects missing or extra signed executables be
   assert.equal(fs.readFileSync(path.join(fixture.distDir, PORTABLE), 'utf8'), 'unsigned-portable');
 });
 
-test('applySignedWindowsArtifacts rejects a signed file with no unsigned counterpart', async (t) => {
+test('applySignedWindowsArtifacts rejects a missing or extra top-level release executable', async (t) => {
   const fixture = makeFixture(t);
   writeUnsignedArtifacts(fixture);
   writeSignedArtifacts(fixture);
   fs.rmSync(path.join(fixture.distDir, PORTABLE));
 
-  await assert.rejects(() => applySignedWindowsArtifacts(fixture), /No unsigned counterpart found/);
+  await assert.rejects(() => applySignedWindowsArtifacts(fixture), /Top-level Windows artifacts must be exactly/);
+  assert.equal(fs.readFileSync(path.join(fixture.distDir, INSTALLER), 'utf8'), 'unsigned-installer');
+
+  fs.writeFileSync(path.join(fixture.distDir, PORTABLE), 'unsigned-portable');
+  fs.writeFileSync(path.join(fixture.distDir, 'unexpected-helper.exe'), 'unsigned-extra');
+  await assert.rejects(() => applySignedWindowsArtifacts(fixture), /unexpected-helper\.exe/);
   assert.equal(fs.readFileSync(path.join(fixture.distDir, INSTALLER), 'utf8'), 'unsigned-installer');
 });
 
