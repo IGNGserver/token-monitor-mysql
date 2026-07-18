@@ -99,8 +99,19 @@ function snapshotCandidates(period, updatedAt) {
       if (modelTokens === 0) continue;
       const modelTotal = Math.max(modelTokens, nonNegativeInteger(period.models?.[model]));
       const fraction = modelTotal > 0 ? modelTokens / modelTotal : 1;
-      const modelCost = period.clientModelCosts?.[client]?.[model]
-        ?? (number(period.modelCosts?.[model]) * fraction);
+      const tokenComponents = components({
+        totalTokens: modelTotal,
+        outputTokens: period.modelOutputs?.[model],
+        cacheReadTokens: period.modelCacheReads?.[model],
+        cacheWriteTokens: period.modelCacheWrites?.[model],
+        costUsd: period.modelCosts?.[model]
+      }, fraction);
+      // clientModelCosts is already scoped to this client+model. Passing it
+      // through components() would apply the client share a second time.
+      tokenComponents.payloadCostUsd = Math.max(0, number(
+        period.clientModelCosts?.[client]?.[model]
+          ?? (number(period.modelCosts?.[model]) * fraction)
+      ));
       candidates.push({
         client,
         sessionId: `snapshot:${client}:${model}`,
@@ -110,13 +121,7 @@ function snapshotCandidates(period, updatedAt) {
         projectLabel: null,
         startedAt: normalizedTimestamp(updatedAt),
         recordedAt: normalizedTimestamp(updatedAt),
-        ...components({
-          totalTokens: modelTotal,
-          outputTokens: period.modelOutputs?.[model],
-          cacheReadTokens: period.modelCacheReads?.[model],
-          cacheWriteTokens: period.modelCacheWrites?.[model],
-          costUsd: modelCost
-        }, fraction)
+        ...tokenComponents
       });
     }
   }

@@ -11,6 +11,26 @@ function createMemoryHub(options = {}) {
   return { repository, hub: createHub({ port: 0, host: '127.0.0.1', secret: '', repository, logger: { error() {}, warn() {} }, ...options }) };
 }
 
+async function readUntil(reader, predicate, timeoutMs = 1000) {
+  const decoder = new TextDecoder();
+  let text = '';
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const remaining = Math.max(1, deadline - Date.now());
+    const result = await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('sse_timeout')), remaining);
+      reader.read().then(
+        (value) => { clearTimeout(timer); resolve(value); },
+        (error) => { clearTimeout(timer); reject(error); }
+      );
+    });
+    if (result.done) throw new Error('sse_closed');
+    text += decoder.decode(result.value, { stream: true });
+    if (predicate(text)) return text;
+  }
+  throw new Error('sse_timeout');
+}
+
 function payload(totalTokens, { deviceId = 'dev-a', model = 'gpt-5', inputTokens = totalTokens, updatedAt = '2026-07-18T00:00:00.000Z' } = {}) {
   return {
     deviceId,
@@ -55,6 +75,37 @@ test('a hub without a secret binds to localhost only even when asked to bind eve
     assert.equal(hub.bindHost, '127.0.0.1');
     assert.equal(hub.server.address().address, '127.0.0.1');
   } finally {
+    await hub.stop();
+  }
+});
+
+test('health keeps the documented API version', async () => {
+  const { hub } = createMemoryHub();
+  await hub.start();
+  try {
+    const { port } = hub.server.address();
+    const health = await (await fetch(`http://127.0.0.1:${port}/api/health`)).json();
+    assert.equal(health.version, 1);
+  } finally {
+    await hub.stop();
+  }
+});
+
+test('SSE emits an initial snapshot, an ingest update, and the fixed heartbeat', async () => {
+  const { hub } = createMemoryHub({ sseHeartbeatMs: 20 });
+  await hub.start();
+  const controller = new AbortController();
+  try {
+    const { port } = hub.server.address();
+    const response = await fetch(`http://127.0.0.1:${port}/api/stats/stream`, { signal: controller.signal });
+    const reader = response.body.getReader();
+    assert.match(await readUntil(reader, (text) => text.includes('event: snapshot')), /reason":"snapshot"/);
+    await hub.ingest(payload(5));
+    assert.match(await readUntil(reader, (text) => text.includes('event: stats')), /reason":"ingest"/);
+    assert.match(await readUntil(reader, (text) => text.includes(': hb')), /: hb/);
+    await reader.cancel();
+  } finally {
+    controller.abort();
     await hub.stop();
   }
 });

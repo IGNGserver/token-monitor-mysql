@@ -109,6 +109,7 @@ function createHub({
   host = '0.0.0.0',
   secret = '',
   staleAfterMs = 10 * 60 * 1000,
+  sseHeartbeatMs = 30000,
   repository = null,
   pool = null,
   lookupPricing = lookupModelPricing,
@@ -239,7 +240,7 @@ function createHub({
       return sendJson(res, 200, {
         ok: true,
         role: 'hub',
-        version: 2,
+        version: 1,
         deviceCount: await store.countDevices(),
         secretRequired: Boolean(secret),
         now: new Date().toISOString()
@@ -256,17 +257,18 @@ function createHub({
     if (req.method === 'GET' && url.pathname === '/api/pricing') return sendJson(res, 200, { pricing: await store.listPricing() });
 
     if (req.method === 'GET' && url.pathname === '/api/stats/stream') {
+      const snapshot = await getStats();
       res.writeHead(200, {
         'content-type': 'text/event-stream',
         'cache-control': 'no-cache, no-transform',
         'connection': 'keep-alive',
         'x-accel-buffering': 'no'
       });
-      res.write(sseFormat('snapshot', { type: 'stats', reason: 'snapshot', stats: await getStats(), at: new Date().toISOString() }));
+      res.write(sseFormat('snapshot', { type: 'stats', reason: 'snapshot', stats: snapshot, at: new Date().toISOString() }));
       sseClients.add(res);
       // Heartbeats intentionally do not query MySQL. Slow reads therefore never
       // delay the fixed 30-second SSE keepalive cadence.
-      const heartbeat = setInterval(() => { try { res.write(': hb\n\n'); } catch (_) {} }, 30000);
+      const heartbeat = setInterval(() => { try { res.write(': hb\n\n'); } catch (_) {} }, sseHeartbeatMs);
       const cleanup = () => { clearInterval(heartbeat); sseClients.delete(res); };
       req.on('close', cleanup);
       req.on('error', cleanup);

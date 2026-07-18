@@ -94,7 +94,7 @@ function createRepository(pool) {
       json(record.limits), json(record.history)
     ]);
     await executor.execute(`INSERT INTO device_ingest_state (device_id, snapshot_json)
-      VALUES (?, CAST(? AS JSON)) ON DUPLICATE KEY UPDATE snapshot_json = VALUES(snapshot_json)`, [record.deviceId, JSON.stringify(record)]);
+      VALUES (?, ?) ON DUPLICATE KEY UPDATE snapshot_json = VALUES(snapshot_json)`, [record.deviceId, JSON.stringify(record)]);
   }
 
   async function countDevices(executor = pool) {
@@ -171,7 +171,7 @@ function createRepository(pool) {
         device_id, client, session_id, total_tokens, input_tokens, output_tokens,
         cache_read_tokens, cache_write_tokens, reasoning_tokens, message_count, cost_usd,
         started_at, last_used_at, models
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CAST(? AS JSON))
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON DUPLICATE KEY UPDATE total_tokens = VALUES(total_tokens), input_tokens = VALUES(input_tokens),
         output_tokens = VALUES(output_tokens), cache_read_tokens = VALUES(cache_read_tokens),
         cache_write_tokens = VALUES(cache_write_tokens), reasoning_tokens = VALUES(reasoning_tokens),
