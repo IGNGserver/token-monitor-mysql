@@ -2,6 +2,8 @@
 
 The hub exposes a small JSON HTTP API.
 
+For pricing refreshes, the Hub invokes `tokscale pricing <model> --json` first. If tokscale cannot complete its upstream catalog request, the Hub retries against the configured `TOKSCALE_PRICING_CATALOG_URL` (default `https://models.dev/api.json`), which is a public catalog tokscale also uses. The catalog is cached in the Hub process for six hours; the resulting `model_pricing` row remains durable.
+
 ## Authentication
 
 All endpoints except `/api/health` require the configured shared secret.

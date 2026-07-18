@@ -8,6 +8,7 @@ const { isAuthorized, readJsonBody, sendJson, sendText } = require('../shared/ht
 const { loadDotEnv, parseArgs } = require('../shared/config');
 const { lookupModelPricing, normalizePromaPricing } = require('../shared/collector');
 const { createMySqlPool, createRepository } = require('./repository');
+const { createCatalogPricingLookup, pricingNotFound } = require('./pricing-upstream');
 const { calculateUsageEventDeltas, summarizeSessions } = require('./usage-events');
 
 const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '::1']);
@@ -113,6 +114,7 @@ function createHub({
   repository = null,
   pool = null,
   lookupPricing = lookupModelPricing,
+  fallbackPricing = createCatalogPricingLookup(),
   logger = console
 } = {}) {
   const ownedPool = !repository && !pool;
@@ -199,17 +201,30 @@ function createHub({
       throw error;
     }
     let result;
+    let primaryError = null;
     try {
       result = await lookupPricing(modelId);
     } catch (error) {
-      error.code = isMissingPricingError(error) ? 'pricing_not_found' : 'pricing_lookup_failed';
-      throw error;
+      primaryError = error;
     }
-    const prices = upstreamPrices(result);
+    let prices = upstreamPrices(result);
     if (!prices) {
-      const error = new Error(`No tokscale pricing was found for ${modelId}`);
-      error.code = 'pricing_not_found';
-      throw error;
+      try {
+        // tokscale itself reads this public model catalog. Keep its CLI as the
+        // primary source, but survive hosts where raw.githubusercontent.com is
+        // blocked while models.dev remains reachable.
+        prices = upstreamPrices(await fallbackPricing(modelId));
+      } catch (fallbackError) {
+        if (fallbackError.code === 'pricing_not_found' || isMissingPricingError(fallbackError)) {
+          throw pricingNotFound(modelId);
+        }
+        const error = new Error(`Could not retrieve upstream pricing for ${modelId}: ${primaryError?.message || fallbackError.message}`);
+        error.code = 'pricing_lookup_failed';
+        throw error;
+      }
+    }
+    if (!prices) {
+      throw pricingNotFound(modelId);
     }
     return setPricing(modelId, prices, 'tokscale_upstream');
   }

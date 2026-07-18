@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 
 const { createHub, resolveBindHost } = require('../../src/hub/server');
+const { createCatalogPricingLookup } = require('../../src/hub/pricing-upstream');
 const { MemoryRepository } = require('./memory-repository');
 
 function createMemoryHub(options = {}) {
@@ -192,6 +193,48 @@ test('pricing endpoints accept manual and tokscale-upstream data', async () => {
   } finally {
     await hub.stop();
   }
+});
+
+test('pricing fetch falls back to the tokscale catalog when the CLI cannot reach its upstreams', async () => {
+  const { repository, hub } = createMemoryHub({
+    lookupPricing: async () => { throw new Error('raw.githubusercontent.com timed out'); },
+    fallbackPricing: async () => ({ pricing: {
+      inputCostPerToken: 0.00000125,
+      outputCostPerToken: 0.00001,
+      cacheReadInputTokenCost: 0.000000125,
+      cacheCreationInputTokenCost: 0
+    } })
+  });
+  await hub.start();
+  try {
+    const { port } = hub.server.address();
+    const response = await fetch(`http://127.0.0.1:${port}/api/pricing/gpt-5/fetch-upstream`, { method: 'POST' });
+    assert.equal(response.status, 200);
+    assert.equal(repository.pricing.get('gpt-5').source, 'tokscale_upstream');
+    assert.equal(repository.pricing.get('gpt-5').inputPricePerMillion, 1.25);
+  } finally {
+    await hub.stop();
+  }
+});
+
+test('catalog fallback uses models.dev costs and caches its upstream response', async () => {
+  let calls = 0;
+  const lookup = createCatalogPricingLookup({
+    fetchFn: async () => {
+      calls += 1;
+      return { ok: true, json: async () => ({ openai: { models: { 'gpt-5': { id: 'gpt-5', cost: { input: 1.25, output: 10, cache_read: 0.125 } } } } }) };
+    }
+  });
+  const first = await lookup('openai/gpt-5');
+  const second = await lookup('gpt-5');
+  assert.deepEqual(first.pricing, {
+    inputCostPerToken: 0.00000125,
+    outputCostPerToken: 0.00001,
+    cacheReadInputTokenCost: 0.000000125,
+    cacheCreationInputTokenCost: 0
+  });
+  assert.deepEqual(second, first);
+  assert.equal(calls, 1);
 });
 
 test('oversized ingest returns 413 without storing the device', async () => {

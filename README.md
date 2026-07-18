@@ -145,6 +145,8 @@ Schema changes are reviewed SQL files in `migrations/`, applied by the small `np
 
 Model prices are configured through the hub API and copied into every event at ingest time. Later price changes do not alter historical event costs. If a model has no configured price, the hub records the payload's tokscale `costUsd` delta with `pricingSource: "payload_fallback"` rather than inventing a zero cost.
 
+The upstream pricing action calls `tokscale pricing` first. If tokscale cannot retrieve its complete upstream catalog (for example, a host blocks `raw.githubusercontent.com`), the Hub falls back to `models.dev`, another catalog tokscale consults. That catalog is held in the Hub process for six hours and the resolved price is then persisted in `model_pricing`; set `TOKSCALE_PRICING_CATALOG_URL` only when an equivalent HTTPS catalog mirror is required.
+
 #### Option C — Cloudflare Worker hub (across networks, including iPhone)
 
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/Javis603/token-monitor/tree/main/worker)
@@ -196,7 +198,7 @@ docker compose -f docker-compose.test.yml up -d
 npm run test:mysql
 ```
 
-For a full deploy check after `docker compose up -d --build`, export `TOKEN_MONITOR_SECRET` and run `./scripts/smoke-test.sh`. The script posts a representative ingest snapshot, verifies `/api/stats`, writes a manual model price, then asks tokscale for the same model's upstream price.
+For a full deploy check after `docker compose up -d --build`, export `TOKEN_MONITOR_SECRET` and run `./scripts/smoke-test.sh`. The script posts a representative ingest snapshot, verifies `/api/stats`, writes a manual model price, then asks tokscale for the same model's upstream price (using the documented catalog fallback if the CLI's complete upstream chain is unavailable).
 
 ## How it works
 

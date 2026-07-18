@@ -34,6 +34,7 @@ services:
       MYSQL_DATABASE: ${MYSQL_DATABASE:-token_monitor}
       MYSQL_USER: ${MYSQL_USER:-token_monitor}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      TOKSCALE_PRICING_CATALOG_URL: ${TOKSCALE_PRICING_CATALOG_URL:-https://models.dev/api.json}
     ports:
       - "${TOKEN_MONITOR_PORT:-17321}:17321"
 
