@@ -2,6 +2,8 @@
 
 The hub exposes a small JSON HTTP API.
 
+For pricing refreshes, the Hub invokes `tokscale pricing <model> --json` first. If tokscale cannot complete its upstream catalog request, the Hub retries against the configured `TOKSCALE_PRICING_CATALOG_URL` (default `https://models.dev/api.json`), which is a public catalog tokscale also uses. The catalog is cached in the Hub process for six hours; the resulting `model_pricing` row remains durable.
+
 ## Authentication
 
 All endpoints except `/api/health` require the configured shared secret.
@@ -181,6 +183,8 @@ Example payload:
 
 The hub normalizes records before storing them. The Node hub accepts JSON ingest bodies up to 1 MiB; larger bodies return `413 payload_too_large`.
 
+The MySQL Node hub stores each change between a device's cumulative all-time snapshots in an append-only `usage_events` ledger. A row records the time that the difference was recorded (`recorded_at`), not an individual provider API request time. The synchronized protocol intentionally omits unbounded `allTime.sessions`; in that case the hub uses a `snapshot:<client>:<model>` session id to preserve the client/model aggregate without implying an original conversation id. Counter resets never produce negative events: the newly reported cumulative value is recorded as the start of a new counter cycle.
+
 `projects` is a bounded rollup keyed by a canonicalized workspace-folder label. Each entry carries the deterministic display `label`, token/cost totals, and a per-client token breakdown. Agents upload `allTime.projects` because synchronized payloads intentionally omit the unbounded `allTime.sessions`; `today.projects` and `month.projects` are omitted on upload and rebuilt by the hub from their synchronized sessions. If adding the all-time rollup would exceed the safe ingest budget, the agent drops only that rollup, sets `allTimeProjectsOmitted: true`, and keeps core totals and session data uploadable. A normal later upload clears the diagnostic; limits-only updates preserve it. `projectsEnabled: false` tells the hub that project metadata collection is disabled for this device; sync payloads then remove project rollups plus session `projectId` / `projectLabel` fields.
 
 Authenticated stats expose `projectsIncomplete: true` when a device omitted its rollup, disabled project tracking while contributing usage, or could not preserve exact all-time attribution after its tracked-client list changed. Affected device entries expose `allTimeProjectsOmitted`, `allTimeProjectsIncomplete`, or `projectsEnabled: false` as the reason. The public Worker stats endpoint removes the entire `projects` map, including both display labels and canonical keys.
@@ -225,8 +229,35 @@ If multiple devices report the same provider account, the hub keeps the freshest
 
 Returns normalized records for all stored devices.
 
+## `GET /api/pricing`
+
+Returns the currently configured model prices. Each entry has `model`, the four `*PricePerMillion` fields, `source` (`manual` or `tokscale_upstream`), and `updatedAt`.
+
+## `PUT /api/pricing/:model`
+
+Creates or replaces manual pricing for a model. All four non-negative per-million values are required:
+
+```json
+{
+  "inputPricePerMillion": 2.5,
+  "outputPricePerMillion": 10,
+  "cacheReadPricePerMillion": 0.25,
+  "cacheWritePricePerMillion": 3.75
+}
+```
+
+## `POST /api/pricing/:model/fetch-upstream`
+
+Runs `tokscale pricing <model> --json`, converts its per-token values to per-million values, and saves the result as `tokscale_upstream`. A model with no upstream pricing returns `422 pricing_not_found`; the hub never silently writes zeroes.
+
+## `POST /api/pricing/fetch-upstream-all`
+
+Fetches upstream pricing for every model observed in the event ledger or current device snapshots. The response lists each model with its individual success or failure result.
+
+When an ingest event has configured pricing, the hub copies those four values, source, timestamp, and computed `costUsd` into the event row. Later changes to `model_pricing` do not alter historical events. Without a configured price, the hub uses the payload's tokscale cost delta and marks the row `pricingSource: "payload_fallback"`.
+
 ## `DELETE /api/devices/:id`
 
-Deletes one device record from the hub store.
+Deletes one device record and its mutable session rollup from the hub store. Historical `usage_events` are deliberately retained and their nullable device foreign key is set to `null`.
 
 This is useful after renaming a device id.
