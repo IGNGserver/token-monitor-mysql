@@ -1,0 +1,96 @@
+import org.gradle.api.tasks.Exec
+import org.gradle.api.tasks.testing.Test
+import org.gradle.jvm.toolchain.JavaLanguageVersion
+
+plugins {
+  alias(libs.plugins.android.application)
+  alias(libs.plugins.kotlin.android)
+  alias(libs.plugins.kotlin.serialization)
+  alias(libs.plugins.kotlin.kapt)
+  alias(libs.plugins.hilt)
+}
+
+android {
+  namespace = "com.igng.tokenmonitor.android"
+  compileSdk = 36
+
+  defaultConfig {
+    applicationId = "com.igng.tokenmonitor.android"
+    minSdk = 26
+    targetSdk = 36
+    versionCode = 1
+    versionName = "1.0.0"
+    testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+  }
+
+  buildFeatures { compose = true; buildConfig = true }
+  composeOptions { kotlinCompilerExtensionVersion = "1.5.14" }
+
+  buildTypes {
+    release {
+      isMinifyEnabled = false
+      proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+    }
+  }
+
+  compileOptions {
+    sourceCompatibility = JavaVersion.VERSION_17
+    targetCompatibility = JavaVersion.VERSION_17
+  }
+  kotlin { jvmToolchain(17) }
+}
+
+dependencies {
+  implementation(libs.androidx.core.ktx)
+  implementation(libs.androidx.activity.compose)
+  implementation(libs.androidx.lifecycle.runtime.ktx)
+  implementation(libs.androidx.lifecycle.runtime.compose)
+  implementation(libs.androidx.lifecycle.viewmodel.compose)
+  implementation(libs.androidx.navigation.compose)
+  implementation(platform(libs.compose.bom))
+  implementation(libs.compose.ui)
+  implementation(libs.compose.ui.tooling.preview)
+  implementation(libs.compose.material3)
+  implementation(libs.compose.material)
+  implementation(libs.compose.material.icons)
+  implementation(libs.androidx.security.crypto)
+  implementation(libs.hilt.android)
+  implementation(libs.androidx.hilt.navigation.compose)
+  kapt(libs.hilt.compiler)
+  implementation(libs.retrofit)
+  implementation(libs.retrofit.kotlinx)
+  implementation(libs.okhttp)
+  implementation(libs.okhttp.sse)
+  implementation(libs.kotlinx.serialization.json)
+  implementation(libs.kotlinx.coroutines.android)
+
+  testImplementation(libs.junit)
+  testImplementation(libs.mockwebserver)
+  testImplementation(libs.kotlinx.coroutines.test)
+  debugImplementation(libs.compose.ui.tooling)
+}
+
+kapt { correctErrorTypes = true }
+
+val repositoryTestOutput = layout.buildDirectory.dir("intermediates/classes/debugUnitTest/transformDebugUnitTestClassesWithAsm/dirs")
+val appRuntimeClasses = layout.buildDirectory.dir("intermediates/runtime_app_classes_jar/debug/bundleDebugClassesToRuntimeJar/classes.jar")
+val testJavaResources = layout.buildDirectory.dir("intermediates/java_res/debugUnitTest/processDebugUnitTestJavaRes/out")
+
+val runRepositoryTests by tasks.registering(Exec::class) {
+  group = "verification"
+  description = "Runs Repository MockWebServer tests without Gradle's Windows argfile worker."
+  dependsOn("transformDebugUnitTestClassesWithAsm", "bundleDebugClassesToRuntimeJar", "processDebugUnitTestJavaRes")
+  val launcher = javaToolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(21)) }
+  val testRuntime = configurations.named("debugUnitTestRuntimeClasspath")
+  doFirst {
+    val classpath = files(repositoryTestOutput, appRuntimeClasses, testJavaResources, testRuntime)
+    commandLine(
+      launcher.get().executablePath.asFile.absolutePath,
+      "-cp", classpath.asPath,
+      "org.junit.runner.JUnitCore",
+      "com.igng.tokenmonitor.android.data.repository.HubRepositoryTest"
+    )
+  }
+}
+
+tasks.withType<Test>().configureEach { enabled = false }
