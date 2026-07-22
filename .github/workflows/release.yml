@@ -58,6 +58,7 @@ jobs:
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
+          chmod +x android/gradlew
           version="${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}"
           ./android/gradlew --no-daemon -p android assembleRelease \
             -PtokenMonitorVersion="$version" \
