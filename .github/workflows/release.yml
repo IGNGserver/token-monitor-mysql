@@ -4,6 +4,11 @@ on:
   push:
     tags: ['v*']
   workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version without the v prefix"
+        required: true
+        default: "0.31.1"
 
 permissions:
   contents: read
@@ -53,7 +58,7 @@ jobs:
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          version="${GITHUB_REF_NAME#v}"
+          version="${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}"
           ./android/gradlew --no-daemon -p android assembleRelease \
             -PtokenMonitorVersion="$version" \
             -PandroidKeystorePath="$RUNNER_TEMP/token-monitor-release.jks" \
@@ -80,6 +85,8 @@ jobs:
           merge-multiple: true
       - uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', inputs.version) || github.ref_name }}
+          name: Token Monitor ${{ github.event_name == 'workflow_dispatch' && format('v{0}', inputs.version) || github.ref_name }}
           files: |
             artifacts/*.exe
             artifacts/Token-Monitor-Android-*.apk
