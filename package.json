@@ -111,8 +111,8 @@
     "publish": [
       {
         "provider": "github",
-        "owner": "Javis603",
-        "repo": "token-monitor"
+        "owner": "IGNGserver",
+        "repo": "token-monitor-mysql"
       }
     ]
   },
@@ -135,11 +135,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Javis603/token-monitor.git"
+    "url": "git+https://github.com/IGNGserver/token-monitor-mysql.git"
   },
-  "homepage": "https://github.com/Javis603/token-monitor#readme",
+  "homepage": "https://github.com/IGNGserver/token-monitor-mysql#readme",
   "bugs": {
-    "url": "https://github.com/Javis603/token-monitor/issues"
+    "url": "https://github.com/IGNGserver/token-monitor-mysql/issues"
   },
   "dependencies": {
     "@xhayper/discord-rpc": "^1.3.4",

@@ -1,109 +1,134 @@
 # Token Monitor MySQL Hub
 
-Token Monitor MySQL Hub 是一个面向 AI 编程工具的自托管用量监控系统。它从桌面小组件或无界面 Agent 收集 Token 与费用汇总，将数据保存到 MySQL Hub，并在桌面端和 Android 端显示当前数据。
+Token Monitor 是一个用来查看 AI 编程工具用量的桌面小组件。它可以显示 Token、费用、模型和会话，也可以把多台电脑的数据汇总到一个 Hub，方便你在电脑或手机上查看。
 
-## 与上游项目的关系
+本仓库 fork 自 [Javis603/token-monitor](https://github.com/Javis603/token-monitor)。它保留了原项目的桌面采集能力，同时增加了 MySQL Hub、Docker Compose 部署和 Android 客户端，并继续使用 [MIT License](LICENSE)。
 
-本仓库 fork 自 [Javis603/token-monitor](https://github.com/Javis603/token-monitor)，保留了上游的 Electron 桌面小组件和本地采集器基础，并继续遵循原始 [MIT License](LICENSE)。
+## 直接下载安装
 
-本 fork 调整了服务端部署方式，并新增了移动端客户端：
+如果你只想使用，不想安装 Node.js 或执行命令，请前往 [GitHub Releases](https://github.com/IGNGserver/token-monitor-mysql/releases) 下载：
 
-- 使用 MySQL 替代 Node Hub 原先的 JSON 文件存储。
-- 将两次设备快照之间的用量变化保存为仅追加的用量事件。
-- 在 Hub 中管理模型价格；每条事件在写入时取得不可变的价格快照。
-- 通过 Docker Compose 一次部署 Hub 和 MySQL。
-- `android/` 提供原生 Android 客户端，用于查看 Hub 数据和管理价格。
+- **Windows**：下载 `Token-Monitor-Setup-版本号.exe`，双击安装。
+- **Android**：下载 `Token-Monitor-Android-版本号.apk`，在手机上安装。
 
-`worker/` 目录中的 Cloudflare Worker 仍兼容上游协议，但它不使用 MySQL，也不提供本 fork 的事件流水账和 Hub 定价功能。
+安装后仍需要先部署一个 Hub，再在 Windows 小组件或 Android 应用中填写 Hub 地址和共享密钥。没有 Hub 时，Windows 小组件也可以选择“仅本机”模式使用。
 
-## 监控内容
+## 你需要准备什么
 
-桌面采集器使用 [tokscale](https://github.com/junhoyeo/tokscale) 汇总本机受支持 AI 编程工具的用量，包括 Claude Code、Codex、OpenCode、Hermes、Cursor、Antigravity，以及上游项目支持的其他工具。它可记录 Token 总量、可用的费用数据、工具与模型明细、可用时的会话数据、项目汇总和可选的服务商额度窗口。
+最常见的使用方式是：
 
-Hub 记录的是累计设备快照之间的变化量，不会解析提示词、源代码、原始对话或单个服务商 API 请求。
+```text
+常驻服务器（Docker Hub）
+        ↑
+电脑 A（采集）   电脑 B（采集）   Android 手机（查看）
+```
 
-## 选择使用方式
+- 只看一台电脑：只安装桌面小组件，不需要服务器。
+- 看多台电脑：准备一台能长期运行 Docker 的服务器，部署 Hub。
+- 想在手机查看：先部署 Hub，再安装 Android 客户端。
 
-| 目标 | 推荐方式 |
-| --- | --- |
-| 只监控一台电脑 | 使用 Electron 小组件的本地模式，不需要 Hub、Docker 或数据库。 |
-| 监控多台电脑 | 在一台常驻 Linux 服务器部署 MySQL Hub，再连接每台小组件或无界面 Agent。 |
-| 在手机上查看数据 | 部署 MySQL Hub，构建并安装 Android 客户端，然后输入 Hub 地址和共享密钥。 |
+系统只上传 Token 和费用等汇总数据，不上传提示词、源代码、聊天内容或登录密钥。
 
-## 部署 MySQL Hub
+## 第一步：部署 Hub
 
-将此部分部署在可运行 Docker、且所有要采集的设备均可访问的服务器上。Hub 默认监听端口 `17321`。
+这一步只在一台常驻服务器上做一次。服务器可以是 Linux 主机、NAS、云服务器或个人设备，但必须能运行 Docker，并且电脑和手机能够访问它。
 
-### 前置条件
+### 1. 安装 Docker
 
-- Docker Engine 和 Docker Compose v2
-- 可被桌面设备和 Android 设备访问的服务器
-- 允许可信客户端访问 Hub 端口的防火墙规则，或提供相同访问能力的反向代理/VPN
-
-### 启动服务
-
-在服务器上克隆本仓库，然后创建本地配置：
+安装 Docker Engine 和 Docker Compose v2，然后确认：
 
 ```bash
+docker --version
+docker compose version
+```
+
+### 2. 下载项目并创建配置
+
+```bash
+git clone https://github.com/IGNGserver/token-monitor-mysql.git
+cd token-monitor-mysql
 cp .env.example .env
 ```
 
-编辑 `.env`，至少为以下变量设置强且互不相同的值：
+打开 .env，至少修改以下三项。请使用你自己生成的长随机值：
 
 ```dotenv
-TOKEN_MONITOR_SECRET=replace-with-a-long-random-shared-secret
-MYSQL_PASSWORD=replace-with-a-strong-app-password
-MYSQL_ROOT_PASSWORD=replace-with-a-strong-root-password
+TOKEN_MONITOR_SECRET=请替换为随机共享密钥
+MYSQL_PASSWORD=请替换为数据库密码
+MYSQL_ROOT_PASSWORD=请替换为数据库管理员密码
 ```
 
-如端口 `17321` 已被占用，可修改 `TOKEN_MONITOR_PORT`。不要提交 `.env`，也不要在截图、Issue 或消息中泄露共享密钥。
+TOKEN_MONITOR_SECRET 是之后连接电脑和手机时要填写的共享密钥。不要把 .env 上传到 GitHub。
 
-启动 Hub 和 MySQL：
+### 3. 启动 Hub
 
 ```bash
 docker compose up -d --build
 docker compose ps
 ```
 
-检查 Hub 健康状态：
+如果 hub 和 mysql 都在运行，就可以使用了。默认地址是：
+
+```text
+http://服务器地址:17321
+```
+
+在服务器本机检查：
 
 ```bash
 curl http://127.0.0.1:17321/api/health
 ```
 
-健康检查接口无需认证；其他 Hub 接口均要求共享密钥，可使用 `Authorization: Bearer <secret>` 或 `X-Token-Monitor-Secret: <secret>` 请求头。
+返回包含 "ok":true 即表示 Hub 正常。局域网设备直接使用服务器局域网地址；跨网络访问建议使用 VPN、Tailscale 或 HTTPS 反向代理。
 
-拉取新代码后，重新构建 Hub 镜像即可升级。Hub 启动前会自动执行数据库迁移。
+## 第二步：连接桌面小组件
+
+每台需要统计的电脑都要运行桌面小组件。
+
+### 安装
+
+当前仓库提供源码运行方式。电脑需要 Node.js 22.13 或更高版本：
 
 ```bash
-git pull
-docker compose up -d --build
-docker compose logs -f hub
+git clone https://github.com/IGNGserver/token-monitor-mysql.git
+cd token-monitor-mysql
+npm ci
+npm start
 ```
 
-MySQL 数据存储于具名 Docker 卷 `token-monitor-mysql`。重建 Hub 容器不会删除数据。除非你明确要清空全部 Hub 数据，否则不要运行 `docker compose down -v`。
+Windows 用户可以在 PowerShell 中运行相同的 git 和 npm 命令。
 
-## 连接桌面采集器
+### 只使用本机数据
 
-### Electron 小组件
+打开小组件的 **设置 → 多设备同步**，选择 **仅本机**。这种模式不需要 Hub，也不会向网络发送数据。
 
-按[从源码构建](#从源码构建)安装或构建桌面小组件，之后打开 **设置 -> 多设备同步**。
+### 连接到 Hub
 
-1. 选择 **连接到 Hub**。
-2. 填写完整 Hub 地址，例如 `http://your-server:17321`。
-3. 填写服务器配置的同一个 `TOKEN_MONITOR_SECRET`。
-4. 保存设置。
+1. 打开 **设置 → 多设备同步**。
+2. 选择 **连接到 Hub**。
+3. Hub URL 填写服务器地址，例如 http://192.168.x.x:17321。
+4. 共享密钥填写服务器 .env 中的 TOKEN_MONITOR_SECRET。
+5. 保存设置。
 
-小组件会继续采集本机用量，并将该设备的汇总上报到 Hub。它通过 Server-Sent Events 接收聚合后的实时更新。
+连接成功后，小组件会读取本机 AI 工具用量并自动上报。其他连接到同一 Hub 的设备也会看到这台电脑的数据。
 
-### 无界面 Agent
+## 第三步：使用无界面 Agent（可选）
 
-在不需要 Electron 界面的设备上使用 Agent。安装 Node.js 22.13 或更高版本及项目依赖，将 `.env.example` 复制为 `.env`，然后配置以下值：
+不需要桌面窗口的电脑可以只运行后台 Agent：
+
+```bash
+git clone https://github.com/IGNGserver/token-monitor-mysql.git
+cd token-monitor-mysql
+npm ci
+cp .env.example .env
+```
+
+编辑 .env：
 
 ```env
-TOKEN_MONITOR_HUB_URL=http://your-server:17321
-TOKEN_MONITOR_SECRET=the-same-secret-used-by-the-hub
-TOKEN_MONITOR_DEVICE_ID=optional-stable-device-name
+TOKEN_MONITOR_HUB_URL=http://你的服务器地址:17321
+TOKEN_MONITOR_SECRET=与服务器相同的共享密钥
+TOKEN_MONITOR_DEVICE_ID=这台电脑的名称
 TOKEN_MONITOR_SYNC_UPLOAD_INTERVAL_MS=0
 TOKEN_MONITOR_CLIENTS=
 TOKEN_MONITOR_PROJECTS_ENABLED=
@@ -113,32 +138,25 @@ TOKEN_MONITOR_LIMITS_ENABLED=
 TOKEN_MONITOR_LIMIT_PROVIDERS=
 ```
 
-留空的可选值将采用默认行为。`TOKEN_MONITOR_CLIENTS` 接受逗号分隔的工具列表；设为空值可禁用 Token 采集。`TOKEN_MONITOR_HISTORY_ENABLED=0` 会关闭本地趋势历史采集，`TOKEN_MONITOR_LIMITS_ENABLED=0` 会跳过 AI 服务商额度探测。全部受支持的配置项及说明见 `.env.example`。
-
-执行一次采集并上报：
+先运行一次确认连接：
 
 ```bash
-npm ci
 npm run agent:once
 ```
 
-持续运行：
+确认没有报错后持续运行：
 
 ```bash
 npm run agent
 ```
 
-使用操作系统的服务管理器或计划任务保持 Agent 持续运行。若只想检查采集结果、不向 Hub 上报，可执行：
+实际使用时，建议把它注册为 Windows 服务、Linux systemd 服务或开机启动任务。
 
-```bash
-node src/agent/agent.js --once --dry-run
-```
+## 第四步：安装 Android 客户端
 
-## 使用 Android 客户端
+Android 客户端用于查看 Hub 数据和管理模型价格，本身不采集电脑上的 AI 用量。
 
-Android 应用是 Hub 客户端：它不采集本机 AI 工具用量，也不会自行写入用量事件。它可显示聚合概览、模型、当前可用会话、设备、价格以及 Hub 连接设置。
-
-使用本地 Android SDK 和 JDK 17 或更高版本构建调试 APK：
+使用 Android SDK 和 JDK 17 或更高版本构建：
 
 ```bash
 cd android
@@ -146,107 +164,64 @@ cd android
 ./gradlew assembleDebug
 ```
 
-APK 输出路径：
+APK 位于：
 
 ```text
 android/app/build/outputs/apk/debug/app-debug.apk
 ```
 
-安装后，在应用的 **设置** 中输入 Hub 地址和 `TOKEN_MONITOR_SECRET`。连接信息通过 Android 加密共享偏好设置保存。
+安装后打开应用的 **设置**：
 
-会话页展示 `/api/stats` 返回的当前会话。Hub 目前没有单个会话的按时间范围事件历史接口，因此 Android 应用不能显示细粒度的历史会话时间线。
+1. Hub URL 填写与桌面端相同的服务器地址。
+2. 共享密钥填写相同的 TOKEN_MONITOR_SECRET。
+3. 保存并返回概览页面。
 
-## 管理模型定价
+Android 客户端包含概览、模型、会话、设备、定价和设置页面。会话页显示 Hub 当前提供的会话快照，暂不提供单个会话的完整时间范围历史。
 
-Hub 会保存当前模型价格表并提供给连接的客户端。你可以手动设置价格，或让 Hub 通过 `tokscale pricing` 获取上游价格；必要时会回退至可配置的 `models.dev` 价格目录。
+## 日常使用
 
-以下接口均需要认证：
+部署完成后，只需要：
 
-```text
-GET  /api/pricing
-PUT  /api/pricing/:model
-POST /api/pricing/:model/fetch-upstream
-POST /api/pricing/fetch-upstream-all
-```
+1. 保持服务器上的 Docker Hub 运行。
+2. 保持每台采集电脑的小组件或 Agent 运行。
+3. 在桌面小组件或 Android 客户端查看概览、模型、设备和费用。
+4. 需要修改模型价格时，打开 Android 的 **定价** 页面，或使用桌面小组件的定价设置。
 
-手动价格的单位为每百万 Token 的美元价格：
+设备暂时关机时，Hub 会显示它离线；重新启动采集器后会自动恢复。删除设备只会删除当前设备显示，已记录的历史用量仍会保留。
 
-```bash
-curl -X PUT "http://your-server:17321/api/pricing/gpt-5" \
-  -H "Authorization: Bearer $TOKEN_MONITOR_SECRET" \
-  -H "Content-Type: application/json" \
-  --data '{"inputPricePerMillion":2.5,"outputPricePerMillion":10,"cacheReadPricePerMillion":0.25,"cacheWritePricePerMillion":3.75}'
-```
+## 常见问题
 
-写入用量事件时，Hub 会复制当时生效的价格、来源和时间戳，并计算该事件费用。之后修改模型当前价格不会重新计算历史事件。若 Hub 中没有配置该模型价格，Hub 会保留 tokscale 传来的费用变化，并标记为 `payload_fallback`，不会凭空写入零费用。
+### 页面打不开
 
-## 存储与保留策略
+在服务器运行 docker compose ps，确认 hub 和 mysql 都在运行。客户端不能填写服务器内部的 127.0.0.1，应填写服务器在局域网或 VPN 中的地址。
 
-`usage_events` 是仅追加的流水账。每条事件表示设备两次累计上报之间观察到的用量差值；`recorded_at` 是记录该差值的时间，而非精确的服务商 API 请求时间。
+### 提示未授权或 401
 
-通过 `DELETE /api/devices/:id` 删除设备时，Hub 会删除该设备当前记录和可变会话汇总，但保留历史用量事件。事件的设备引用会变为 `null`，以保留审计记录。
-
-## 本地开发与验证
-
-Node 项目要求 Node.js 22.13 或更高版本。
+确认客户端和服务器的共享密钥完全一致。修改 .env 后重新执行：
 
 ```bash
-npm ci
-npm run verify
+docker compose up -d --build
 ```
 
-若 MySQL 已就绪并已通过 `.env` 配置，可不使用 Docker 直接运行 Hub：
+### 看不到某台电脑
+
+确认小组件选择了 **连接到 Hub**，或 Agent 的 TOKEN_MONITOR_HUB_URL 已填写。也可以运行 npm run agent:once 查看连接错误。
+
+### 升级项目
+
+在服务器执行：
 
 ```bash
-npm run migrate
-npm run hub
+git pull
+docker compose up -d --build
 ```
 
-运行 Docker MySQL 集成测试：
+不要使用 docker compose down -v，否则会删除 MySQL 数据卷。
 
-```bash
-docker compose -f docker-compose.test.yml up -d
-npm run test:mysql
-```
+## 隐私、致谢与许可证
 
-启动生产 Compose 服务后，可导出当前 shell 的共享密钥并运行端到端检查：
+系统只上传设备信息、Token/费用汇总、工具和模型明细、可选项目汇总及额度状态，不上传原始日志、提示词、代码、对话或登录凭据。请只向信任的设备开放 Hub，并优先使用局域网或 VPN。
 
-```bash
-export TOKEN_MONITOR_SECRET=your-secret
-./scripts/smoke-test.sh
-```
+感谢 [Javis603/token-monitor](https://github.com/Javis603/token-monitor)、[tokscale](https://github.com/junhoyeo/tokscale) 和 [CodexBar](https://github.com/steipete/CodexBar)。
 
-## 从源码构建
-
-Electron 小组件要求 Node.js 22.13 或更高版本。
-
-```bash
-npm ci
-npm start
-```
-
-常用命令：
-
-```bash
-npm start          # Electron 小组件
-npm run hub        # Node Hub
-npm run agent      # 持续运行的无界面采集器
-npm run agent:once # 采集一次并上报
-npm run verify     # ESLint 和 Node 测试套件
-```
-
-## 隐私
-
-采集器仅发送标准化的用量汇总：设备元数据、Token/费用总量、工具/模型明细、可选的项目汇总和 AI 工具额度状态。它不会发送原始 AI 日志、提示词、源代码、对话、OAuth 凭据、刷新令牌或服务商原始响应。
-
-仅向可信用户开放 Hub。客户端跨互联网连接时，建议通过反向代理使用 HTTPS，或使用 VPN 等私有网络。
-
-## 致谢
-
-- [Javis603/token-monitor](https://github.com/Javis603/token-monitor)，原始 Token Monitor 项目。
-- [tokscale](https://github.com/junhoyeo/tokscale)，负责日志解析和 Token 统计。
-- [CodexBar](https://github.com/steipete/CodexBar)，提供 AI 工具额度研究参考。
-
-## 许可证
-
-[MIT](LICENSE) © [@Javis](https://github.com/Javis603)
+本项目遵循 [MIT License](LICENSE)。

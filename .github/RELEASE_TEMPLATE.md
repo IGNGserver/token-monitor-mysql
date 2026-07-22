@@ -1,6 +1,6 @@
 # English
 
-**Open-source build.** macOS is signed and notarized; Windows is unsigned (SmartScreen may appear); Linux AppImages need executable permission — see notes below.
+**Open-source build.** Windows and Android artifacts are published for this fork. Windows may show a SmartScreen warning until a trusted signing certificate is configured. Android releases are signed with the project's release key.
 
 ## What's changed
 
@@ -18,10 +18,10 @@
 
 ## Download
 
-- **macOS Apple Silicon** — [Token-Monitor-0.30.0-arm64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.30.0/Token-Monitor-0.30.0-arm64.dmg)
-- **Windows Installer** — [Token-Monitor-Setup-0.30.0.exe](https://github.com/Javis603/token-monitor/releases/download/v0.30.0/Token-Monitor-Setup-0.30.0.exe) (recommended)
-- **Windows Portable** — [Token-Monitor-0.30.0.exe](https://github.com/Javis603/token-monitor/releases/download/v0.30.0/Token-Monitor-0.30.0.exe) (no install required)
-- **Linux x64** — [Token-Monitor-0.30.0.AppImage](https://github.com/Javis603/token-monitor/releases/download/v0.30.0/Token-Monitor-0.30.0.AppImage)
+Open the release's **Assets** section and download the file for your device:
+
+- **Windows** — `Token-Monitor-Setup-<version>.exe` (recommended) or the portable `.exe`.
+- **Android** — `Token-Monitor-Android-<version>.apk`.
 
 <details>
 <summary><strong>First launch and other notes</strong></summary>
@@ -30,7 +30,7 @@
 
 **macOS:** open the `.dmg`, drag Token Monitor to Applications.
 
-**Windows:** SmartScreen → More info → Run anyway.
+**Windows:** SmartScreen → More info → Run anyway when you trust the downloaded release.
 
 **Linux:** mark the AppImage executable, then run it:
 
@@ -41,7 +41,7 @@ chmod +x "Token Monitor"*.AppImage
 
 ### Other notes
 
-Other platforms are not pre-built — run from source per the [README](https://github.com/Javis603/token-monitor#readme). The macOS `.zip` is the same app repackaged; ignore it unless you specifically need it.
+This fork currently publishes Windows and Android artifacts. For other platforms, run from source according to the [README](https://github.com/IGNGserver/token-monitor-mysql#readme).
 
 ### tokscale dependency
 
@@ -55,7 +55,7 @@ open-source: https://github.com/junhoyeo/tokscale
 
 # 中文
 
-**这是开源构建。** macOS 已签名并 notarize；Windows 尚未签名（可能跳出 SmartScreen）；Linux AppImage 需要先赋予执行权限，说明见下方。
+**这是开源构建。** 本 fork 发布 Windows 和 Android 安装包。Windows 在配置受信任的代码签名证书前可能会出现 SmartScreen 提示；Android 发布包使用项目签名密钥签名。
 
 ## 更新内容
 
@@ -73,10 +73,10 @@ open-source: https://github.com/junhoyeo/tokscale
 
 ## 下载
 
-- **macOS Apple Silicon** — [Token-Monitor-0.30.0-arm64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.30.0/Token-Monitor-0.30.0-arm64.dmg)
-- **Windows 安装版** — [Token-Monitor-Setup-0.30.0.exe](https://github.com/Javis603/token-monitor/releases/download/v0.30.0/Token-Monitor-Setup-0.30.0.exe)（推荐）
-- **Windows 便携版** — [Token-Monitor-0.30.0.exe](https://github.com/Javis603/token-monitor/releases/download/v0.30.0/Token-Monitor-0.30.0.exe)（免安装）
-- **Linux x64** — [Token-Monitor-0.30.0.AppImage](https://github.com/Javis603/token-monitor/releases/download/v0.30.0/Token-Monitor-0.30.0.AppImage)
+打开 Release 页面中的 **Assets**，下载对应设备的文件：
+
+- **Windows** — `Token-Monitor-Setup-<version>.exe`（推荐）或便携版 `.exe`。
+- **Android** — `Token-Monitor-Android-<version>.apk`。
 
 <details>
 <summary><strong>首次启动与其他说明</strong></summary>
@@ -96,7 +96,7 @@ chmod +x "Token Monitor"*.AppImage
 
 ### 其他说明
 
-其他平台暂不提供预构建版本，请参考 [README](https://github.com/Javis603/token-monitor#readme) 从源码运行。macOS 的 `.zip` 只是同一个 app 的重新打包版本，除非你明确需要，否则可以忽略。
+本 fork 当前发布 Windows 和 Android 安装包。其他平台请参考 [README](https://github.com/IGNGserver/token-monitor-mysql#readme) 从源码运行。
 
 ### tokscale 依赖
 

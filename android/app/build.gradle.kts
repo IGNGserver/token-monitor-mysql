@@ -18,8 +18,9 @@ android {
     applicationId = "com.igng.tokenmonitor.android"
     minSdk = 26
     targetSdk = 36
-    versionCode = 1
-    versionName = "1.0.0"
+    val releaseVersion = providers.gradleProperty("tokenMonitorVersion").orElse("0.30.0").get()
+    versionCode = releaseVersionCode(releaseVersion)
+    versionName = releaseVersion
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
 
@@ -29,6 +30,18 @@ android {
   buildTypes {
     release {
       isMinifyEnabled = false
+      val keystorePath = providers.gradleProperty("androidKeystorePath").orNull
+      val keystorePassword = providers.gradleProperty("androidKeystorePassword").orNull
+      val keyAlias = providers.gradleProperty("androidKeyAlias").orNull
+      val keyPassword = providers.gradleProperty("androidKeyPassword").orNull
+      if (keystorePath != null && keystorePassword != null && keyAlias != null && keyPassword != null) {
+        signingConfig = signingConfigs.create("releaseSigning").apply {
+          storeFile = file(keystorePath)
+          storePassword = keystorePassword
+          this.keyAlias = keyAlias
+          this.keyPassword = keyPassword
+        }
+      }
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
     }
   }
@@ -39,6 +52,15 @@ android {
   }
   kotlin { jvmToolchain(17) }
 }
+
+private fun releaseVersionCode(version: String): Int {
+  val parts = Regex("\\d+").findAll(version).map { it.value.toInt() }.toList()
+  return (parts.getOrNull(0).orZero() * 10000 +
+    parts.getOrNull(1).orZero() * 100 +
+    parts.getOrNull(2).orZero()).coerceAtLeast(1)
+}
+
+private fun Int?.orZero() = this ?: 0
 
 dependencies {
   implementation(libs.androidx.core.ktx)

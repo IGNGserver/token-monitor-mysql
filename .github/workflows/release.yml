@@ -4,93 +4,70 @@ on:
   push:
     tags: ['v*']
 
+permissions:
+  contents: read
+
 jobs:
-  build:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: macos-15
-            target: mac
-            artifact_path: |
-              dist/*.dmg
-              dist/*.zip
-              dist/latest-mac.yml
-              dist/*.blockmap
-          - os: windows-latest
-            target: win
-            artifact_path: |
-              dist/*.exe
-              dist/latest.yml
-              dist/*.blockmap
-          - os: ubuntu-latest
-            target: linux
-            artifact_path: |
-              dist/*.AppImage
-              dist/latest-linux.yml
-              dist/*.blockmap
-    runs-on: ${{ matrix.os }}
+  windows:
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: npm
-      - name: Platform evidence
-        run: node -p "process.platform + '-' + process.arch"
       - run: npm ci
-      # electron-builder needs the notarization key as a file, not the base64 secret directly.
-      - name: Decode Apple API key
-        if: matrix.target == 'mac'
-        run: |
-          echo "${{ secrets.APPLE_API_KEY_BASE64 }}" | base64 --decode > "$RUNNER_TEMP/apple_api_key.p8"
-          echo "APPLE_API_KEY=$RUNNER_TEMP/apple_api_key.p8" >> "$GITHUB_ENV"
-      # APPIMAGE_EXTRACT_AND_RUN lets electron-builder's bundled appimagetool
-      # run without libfuse2 (absent on the runners); a no-op on mac/win.
-      - run: npm run dist:${{ matrix.target }}
-        env:
-          APPIMAGE_EXTRACT_AND_RUN: '1'
-          CSC_LINK: ${{ matrix.target == 'mac' && secrets.MAC_CSC_LINK || '' }}
-          CSC_KEY_PASSWORD: ${{ matrix.target == 'mac' && secrets.MAC_CSC_KEY_PASSWORD || '' }}
-          APPLE_API_KEY_ID: ${{ matrix.target == 'mac' && secrets.APPLE_API_KEY_ID || '' }}
-          APPLE_API_ISSUER: ${{ matrix.target == 'mac' && secrets.APPLE_API_ISSUER || '' }}
-      - name: Verify mac code signing and notarization
-        if: matrix.target == 'mac'
-        env:
-          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
-          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
-        run: |
-          set -euo pipefail
-          app_path=$(find dist -maxdepth 2 -name '*.app' -print -quit)
-          if [ -z "$app_path" ]; then
-            echo "no .app bundle found under dist/" >&2
-            exit 1
-          fi
-          dmg_path=$(find dist -maxdepth 1 -name '*.dmg' -print -quit)
-          if [ -z "$dmg_path" ]; then
-            echo "no .dmg installer found under dist/" >&2
-            exit 1
-          fi
-          codesign --verify --deep --strict --verbose=2 "$app_path"
-          spctl -a -vvv --type execute "$app_path"
-          xcrun stapler validate "$app_path"
-          xcrun notarytool submit "$dmg_path" \
-            --key "$APPLE_API_KEY" \
-            --key-id "$APPLE_API_KEY_ID" \
-            --issuer "$APPLE_API_ISSUER" \
-            --wait
-          xcrun stapler staple "$dmg_path"
-          xcrun stapler validate "$dmg_path"
+      - run: npm run dist:win
       - name: Verify updater artifact names
         run: npm run verify:release-artifact-names
       - uses: actions/upload-artifact@v4
         with:
-          name: token-monitor-${{ matrix.target }}
+          name: token-monitor-windows
           if-no-files-found: error
-          path: ${{ matrix.artifact_path }}
+          path: |
+            dist/*.exe
+            dist/latest.yml
+            dist/*.blockmap
+
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Prepare Android signing key
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
+            echo "ANDROID_KEYSTORE_BASE64 is not configured" >&2
+            exit 1
+          fi
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/token-monitor-release.jks"
+      - name: Build signed Android release
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          ./android/gradlew --no-daemon -p android assembleRelease \
+            -PtokenMonitorVersion="$version" \
+            -PandroidKeystorePath="$RUNNER_TEMP/token-monitor-release.jks" \
+            -PandroidKeystorePassword="$ANDROID_KEYSTORE_PASSWORD" \
+            -PandroidKeyAlias="$ANDROID_KEY_ALIAS" \
+            -PandroidKeyPassword="$ANDROID_KEY_PASSWORD"
+          cp android/app/build/outputs/apk/release/app-release.apk "android/app/build/outputs/apk/release/Token-Monitor-Android-${version}.apk"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: token-monitor-android
+          if-no-files-found: error
+          path: android/app/build/outputs/apk/release/Token-Monitor-Android-*.apk
 
   release:
-    needs: build
+    needs: [windows, android]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -103,12 +80,8 @@ jobs:
       - uses: softprops/action-gh-release@v2
         with:
           files: |
-            artifacts/*.dmg
-            artifacts/*.zip
             artifacts/*.exe
-            artifacts/*.AppImage
+            artifacts/Token-Monitor-Android-*.apk
             artifacts/latest.yml
-            artifacts/latest-mac.yml
-            artifacts/latest-linux.yml
             artifacts/*.blockmap
           body_path: .github/RELEASE_TEMPLATE.md
