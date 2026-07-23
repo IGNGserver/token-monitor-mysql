@@ -4,7 +4,7 @@ const { Client } = require('@xhayper/discord-rpc');
 const { formatCurrencyFromUsd, normalizeCurrency } = require('../shared/currency');
 
 const CLIENT_ID = '1507034330436862062';
-const GITHUB_URL = 'https://github.com/Javis603/token-monitor';
+const GITHUB_URL = 'https://github.com/IGNGserver/token-monitor-mysql';
 const KNOWN_CLIENT_ASSETS = new Set([
   'claude', 'codex', 'hermes', 'gemini', 'cursor', 'opencode', 'openclaw', 'antigravity', 'cline',
   'kimi', 'qwen', 'grok', 'copilot', 'pi', 'zed', 'kilocode', 'micode', 'zcode', 'kiro', 'codebuddy', 'workbuddy', 'proma'

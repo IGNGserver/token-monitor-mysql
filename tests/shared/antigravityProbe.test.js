@@ -172,7 +172,7 @@ test('callLs posts JSON, returns parsed body on 200', async () => {
     req.on('end', () => {
       assert.equal(req.headers['x-codeium-csrf-token'], 'tok');
       assert.equal(req.headers['content-type'], 'application/json');
-      assert.equal(req.headers['user-agent'], `token-monitor/${rootPackage.version} (+https://github.com/Javis603/token-monitor)`);
+      assert.equal(req.headers['user-agent'], `token-monitor/${rootPackage.version} (+https://github.com/IGNGserver/token-monitor-mysql)`);
       assert.equal(JSON.parse(body).metadata.ideName, 'antigravity');
       res.writeHead(200, { 'content-type': 'application/json' });
       res.end(JSON.stringify({ ok: true }));
