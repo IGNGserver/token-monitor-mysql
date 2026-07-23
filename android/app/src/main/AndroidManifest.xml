@@ -5,6 +5,8 @@
     android:name=".TokenMonitorApplication"
     android:allowBackup="false"
     android:label="Token Monitor"
+    android:icon="@drawable/token_monitor_icon"
+    android:roundIcon="@drawable/token_monitor_icon"
     android:usesCleartextTraffic="true"
     android:supportsRtl="true"
     android:theme="@style/Theme.TokenMonitor">
