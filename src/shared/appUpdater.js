@@ -4,6 +4,7 @@ const semver = require('semver');
 
 const GITHUB_REPO = 'IGNGserver/token-monitor-mysql';
 const RELEASES_LATEST_URL = `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`;
+const RELEASE_HTML_PREFIX = `https://github.com/${GITHUB_REPO}/releases/`;
 const REQUEST_TIMEOUT_MS = 10 * 1000;
 const APP_UPDATE_BACKGROUND_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 const APP_UPDATE_OUTDATED_COOLDOWN_MS = 60 * 60 * 1000;
@@ -131,7 +132,7 @@ function parseLatestReleasePayload(payload) {
   const version = parseTag(tag);
   if (!version) return null;
   const htmlUrl = typeof payload.html_url === 'string' ? payload.html_url : '';
-  if (!htmlUrl.startsWith('https://')) return null;
+  if (!htmlUrl.startsWith(RELEASE_HTML_PREFIX)) return null;
   const releaseNotes = extractReleaseNotes(payload.body);
   return {
     version,
