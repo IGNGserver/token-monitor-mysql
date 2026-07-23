@@ -37,7 +37,7 @@ function macActivationPolicyMode(settings = {}, state = {}) {
 function mainWindowCloseAction(settings = {}, _state = {}) {
   const normalized = normalizeTrayModeSettings(settings);
   if (normalized.trayMode) return 'hidePopover';
-  if (normalized.showTrayIcon) return 'hideWindow';
+  if (normalized.showTrayIcon && parseBoolean(settings.closeToTray, false)) return 'hideWindow';
   return 'closeWindow';
 }
 

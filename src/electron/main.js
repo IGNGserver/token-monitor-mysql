@@ -278,6 +278,8 @@ function defaultSettings() {
     zoomFactor: 1,
     showTrayIcon: true,
     trayMode: false,
+    closeToTray: false,
+    startInTray: false,
     trayContent: 'tokens',
     showTrayProviderBadge: false,
     windowToggleShortcut: '',
@@ -3546,6 +3548,13 @@ app.whenReady().then(() => {
     });
   });
   applyMacActivationPolicy();
+  // Login-item launches can start directly in the tray when requested. Electron
+  // reports this only for launches initiated by the OS login-item mechanism.
+  if (settings.startAtLogin && settings.startInTray) {
+    try {
+      if (app.getLoginItemSettings().wasOpenedAtLogin) settings.trayMode = true;
+    } catch (_) { /* unsupported on this platform */ }
+  }
   createWindow();
   syncLoginItemSettingFromOs();
   configureWindowToggleShortcut();
@@ -3704,6 +3713,8 @@ app.whenReady().then(() => {
         showTrayIcon: patch.showTrayIcon ?? settings.showTrayIcon,
         trayMode: patch.trayMode ?? settings.trayMode
       }),
+      closeToTray: parseBoolean(patch.closeToTray ?? settings.closeToTray, false),
+      startInTray: parseBoolean(patch.startInTray ?? settings.startInTray, false),
       trayContent: normalizeTrayContent(patch.trayContent ?? settings.trayContent),
       showTrayProviderBadge: parseBoolean(patch.showTrayProviderBadge ?? settings.showTrayProviderBadge, false),
       floatingBubbleContent: normalizeTrayContent(patch.floatingBubbleContent ?? settings.floatingBubbleContent, 'icon'),

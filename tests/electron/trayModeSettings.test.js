@@ -56,8 +56,9 @@ test('uses accessory activation when macOS is running from the menu bar only', (
 
 test('maps main-window close to the platform-appropriate background behavior', () => {
   assert.equal(mainWindowCloseAction({ showTrayIcon: true, trayMode: true }, { platform: 'darwin' }), 'hidePopover');
-  assert.equal(mainWindowCloseAction({ showTrayIcon: true, trayMode: false }, { platform: 'darwin' }), 'hideWindow');
+  assert.equal(mainWindowCloseAction({ showTrayIcon: true, trayMode: false }, { platform: 'darwin' }), 'closeWindow');
   assert.equal(mainWindowCloseAction({ showTrayIcon: false, trayMode: false }, { platform: 'darwin' }), 'closeWindow');
-  assert.equal(mainWindowCloseAction({ showTrayIcon: true, trayMode: false }, { platform: 'win32' }), 'hideWindow');
+  assert.equal(mainWindowCloseAction({ showTrayIcon: true, trayMode: false, closeToTray: true }, { platform: 'win32' }), 'hideWindow');
+  assert.equal(mainWindowCloseAction({ showTrayIcon: true, trayMode: false, closeToTray: false }, { platform: 'win32' }), 'closeWindow');
   assert.equal(mainWindowCloseAction({ showTrayIcon: false, trayMode: false }, { platform: 'win32' }), 'closeWindow');
 });

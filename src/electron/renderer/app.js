@@ -243,6 +243,8 @@ Object.assign(els, {
   clearSessionUsageArchiveButton: document.getElementById('clearSessionUsageArchiveButton'),
   startupGroup: document.getElementById('startupGroup'),
   startAtLoginInput: document.getElementById('startAtLoginInput'),
+  startInTrayInput: document.getElementById('startInTrayInput'),
+  closeToTrayInput: document.getElementById('closeToTrayInput'),
   startupNote: document.getElementById('startupNote'),
   tokscaleGroup: document.getElementById('tokscaleGroup'),
   tokscaleInstalled: document.getElementById('tokscaleInstalled'),
@@ -5189,6 +5191,11 @@ function syncSettingsForm() {
     els.startAtLoginInput.disabled = !state.appInfo?.loginItemSupported;
     els.startAtLoginInput.checked = Boolean(state.settings.startAtLogin && state.appInfo?.loginItemSupported);
   }
+  if (els.startInTrayInput) els.startInTrayInput.checked = Boolean(state.settings.startInTray);
+  if (els.closeToTrayInput) {
+    els.closeToTrayInput.checked = Boolean(state.settings.closeToTray);
+    els.closeToTrayInput.disabled = !showTrayIcon;
+  }
   if (els.startupNote) {
     els.startupNote.textContent = !state.appInfo?.loginItemSupported
       ? t('settings.startup.available')
@@ -6814,6 +6821,10 @@ els.showTrayIconInput?.addEventListener('change', () => {
   if (!showTrayIcon) els.trayModeInput.checked = false;
   els.trayContentInput.disabled = !showTrayIcon;
   els.showTrayProviderBadgeInput.disabled = !showTrayIcon;
+  if (els.closeToTrayInput) {
+    els.closeToTrayInput.disabled = !showTrayIcon;
+    if (!showTrayIcon) els.closeToTrayInput.checked = false;
+  }
   els.trayIconOptions?.classList.toggle('hidden', !showTrayIcon);
   els.trayOptions?.classList.toggle('hidden', !showTrayIcon || !els.trayModeInput.checked);
   saveSettings({ showTrayIcon, trayMode: showTrayIcon ? els.trayModeInput.checked : false });
@@ -6827,6 +6838,8 @@ els.showTrayProviderBadgeInput.addEventListener('change', () => saveSettings({ s
 els.windowToggleShortcutValue?.addEventListener('click', startWindowShortcutRecording);
 els.windowToggleShortcutClearButton?.addEventListener('click', () => setWindowToggleShortcut('').catch(() => {}));
 els.startAtLoginInput?.addEventListener('change', () => saveSettings({ startAtLogin: els.startAtLoginInput.checked }));
+els.startInTrayInput?.addEventListener('change', () => saveSettings({ startInTray: els.startInTrayInput.checked }));
+els.closeToTrayInput?.addEventListener('change', () => saveSettings({ closeToTray: els.closeToTrayInput.checked }));
 els.glassInput.addEventListener('change', saveAppearanceFromControls);
 els.blurInput.addEventListener('change', saveAppearanceFromControls);
 els.zoomInput.addEventListener('change', saveAppearanceFromControls);
