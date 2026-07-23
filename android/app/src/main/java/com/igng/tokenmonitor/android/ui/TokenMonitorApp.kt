@@ -5,6 +5,8 @@
 
 package com.igng.tokenmonitor.android.ui
 
+import com.igng.tokenmonitor.android.BuildConfig
+
 import android.net.Uri
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -409,8 +411,9 @@ private fun SettingsScreen(state: ConnectionUiState, viewModel: ConnectionViewMo
     HorizontalDivider()
     Text("关于", style = MaterialTheme.typography.titleMedium)
     Text("本项目 fork 自 Javis603/token-monitor，遵循 MIT License。")
+    Text("当前 Android 版本：${BuildConfig.VERSION_NAME}")
     state.health?.version?.let { Text("当前连接 Hub 版本：$it") }
-    TextButton(onClick = { uriHandler.openUri("https://github.com/Javis603/token-monitor") }) { Text("打开原始仓库") }
+    TextButton(onClick = { uriHandler.openUri("https://github.com/IGNGserver/token-monitor-mysql/releases/latest") }) { Text("检查并下载最新 Android 版本") }
   }
 }
 
