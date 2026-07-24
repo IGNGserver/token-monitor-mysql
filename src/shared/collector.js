@@ -22,6 +22,7 @@ const { findSessionFiles, codexSessionFile } = require('./sessionFiles');
 const opencodeSession = require('./opencodeSession');
 const { buildPromaHistoryGraph, buildPromaPeriods, collectPromaRows } = require('./promaUsage');
 const { hashKey } = require('./hashKey');
+const { filterPeriodByCustomRange, normalizeCustomRange } = require('./customRange');
 
 function toUnpackedPath(p) {
   // electron-builder asarUnpack stores real files at .../app.asar.unpacked/...
@@ -1360,12 +1361,69 @@ function startCollector(options) {
   return { stop, tick: (reason = 'manual', tickOptions = {}) => runTick(reason, tickOptions) };
 }
 
+
+async function collectCustomRangeOnce(options = {}) {
+  const range = normalizeCustomRange(options.range || options);
+  if (!range.ok) {
+    const error = new Error(`Invalid custom range: ${range.error}`);
+    error.code = range.error;
+    throw error;
+  }
+  const clients = options.clients;
+  const commandTimeoutMs = options.commandTimeoutMs;
+  const projectsEnabled = options.projectsEnabled !== false;
+  const runTokscaleFn = options.runTokscale || runTokscale;
+  const normalizedClients = normalizeClientsCsv(clients);
+  const tokscaleClients = normalizedClients
+    ? normalizedClients.split(',').filter((c) => c !== 'proma').join(',')
+    : normalizedClients;
+  if (!tokscaleClients) {
+    return { range, period: emptyPeriod(), updatedAt: new Date().toISOString() };
+  }
+
+  const flags = ['--since', range.since, '--until', range.until];
+  const json = await runTokscaleFn({ clients: tokscaleClients, flags, commandTimeoutMs });
+  let period = extractUsageFromTokscale(json);
+
+  const homeDir = options.homeDir || os.homedir();
+  const localSessionMetadataDeps = {
+    ...(options.sessionMetadataDeps || {}),
+    metadataCache: new Map(),
+    resolvedSessionKeys: new Set(),
+    attemptedSessionKeys: new Set()
+  };
+  applySessionTimestamps(
+    { custom: period },
+    homeDir,
+    { ...localSessionMetadataDeps, retryMisses: true, resolveProjects: projectsEnabled }
+  );
+
+  period = filterPeriodByCustomRange(period, range, { projectsEnabled });
+  return {
+    range: {
+      startDate: range.startDate,
+      endDate: range.endDate,
+      startHour: range.startHour,
+      endHour: range.endHour,
+      startMs: range.startMs,
+      endMs: range.endMs,
+      since: range.since,
+      until: range.until,
+      isSameDay: range.isSameDay,
+      coversFullDays: range.coversFullDays
+    },
+    period,
+    updatedAt: new Date().toISOString()
+  };
+}
+
 module.exports = {
   applySessionTimestamps,
   projectIdentity,
   projectPathFromJsonl,
   collectHistoryOnce,
   collectUsageOnce,
+  collectCustomRangeOnce,
   clientDataDirPresence,
   computePeriodWindows,
   configFingerprint,

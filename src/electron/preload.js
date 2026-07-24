@@ -1,4 +1,4 @@
-﻿'use strict';
+'use strict';
 
 const { contextBridge, ipcRenderer } = require('electron');
 
@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld('tokenMonitor', {
   lookupModelPricing: (modelId) => ipcRenderer.invoke('pricing:lookup', modelId),
   previewAppearance: (patch) => ipcRenderer.invoke('appearance:preview', patch),
   getStats: (options) => ipcRenderer.invoke('stats:get', options),
+  getCustomRangeStats: (range) => ipcRenderer.invoke('stats:getCustomRange', range),
   getSessionDetail: (args) => ipcRenderer.invoke('session:getDetail', args),
   getStreamStatus: () => ipcRenderer.invoke('stream:status'),
   getServiceStatus: (options) => ipcRenderer.invoke('serviceStatus:get', options),

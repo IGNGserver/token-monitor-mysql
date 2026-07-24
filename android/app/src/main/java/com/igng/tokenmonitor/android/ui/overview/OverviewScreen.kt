@@ -135,8 +135,8 @@ fun OverviewScreen(
                 {
                   DonutChart(
                     entries = clientShares,
-                    chartSize = 120.dp,
-                    strokeWidth = 16.dp,
+                    chartSize = 140.dp,
+                    strokeWidth = 18.dp,
                     showLegend = false,
                     centerPrimary = null,
                     centerSecondary = null

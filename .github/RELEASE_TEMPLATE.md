@@ -6,13 +6,13 @@
 
 <!-- app-update-notes:en:start -->
 ### Added
-- **Chart grow animations:** Progress bars, donut charts, quota rings, and segmented token bars animate from empty to current values.
-- **Theme colors:** Pick a seed color (Blue / Green / Purple / Teal / Orange / Rose) in Settings, or use **System** dynamic color from the wallpaper on Android 12+.
-- **Haptics:** Off / Standard / Enhanced vibration feedback with distinct patterns for taps, toggles, success, errors, and refresh. Enhanced mode includes in-settings previews.
+- **Custom hour-range analytics:** On Android and the desktop widget, open **Analytics → Custom**, pick a calendar day range (same day allowed), and dial start/end hours. Client and model share charts load from the hub event ledger with hour precision; day-level history is used only as a fallback.
+- **Client / model detail drill-down:** Tap a client or model row in analytics to open a detail screen for the selected period, including custom ranges.
+- **Hub range API:** `GET /api/usage/range?from=&to=` aggregates usage for an exclusive-end window (events first, history daily fallback).
 
 ### Improved
-- **Today hero donut:** Larger ring and no empty stretch beside the chart in the Overview hero card.
-- **Android settings:** Appearance and haptics controls live under Settings with clearer Chinese labels.
+- **Today hero donut:** Larger ring (140dp) and tighter hero metrics so the Overview “今日” card no longer leaves a large empty stretch beside a tiny pie.
+- **Chart grow animations & haptics:** Progress bars, donuts, and segmented bars keep grow-in animations; the custom-range hour wheels and confirm actions use selection/confirm/error haptics according to Settings (Off / Standard / Enhanced).
 <!-- app-update-notes:en:end -->
 
 ## Download
@@ -60,13 +60,13 @@ open-source: https://github.com/junhoyeo/tokscale
 
 <!-- app-update-notes:zh:start -->
 ### 新增
-- **图表伸展动画：** 进度条、饼/环图、配额环与分段 Token 条会从空值动画到当前值。
-- **主题色：** 可在设置中选择蓝 / 绿 / 紫 / 青 / 橙 / 玫红，或选择「系统」在 Android 12+ 跟随壁纸动态取色。
-- **触感反馈：** 关闭 / 标准 / 增强三档震动；点击、切换、成功、错误、刷新等使用不同震动模式；增强模式可在设置中试听。
+- **自定义小时级分析：** 在 Android 与桌面小组件的「分析 → 自定义」中，可用日历选择起止日期（允许同一天），并用滚轮设置起止小时。客户端/模型占比会按 Hub 事件账本按小时聚合；仅在事件不足时回退到按日历史。
+- **客户端 / 模型详情下钻：** 在分析页点击某一客户端或模型行，可进入该时间范围内的详情页（含自定义范围）。
+- **Hub 范围接口：** `GET /api/usage/range?from=&to=` 按半开区间聚合用量（优先事件，历史按日回退）。
 
 ### 改进
-- **今日概览饼图：** 环图更大，并消除英雄卡片旁大片空白。
-- **安卓设置页：** 外观与触感选项集中在设置页，中文说明更清晰。
+- **今日英雄卡饼图：** 饼图放大到 140dp，并收紧左侧指标排版，避免「今日」卡片里小饼图旁大片空白。
+- **图表生长动画与触感：** 进度条、饼图、分段条保持生长动画；自定义范围的小时滚轮与确认/错误操作会按设置（关闭 / 标准 / 增强）触发不同震动。
 <!-- app-update-notes:zh:end -->
 
 ## 下载

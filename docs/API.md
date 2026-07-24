@@ -261,3 +261,35 @@ When an ingest event has configured pricing, the hub copies those four values, s
 Deletes one device record and its mutable session rollup from the hub store. Historical `usage_events` are deliberately retained and their nullable device foreign key is set to `null`.
 
 This is useful after renaming a device id.
+
+## `GET /api/usage/range`
+
+Query a client/model token & cost aggregate for a half-open time window.
+
+Query parameters:
+
+- `from` — inclusive lower bound (ISO-8601 timestamp)
+- `to` — exclusive upper bound (ISO-8601 timestamp)
+
+Response:
+
+```json
+{
+  "from": "2026-07-20T10:00:00.000Z",
+  "to": "2026-07-20T18:00:00.000Z",
+  "source": "usage_events",
+  "totalTokens": 12345,
+  "costUsd": 1.23,
+  "clients": { "codex": 8000 },
+  "clientCosts": { "codex": 0.8 },
+  "models": { "gpt-5": 12345 },
+  "modelCosts": { "gpt-5": 1.23 },
+  "clientModels": { "codex": { "gpt-5": 8000 } },
+  "clientModelCosts": { "codex": { "gpt-5": 0.8 } }
+}
+```
+
+`source` is `usage_events` when the MySQL event ledger has rows in the window. When the ledger is empty for that window the hub falls back to filtering aggregated daily history (`source: "history_daily"`), which is day-granularity only and does not populate `clientModels`.
+
+The Android analytics custom range picker treats the selected end hour as inclusive and sends `to` as the start of the next hour so this exclusive bound stays exact.
+

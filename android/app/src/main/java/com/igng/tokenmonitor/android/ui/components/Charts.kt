@@ -1,6 +1,7 @@
 package com.igng.tokenmonitor.android.ui.components
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -152,13 +153,15 @@ fun ShareBarList(
   entries: List<ShareEntry>,
   modifier: Modifier = Modifier,
   showCost: Boolean = true,
-  brandClients: Boolean = true
+  brandClients: Boolean = true,
+  onEntryClick: ((ShareEntry) -> Unit)? = null
 ) {
   val total = entries.sumOf { it.tokens }.coerceAtLeast(1L)
   val colors = ChartPalette
   Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
     entries.forEachIndexed { index, entry ->
       val color = if (brandClients) ClientBranding.color(entry.key) else colors[index % colors.size]
+      val clickable = onEntryClick != null && entry.key != "其他"
       ShareBarRow(
         name = if (brandClients) ClientBranding.label(entry.key) else entry.key,
         tokens = entry.tokens,
@@ -168,7 +171,8 @@ fun ShareBarList(
         showCost = showCost,
         leading = if (brandClients) {
           { ClientMonogram(entry.key, size = 22.dp) }
-        } else null
+        } else null,
+        onClick = if (clickable) ({ onEntryClick?.invoke(entry) }) else null
       )
     }
   }
@@ -182,9 +186,17 @@ fun ShareBarRow(
   fraction: Float,
   color: Color,
   showCost: Boolean = true,
-  leading: (@Composable () -> Unit)? = null
+  leading: (@Composable () -> Unit)? = null,
+  onClick: (() -> Unit)? = null
 ) {
-  Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+  val rowModifier = if (onClick != null) {
+    Modifier
+      .fillMaxWidth()
+      .clickable(onClick = onClick)
+  } else {
+    Modifier.fillMaxWidth()
+  }
+  Column(modifier = rowModifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
     Row(
       Modifier.fillMaxWidth(),
       horizontalArrangement = Arrangement.SpaceBetween,
@@ -272,7 +284,8 @@ fun SegmentedTokenBar(
       val r = size.height / 2f
       var x = 0f
       segments.forEachIndexed { index, (_, value) ->
-        val w = size.width * (value.toFloat() / total.toFloat()) * grow
+        val fraction = value.toFloat() / total.toFloat()
+        val w: Float = size.width * fraction * grow
         if (w > 0f) {
           drawRoundRect(
             color = colors[index % colors.size],
@@ -297,7 +310,7 @@ fun SegmentedTokenBar(
             Spacer(Modifier.width(8.dp))
             Text(name, style = MaterialTheme.typography.bodySmall)
           }
-          Text(formatTokens(value), style = MaterialTheme.typography.bodySmall)
+          Text(formatTokensShort(value), style = MaterialTheme.typography.bodySmall)
         }
       }
     }

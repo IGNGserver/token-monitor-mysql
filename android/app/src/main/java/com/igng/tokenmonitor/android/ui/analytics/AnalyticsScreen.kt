@@ -11,10 +11,14 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.outlined.PieChartOutline
 import androidx.compose.material.icons.outlined.Timeline
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.SegmentedButton
@@ -23,23 +27,35 @@ import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.navigation.NavHostController
 import com.igng.tokenmonitor.android.data.model.PeriodDto
 import com.igng.tokenmonitor.android.data.model.StatsDto
+import com.igng.tokenmonitor.android.ui.AnalyticsPeriodKind
+import com.igng.tokenmonitor.android.ui.HubUiState
+import com.igng.tokenmonitor.android.ui.HubViewModel
 import com.igng.tokenmonitor.android.ui.components.AppCard
+import com.igng.tokenmonitor.android.ui.components.ClientBranding
+import com.igng.tokenmonitor.android.ui.components.ClientMonogram
 import com.igng.tokenmonitor.android.ui.components.DailyTrendChart
+import com.igng.tokenmonitor.android.ui.components.DateTimeRangePickerDialog
 import com.igng.tokenmonitor.android.ui.components.DonutChart
 import com.igng.tokenmonitor.android.ui.components.EmptyState
 import com.igng.tokenmonitor.android.ui.components.LimitsSection
 import com.igng.tokenmonitor.android.ui.components.MonthlyTrendChart
 import com.igng.tokenmonitor.android.ui.components.ShareBarList
+import com.igng.tokenmonitor.android.ui.components.ShareEntry
 import com.igng.tokenmonitor.android.ui.components.TrendMetric
 import com.igng.tokenmonitor.android.ui.components.TrendRange
 import com.igng.tokenmonitor.android.ui.components.formatTokensShort
@@ -49,10 +65,16 @@ import com.igng.tokenmonitor.android.ui.components.takeRange
 import com.igng.tokenmonitor.android.ui.components.topShareEntries
 import com.igng.tokenmonitor.android.ui.haptics.HapticEvent
 import com.igng.tokenmonitor.android.ui.haptics.rememberAppHaptics
+import java.net.URLEncoder
+import java.nio.charset.StandardCharsets
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AnalyticsScreen(stats: StatsDto?) {
+fun AnalyticsScreen(
+  state: HubUiState,
+  viewModel: HubViewModel,
+  navController: NavHostController
+) {
   var tabIndex by rememberSaveable { mutableIntStateOf(0) }
   val tabLabels = listOf("客户端", "模型", "趋势")
   val haptics = rememberAppHaptics()
@@ -77,30 +99,70 @@ fun AnalyticsScreen(stats: StatsDto?) {
     }
 
     when (tabIndex) {
-      0 -> ShareAnalyticsTab(stats, clients = true)
-      1 -> ShareAnalyticsTab(stats, clients = false)
-      else -> TrendAnalyticsTab(stats)
+      0 -> ShareAnalyticsTab(
+        state = state,
+        viewModel = viewModel,
+        clients = true,
+        onOpenDetail = { id ->
+          navController.navigate("client/${encode(id)}")
+        }
+      )
+      1 -> ShareAnalyticsTab(
+        state = state,
+        viewModel = viewModel,
+        clients = false,
+        onOpenDetail = { id ->
+          navController.navigate("model/${encode(id)}")
+        }
+      )
+      else -> TrendAnalyticsTab(state.stats)
     }
   }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ShareAnalyticsTab(stats: StatsDto?, clients: Boolean) {
-  var periodIndex by rememberSaveable(clients) { mutableIntStateOf(0) }
-  val periodLabels = listOf("今日", "本月", "全部")
+private fun ShareAnalyticsTab(
+  state: HubUiState,
+  viewModel: HubViewModel,
+  clients: Boolean,
+  onOpenDetail: (String) -> Unit
+) {
   val haptics = rememberAppHaptics()
-  val period: PeriodDto? = when (periodIndex) {
-    0 -> stats?.periods?.today
-    1 -> stats?.periods?.month
-    else -> stats?.periods?.allTime
+  var showPicker by rememberSaveable { mutableStateOf(false) }
+  val periodLabels = listOf("今日", "本月", "全部", "自定义")
+  val selectedIndex = when (state.analyticsPeriod) {
+    AnalyticsPeriodKind.Today -> 0
+    AnalyticsPeriodKind.Month -> 1
+    AnalyticsPeriodKind.AllTime -> 2
+    AnalyticsPeriodKind.Custom -> 3
+  }
+  val period: PeriodDto? = when (state.analyticsPeriod) {
+    AnalyticsPeriodKind.Today -> state.stats?.periods?.today
+    AnalyticsPeriodKind.Month -> state.stats?.periods?.month
+    AnalyticsPeriodKind.AllTime -> state.stats?.periods?.allTime
+    AnalyticsPeriodKind.Custom -> state.customRangeResult?.let {
+      PeriodDto(
+        totalTokens = it.totalTokens,
+        costUsd = it.costUsd,
+        clients = it.clients,
+        clientCosts = it.clientCosts,
+        models = it.models,
+        modelCosts = it.modelCosts
+      )
+    }
   }
   val shares = if (clients) {
     topShareEntries(period?.clients.orEmpty(), period?.clientCosts.orEmpty(), limit = 8)
   } else {
     topShareEntries(period?.models.orEmpty(), period?.modelCosts.orEmpty(), limit = 8)
   }
-  val emptyText = if (clients) "这个周期没有客户端用量。" else "这个周期没有模型用量。"
+  val emptyText = when {
+    state.analyticsPeriod == AnalyticsPeriodKind.Custom && state.customRangeLoading -> "正在加载自定义范围…"
+    state.analyticsPeriod == AnalyticsPeriodKind.Custom && state.customRange == null -> "点「自定义」选择起止时间。"
+    clients -> "这个周期没有客户端用量。"
+    else -> "这个周期没有模型用量。"
+  }
 
   Column(Modifier.fillMaxSize()) {
     SingleChoiceSegmentedButtonRow(
@@ -110,52 +172,322 @@ private fun ShareAnalyticsTab(stats: StatsDto?, clients: Boolean) {
     ) {
       periodLabels.forEachIndexed { index, label ->
         SegmentedButton(
-          selected = periodIndex == index,
-          onClick = { haptics.perform(HapticEvent.Selection); periodIndex = index },
+          selected = selectedIndex == index,
+          onClick = {
+            haptics.perform(HapticEvent.Selection)
+            when (index) {
+              0 -> viewModel.setAnalyticsPeriod(AnalyticsPeriodKind.Today)
+              1 -> viewModel.setAnalyticsPeriod(AnalyticsPeriodKind.Month)
+              2 -> viewModel.setAnalyticsPeriod(AnalyticsPeriodKind.AllTime)
+              else -> {
+                viewModel.setAnalyticsPeriod(AnalyticsPeriodKind.Custom)
+                showPicker = true
+              }
+            }
+          },
           shape = SegmentedButtonDefaults.itemShape(index, periodLabels.size),
           label = { Text(label) }
         )
       }
     }
-    Spacer(Modifier.height(8.dp))
-    if (shares.isEmpty()) {
-      EmptyState(title = "暂无图表", text = emptyText, icon = Icons.Outlined.PieChartOutline)
-    } else {
-      LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
+
+    if (state.analyticsPeriod == AnalyticsPeriodKind.Custom) {
+      Row(
+        Modifier
+          .fillMaxWidth()
+          .padding(horizontal = 16.dp, vertical = 6.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
       ) {
-        item {
-          AppCard {
-            Text(
-              if (clients) "客户端份额" else "模型份额",
-              style = MaterialTheme.typography.titleMedium
-            )
-            Text(
-              "${formatTokensShort(period?.totalTokens ?: 0L)} · ${formatUsd(period?.costUsd ?: 0.0)}",
-              style = MaterialTheme.typography.bodySmall,
-              color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Spacer(Modifier.height(12.dp))
-            DonutChart(
-              entries = shares,
-              centerPrimary = formatTokensShort(period?.totalTokens ?: 0L),
-              centerSecondary = formatUsd(period?.costUsd ?: 0.0, compact = true)
-            )
+        Text(
+          state.customRange?.label ?: "未选择范围",
+          style = MaterialTheme.typography.bodySmall,
+          color = MaterialTheme.colorScheme.onSurfaceVariant,
+          modifier = Modifier.weight(1f)
+        )
+        TextButton(onClick = { showPicker = true }) { Text("调整") }
+      }
+      state.customRangeResult?.source?.takeIf { it.isNotBlank() }?.let { source ->
+        Text(
+          when (source) {
+            "usage_events" -> "数据来源：事件账本（小时精度）"
+            "history_daily" -> "数据来源：每日历史（天精度回退）"
+            else -> "数据来源：$source"
+          },
+          style = MaterialTheme.typography.labelSmall,
+          color = MaterialTheme.colorScheme.onSurfaceVariant,
+          modifier = Modifier.padding(horizontal = 16.dp)
+        )
+      }
+    }
+
+    Spacer(Modifier.height(8.dp))
+
+    when {
+      state.analyticsPeriod == AnalyticsPeriodKind.Custom && state.customRangeLoading -> {
+        Column(
+          Modifier.fillMaxSize(),
+          verticalArrangement = Arrangement.Center,
+          horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+          CircularProgressIndicator()
+          Spacer(Modifier.height(12.dp))
+          Text("加载自定义范围…", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+      }
+      shares.isEmpty() -> EmptyState(title = "暂无图表", text = emptyText, icon = Icons.Outlined.PieChartOutline)
+      else -> {
+        LazyColumn(
+          modifier = Modifier.fillMaxSize(),
+          contentPadding = PaddingValues(16.dp),
+          verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+          item {
+            AppCard {
+              Text(
+                if (clients) "客户端份额" else "模型份额",
+                style = MaterialTheme.typography.titleMedium
+              )
+              Text(
+                "${formatTokensShort(period?.totalTokens ?: 0L)} · ${formatUsd(period?.costUsd ?: 0.0)}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+              )
+              Spacer(Modifier.height(12.dp))
+              DonutChart(
+                entries = shares,
+                centerPrimary = formatTokensShort(period?.totalTokens ?: 0L),
+                centerSecondary = formatUsd(period?.costUsd ?: 0.0, compact = true)
+              )
+            }
+          }
+          item {
+            AppCard {
+              Text("明细 · 点击查看详情", style = MaterialTheme.typography.titleMedium)
+              Spacer(Modifier.height(12.dp))
+              ShareBarList(
+                shares,
+                brandClients = clients,
+                onEntryClick = { entry ->
+                  haptics.perform(HapticEvent.Tap)
+                  onOpenDetail(entry.key)
+                }
+              )
+            }
           }
         }
-        item {
-          AppCard {
-            Text("明细", style = MaterialTheme.typography.titleMedium)
-            Spacer(Modifier.height(12.dp))
-            ShareBarList(shares, brandClients = clients)
+      }
+    }
+  }
+
+  if (showPicker) {
+    DateTimeRangePickerDialog(
+      onDismiss = { showPicker = false },
+      onConfirm = { from, to ->
+        showPicker = false
+        viewModel.loadCustomRange(from, to)
+      },
+      initialFrom = state.customRange?.fromInclusive,
+      initialToExclusive = state.customRange?.toExclusive
+    )
+  }
+}
+
+
+private fun modelsFromSessions(period: PeriodDto?, clientId: String?): Pair<Map<String, Long>, Map<String, Double>> {
+  val tokens = linkedMapOf<String, Long>()
+  val costs = linkedMapOf<String, Double>()
+  val sessions = period?.sessions.orEmpty().values
+  for (session in sessions) {
+    if (clientId != null && session.client != clientId) continue
+    val sessionCost = session.costUsd
+    val models = session.models
+    if (models.isEmpty()) continue
+    val modelTotal = models.values.sum().coerceAtLeast(1L)
+    for ((model, modelTokens) in models) {
+      val t = modelTokens.coerceAtLeast(0L)
+      tokens[model] = (tokens[model] ?: 0L) + t
+      val share = t.toDouble() / modelTotal.toDouble()
+      costs[model] = (costs[model] ?: 0.0) + sessionCost * share
+    }
+  }
+  return tokens to costs
+}
+
+private fun clientsFromSessions(period: PeriodDto?, modelId: String): Pair<Map<String, Long>, Map<String, Double>> {
+  val tokens = linkedMapOf<String, Long>()
+  val costs = linkedMapOf<String, Double>()
+  for (session in period?.sessions.orEmpty().values) {
+    val modelTokens = session.models[modelId] ?: continue
+    val client = session.client?.takeIf { it.isNotBlank() } ?: "unknown"
+    tokens[client] = (tokens[client] ?: 0L) + modelTokens.coerceAtLeast(0L)
+    val modelTotal = session.models.values.sum().coerceAtLeast(1L)
+    val share = modelTokens.toDouble() / modelTotal.toDouble()
+    costs[client] = (costs[client] ?: 0.0) + session.costUsd * share
+  }
+  return tokens to costs
+}
+
+@Composable
+fun ClientDetailScreen(
+  clientId: String,
+  state: HubUiState,
+  onBack: () -> Unit
+) {
+  val periodLabel = periodCaption(state)
+  val period = resolvePeriod(state)
+  val tokens = period?.clients?.get(clientId) ?: 0L
+  val cost = period?.clientCosts?.get(clientId) ?: 0.0
+  val (modelTokens, modelCosts) = when (state.analyticsPeriod) {
+    AnalyticsPeriodKind.Custom -> {
+      val range = state.customRangeResult
+      (range?.clientModels?.get(clientId).orEmpty()) to (range?.clientModelCosts?.get(clientId).orEmpty())
+    }
+    else -> modelsFromSessions(period, clientId)
+  }
+  val shares = topShareEntries(modelTokens, modelCosts, limit = 12)
+  val title = ClientBranding.label(clientId)
+
+  DetailScaffold(
+    title = title,
+    subtitle = periodLabel,
+    onBack = onBack,
+    heroTokens = tokens,
+    heroCost = cost,
+    leading = { ClientMonogram(clientId, size = 36.dp) },
+    emptyText = "该客户端在此范围内没有模型拆分。",
+    shares = shares,
+    brandClients = false
+  )
+}
+
+@Composable
+fun ModelDetailScreen(
+  modelId: String,
+  state: HubUiState,
+  onBack: () -> Unit
+) {
+  val periodLabel = periodCaption(state)
+  val period = resolvePeriod(state)
+  val tokens = period?.models?.get(modelId) ?: 0L
+  val cost = period?.modelCosts?.get(modelId) ?: 0.0
+  val (clientTokens, clientCosts) = when (state.analyticsPeriod) {
+    AnalyticsPeriodKind.Custom -> {
+      val range = state.customRangeResult
+      val t = linkedMapOf<String, Long>()
+      val c = linkedMapOf<String, Double>()
+      range?.clientModels?.forEach { (client, models) ->
+        val value = models[modelId] ?: return@forEach
+        t[client] = value
+        c[client] = range.clientModelCosts[client]?.get(modelId) ?: 0.0
+      }
+      t to c
+    }
+    else -> clientsFromSessions(period, modelId)
+  }
+  val shares = topShareEntries(clientTokens, clientCosts, limit = 12)
+
+  DetailScaffold(
+    title = modelId,
+    subtitle = periodLabel,
+    onBack = onBack,
+    heroTokens = tokens,
+    heroCost = cost,
+    leading = null,
+    emptyText = "该模型在此范围内没有客户端拆分。",
+    shares = shares,
+    brandClients = true
+  )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun DetailScaffold(
+  title: String,
+  subtitle: String,
+  onBack: () -> Unit,
+  heroTokens: Long,
+  heroCost: Double,
+  leading: (@Composable () -> Unit)?,
+  emptyText: String,
+  shares: List<ShareEntry>,
+  brandClients: Boolean
+) {
+  Column(Modifier.fillMaxSize()) {
+    TopAppBar(
+      title = { Text(title) },
+      navigationIcon = {
+        IconButton(onClick = onBack) {
+          Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+        }
+      }
+    )
+    LazyColumn(
+      contentPadding = PaddingValues(16.dp),
+      verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+      item {
+        AppCard {
+          Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            leading?.invoke()
+            Column {
+              Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+              Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+          }
+          Spacer(Modifier.height(12.dp))
+          Text(formatTokensShort(heroTokens), style = MaterialTheme.typography.headlineSmall)
+          Text(formatUsd(heroCost), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+      }
+      item {
+        AppCard {
+          Text(if (brandClients) "客户端拆分" else "模型拆分", style = MaterialTheme.typography.titleMedium)
+          Spacer(Modifier.height(12.dp))
+          if (shares.isEmpty()) {
+            Text(emptyText, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+          } else {
+            ShareBarList(entries = shares, brandClients = brandClients)
+            if (shares.size >= 2) {
+              Spacer(Modifier.height(16.dp))
+              DonutChart(
+                entries = shares,
+                centerPrimary = formatTokensShort(shares.sumOf { it.tokens }),
+                centerSecondary = formatUsd(shares.fold(0.0) { acc, e -> acc + e.costUsd }, compact = true)
+              )
+            }
           }
         }
       }
     }
   }
 }
+
+private fun resolvePeriod(state: HubUiState): PeriodDto? = when (state.analyticsPeriod) {
+  AnalyticsPeriodKind.Today -> state.stats?.periods?.today
+  AnalyticsPeriodKind.Month -> state.stats?.periods?.month
+  AnalyticsPeriodKind.AllTime -> state.stats?.periods?.allTime
+  AnalyticsPeriodKind.Custom -> state.customRangeResult?.let {
+    PeriodDto(
+      totalTokens = it.totalTokens,
+      costUsd = it.costUsd,
+      clients = it.clients,
+      clientCosts = it.clientCosts,
+      models = it.models,
+      modelCosts = it.modelCosts
+    )
+  }
+}
+
+private fun periodCaption(state: HubUiState): String = when (state.analyticsPeriod) {
+  AnalyticsPeriodKind.Today -> "周期：今日"
+  AnalyticsPeriodKind.Month -> "周期：本月"
+  AnalyticsPeriodKind.AllTime -> "周期：全部"
+  AnalyticsPeriodKind.Custom -> "周期：${state.customRange?.label ?: "自定义"}"
+}
+
+private fun encode(value: String): String =
+  URLEncoder.encode(value, StandardCharsets.UTF_8.toString())
 
 @Composable
 private fun TrendAnalyticsTab(stats: StatsDto?) {

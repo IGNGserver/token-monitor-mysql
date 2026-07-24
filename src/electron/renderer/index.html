@@ -15,6 +15,7 @@
           <div id="status" class="status">Starting</div>
         </div>
         <div class="title-controls">
+          <button id="customRangeButton" type="button" class="icon-button period-calendar-button" title="Custom range" aria-label="Custom range" aria-haspopup="dialog" aria-expanded="false" aria-controls="customRangePopover" data-i18n-title="period.custom.button" data-i18n-aria-label="period.custom.button"></button>
           <nav class="tabs" aria-label="Period tabs">
             <span class="tab-indicator" aria-hidden="true"></span>
             <button class="tab active" data-period="today">DAY</button>
@@ -1010,6 +1011,42 @@
           <button id="appUpdatePopoverRelease" type="button" class="inline-link" data-i18n="settings.appUpdate.viewFullRelease">View full release</button>
         </div>
       </div>
+      <div id="customRangePopover" class="custom-range-popover hidden" role="dialog" aria-labelledby="customRangeTitle" aria-modal="true">
+        <div class="custom-range-header">
+          <strong id="customRangeTitle" data-i18n="period.custom.title">Custom range</strong>
+          <button id="customRangeClose" type="button" class="custom-range-close" title="Close" aria-label="Close" data-i18n-title="period.custom.close" data-i18n-aria-label="period.custom.close">×</button>
+        </div>
+        <div class="custom-range-calendar">
+          <div class="custom-range-month-nav">
+            <button id="customRangePrevMonth" type="button" class="custom-range-nav-btn" aria-label="Previous month" data-i18n-aria-label="period.custom.prevMonth">‹</button>
+            <div id="customRangeMonthLabel" class="custom-range-month-label"></div>
+            <button id="customRangeNextMonth" type="button" class="custom-range-nav-btn" aria-label="Next month" data-i18n-aria-label="period.custom.nextMonth">›</button>
+          </div>
+          <div id="customRangeWeekdays" class="custom-range-weekdays" aria-hidden="true"></div>
+          <div id="customRangeGrid" class="custom-range-grid" role="grid"></div>
+        </div>
+        <div class="custom-range-fields">
+          <label class="custom-range-field">
+            <span data-i18n="period.custom.start">Start</span>
+            <div class="custom-range-field-controls">
+              <input id="customRangeStartDate" type="date" />
+              <select id="customRangeStartHour" aria-label="Start hour" data-i18n-aria-label="period.custom.startHour"></select>
+            </div>
+          </label>
+          <label class="custom-range-field">
+            <span data-i18n="period.custom.end">End</span>
+            <div class="custom-range-field-controls">
+              <input id="customRangeEndDate" type="date" />
+              <select id="customRangeEndHour" aria-label="End hour" data-i18n-aria-label="period.custom.endHour"></select>
+            </div>
+          </label>
+        </div>
+        <div id="customRangeError" class="custom-range-error hidden" role="alert"></div>
+        <div class="custom-range-actions">
+          <button id="customRangeClear" type="button" class="custom-range-secondary" data-i18n="period.custom.clear">Clear</button>
+          <button id="customRangeApply" type="button" class="custom-range-primary" data-i18n="period.custom.apply">Apply</button>
+        </div>
+      </div>
     </main>
     <button id="floatingBubbleTab" class="floating-bubble-tab" type="button" title="Show Token Monitor" aria-label="Show Token Monitor" data-i18n-title="floatingBubble.expand" data-i18n-aria-label="floatingBubble.expand">
       <span id="floatingBubbleContent" aria-hidden="true">Σ</span>
@@ -1040,6 +1077,7 @@
     <script src="../../shared/currency.js"></script>
     <script src="../../shared/trayText.js"></script>
     <script src="../motionPreference.js"></script>
+    <script src="customRangePicker.js"></script>
     <script src="app.js"></script>
   </body>
 </html>

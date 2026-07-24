@@ -10,6 +10,7 @@ import com.igng.tokenmonitor.android.data.model.PricingRequestDto
 import com.igng.tokenmonitor.android.data.model.PricingResponseDto
 import com.igng.tokenmonitor.android.data.model.SseStatsDto
 import com.igng.tokenmonitor.android.data.model.StatsDto
+import com.igng.tokenmonitor.android.data.model.UsageRangeDto
 import com.igng.tokenmonitor.android.data.remote.HubApiFactory
 import java.io.IOException
 import javax.inject.Inject
@@ -46,6 +47,8 @@ class HubRepository @Inject constructor(
   suspend fun testConnection(config: ConnectionConfig): HubResult<HealthDto> = safeCall { apiFactory.create(config).health() }
   suspend fun stats(): HubResult<StatsDto> = withConnection { apiFactory.create(it).stats() }
   suspend fun devices(): HubResult<DevicesResponseDto> = withConnection { apiFactory.create(it).devices() }
+  suspend fun usageRange(from: String, to: String): HubResult<UsageRangeDto> =
+    withConnection { apiFactory.create(it).usageRange(from, to) }
   suspend fun pricing(): HubResult<PricingListDto> = withConnection { apiFactory.create(it).pricing() }
   suspend fun putPricing(model: String, request: PricingRequestDto): HubResult<PricingResponseDto> = withConnection { apiFactory.create(it).putPricing(model, request) }
   suspend fun fetchUpstream(model: String): HubResult<PricingResponseDto> = withConnection { apiFactory.create(it).fetchUpstream(model) }

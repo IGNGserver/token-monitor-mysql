@@ -35,6 +35,8 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.igng.tokenmonitor.android.ui.analytics.AnalyticsScreen
+import com.igng.tokenmonitor.android.ui.analytics.ClientDetailScreen
+import com.igng.tokenmonitor.android.ui.analytics.ModelDetailScreen
 import com.igng.tokenmonitor.android.ui.devices.DeviceDetailScreen
 import com.igng.tokenmonitor.android.ui.devices.DevicesScreen
 import com.igng.tokenmonitor.android.ui.more.MoreHubScreen
@@ -130,7 +132,7 @@ fun TokenMonitorApp(
           )
         }
         composable("analytics") {
-          AnalyticsScreen(hubState.stats)
+          AnalyticsScreen(state = hubState, viewModel = hubViewModel, navController = navController)
         }
         composable("devices") {
           DevicesScreen(hubState.devices, navController, isLoading = hubState.isLoading)
@@ -173,6 +175,22 @@ fun TokenMonitorApp(
           val id = Uri.decode(backStack.arguments?.getString("id").orEmpty())
           DeviceDetailScreen(
             device = hubState.devices.firstOrNull { it.deviceId == id },
+            onBack = { navController.popBackStack() }
+          )
+        }
+        composable("client/{id}") { backStack ->
+          val id = Uri.decode(backStack.arguments?.getString("id").orEmpty())
+          ClientDetailScreen(
+            clientId = id,
+            state = hubState,
+            onBack = { navController.popBackStack() }
+          )
+        }
+        composable("model/{id}") { backStack ->
+          val id = Uri.decode(backStack.arguments?.getString("id").orEmpty())
+          ModelDetailScreen(
+            modelId = id,
+            state = hubState,
             onBack = { navController.popBackStack() }
           )
         }

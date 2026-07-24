@@ -7,16 +7,22 @@ import com.igng.tokenmonitor.android.data.model.PricingListDto
 import com.igng.tokenmonitor.android.data.model.PricingRequestDto
 import com.igng.tokenmonitor.android.data.model.PricingResponseDto
 import com.igng.tokenmonitor.android.data.model.StatsDto
+import com.igng.tokenmonitor.android.data.model.UsageRangeDto
 import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.POST
 import retrofit2.http.PUT
 import retrofit2.http.Path
+import retrofit2.http.Query
 
 interface HubApi {
   @GET("api/health") suspend fun health(): HealthDto
   @GET("api/stats") suspend fun stats(): StatsDto
   @GET("api/devices") suspend fun devices(): DevicesResponseDto
+  @GET("api/usage/range") suspend fun usageRange(
+    @Query("from") from: String,
+    @Query("to") to: String
+  ): UsageRangeDto
   @GET("api/pricing") suspend fun pricing(): PricingListDto
   @PUT("api/pricing/{model}") suspend fun putPricing(@Path("model") model: String, @Body request: PricingRequestDto): PricingResponseDto
   @POST("api/pricing/{model}/fetch-upstream") suspend fun fetchUpstream(@Path("model") model: String): PricingResponseDto

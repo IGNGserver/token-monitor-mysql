@@ -17,7 +17,7 @@ const motionPreferenceApi = require('./motionPreference');
 // event and Electron pops a "JavaScript error in the main process" dialog.
 installSafeStdout();
 const { DEFAULT_CLIENTS, KNOWN_CLIENTS, clientsCsvForSetting } = require('../shared/clientTracking');
-const { startCollector, lookupModelPricing, normalizeHistoryIntervalMs } = require('../shared/collector');
+const { startCollector, collectCustomRangeOnce, lookupModelPricing, normalizeHistoryIntervalMs } = require('../shared/collector');
 const { customPricingPath } = require('../shared/tokscaleConfig');
 const { applyCustomPricing, normalizeCustomPricingSetting } = require('../shared/tokscaleCustomPricing');
 const { createHub } = require('../hub/server');
@@ -3942,6 +3942,27 @@ app.whenReady().then(() => {
     return true;
   });
   ipcMain.handle('stats:get', (_event, options) => fetchStats(options));
+  ipcMain.handle('stats:getCustomRange', async (_event, range) => {
+    const clients = clientsCsvForSetting(settings.clients, DEFAULT_CLIENTS);
+    const commandTimeoutMs = Number(process.env.TOKEN_MONITOR_COMMAND_TIMEOUT_MS) || 120000;
+    try {
+      const result = await collectCustomRangeOnce({
+        clients,
+        range,
+        commandTimeoutMs,
+        projectsEnabled: settings.projectsEnabled !== false,
+        homeDir: os.homedir()
+      });
+      return { ok: true, ...result };
+    } catch (error) {
+      return {
+        ok: false,
+        error: error?.code || 'collect-failed',
+        message: error?.message || String(error)
+      };
+    }
+  });
+
   ipcMain.handle('export:now', async () => {
     const result = await dialog.showOpenDialog({
       properties: ['openDirectory', 'createDirectory'],

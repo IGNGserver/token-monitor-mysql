@@ -109,28 +109,32 @@ fun MetricHeroCard(
       horizontalArrangement = Arrangement.SpaceBetween,
       verticalAlignment = Alignment.CenterVertically
     ) {
-      Column(Modifier.weight(1f, fill = false)) {
+      Column(Modifier.weight(1f)) {
         Text(
           formatTokensShort(period?.totalTokens ?: 0L),
           style = MaterialTheme.typography.displaySmall,
-          fontWeight = FontWeight.SemiBold
+          fontWeight = FontWeight.SemiBold,
+          maxLines = 1
         )
-        Spacer(Modifier.height(4.dp))
+        Spacer(Modifier.height(2.dp))
         Text(
           formatTokens(period?.totalTokens ?: 0L),
           style = MaterialTheme.typography.bodySmall,
-          color = MaterialTheme.colorScheme.onSurfaceVariant
+          color = MaterialTheme.colorScheme.onSurfaceVariant,
+          maxLines = 1
         )
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(6.dp))
         Text(
           formatUsd(period?.costUsd ?: 0.0),
           style = MaterialTheme.typography.titleMedium,
-          color = MaterialTheme.colorScheme.onSurface
+          color = MaterialTheme.colorScheme.onSurface,
+          maxLines = 1
         )
       }
       if (trailing != null) {
-        Spacer(Modifier.width(12.dp))
-        Box { trailing() }
+        Spacer(Modifier.width(8.dp))
+        // Keep the donut intrinsic-sized so the hero card does not stretch empty space.
+        Box(contentAlignment = Alignment.Center) { trailing() }
       }
     }
   }

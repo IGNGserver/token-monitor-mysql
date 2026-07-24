@@ -34,6 +34,68 @@ function number(value) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function emptyUsageRangePayload() {
+  return {
+    totalTokens: 0,
+    costUsd: 0,
+    clients: {},
+    clientCosts: {},
+    models: {},
+    modelCosts: {},
+    clientModels: {},
+    clientModelCosts: {}
+  };
+}
+
+function addRangeTokenCost(mapTokens, mapCosts, key, tokens, cost) {
+  const id = String(key || '').trim() || 'unknown';
+  mapTokens[id] = (mapTokens[id] || 0) + tokens;
+  mapCosts[id] = (mapCosts[id] || 0) + cost;
+}
+
+// Day-level fallback when usage_events has no rows for the requested window.
+// Days that overlap [from, to) (UTC day keys) are summed; hour precision is lost.
+function aggregateHistoryRange(history, from, to) {
+  const result = emptyUsageRangePayload();
+  const fromMs = from.getTime();
+  const toMs = to.getTime();
+  for (const day of history?.daily || []) {
+    const dayKey = String(day?.date || '').slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dayKey)) continue;
+    const dayStart = Date.parse(`${dayKey}T00:00:00.000Z`);
+    if (!Number.isFinite(dayStart)) continue;
+    const dayEnd = dayStart + 86_400_000;
+    if (dayEnd <= fromMs || dayStart >= toMs) continue;
+    const tokens = Math.round(number(day.tokens));
+    const cost = number(day.cost);
+    result.totalTokens += tokens;
+    result.costUsd += cost;
+    for (const [client, value] of Object.entries(day.perClient || {})) {
+      addRangeTokenCost(result.clients, result.clientCosts, client, Math.round(number(value?.tokens ?? value)), number(value?.cost));
+    }
+    for (const [model, value] of Object.entries(day.perModel || {})) {
+      addRangeTokenCost(result.models, result.modelCosts, model, Math.round(number(value?.tokens ?? value)), number(value?.cost));
+    }
+  }
+  return result;
+}
+
+function parseRangeBound(raw, name) {
+  const text = String(raw || '').trim();
+  if (!text) {
+    const error = new Error(`${name}_required`);
+    error.code = 'invalid_range';
+    throw error;
+  }
+  const parsed = new Date(text);
+  if (Number.isNaN(parsed.getTime())) {
+    const error = new Error(`${name}_invalid`);
+    error.code = 'invalid_range';
+    throw error;
+  }
+  return parsed;
+}
+
 function priceSnapshot(event, pricing) {
   if (!pricing) {
     // A missing catalog entry must not turn a known tokscale cost into a false
@@ -136,6 +198,41 @@ function createHub({
 
   async function getHistory() {
     return aggregateHistory(await store.listDeviceRecords());
+  }
+
+  async function getUsageRange(fromRaw, toRaw) {
+    const from = parseRangeBound(fromRaw, 'from');
+    const to = parseRangeBound(toRaw, 'to');
+    if (!(from.getTime() < to.getTime())) {
+      const error = new Error('from_must_be_before_to');
+      error.code = 'invalid_range';
+      throw error;
+    }
+    const eventsAgg = typeof store.aggregateUsageRange === 'function'
+      ? await store.aggregateUsageRange({ from, to })
+      : { ...emptyUsageRangePayload(), eventCount: 0 };
+    if (number(eventsAgg.eventCount) > 0) {
+      return {
+        from: from.toISOString(),
+        to: to.toISOString(),
+        source: 'usage_events',
+        totalTokens: Math.round(number(eventsAgg.totalTokens)),
+        costUsd: number(eventsAgg.costUsd),
+        clients: eventsAgg.clients || {},
+        clientCosts: eventsAgg.clientCosts || {},
+        models: eventsAgg.models || {},
+        modelCosts: eventsAgg.modelCosts || {},
+        clientModels: eventsAgg.clientModels || {},
+        clientModelCosts: eventsAgg.clientModelCosts || {}
+      };
+    }
+    const historyAgg = aggregateHistoryRange(await getHistory(), from, to);
+    return {
+      from: from.toISOString(),
+      to: to.toISOString(),
+      source: 'history_daily',
+      ...historyAgg
+    };
   }
 
   const sseClients = new Set();
@@ -269,6 +366,14 @@ function createHub({
       return sendJson(res, 200, { devices: await store.listDeviceRecords() });
     }
     if (req.method === 'GET' && url.pathname === '/api/history') return sendJson(res, 200, await getHistory());
+    if (req.method === 'GET' && url.pathname === '/api/usage/range') {
+      try {
+        return sendJson(res, 200, await getUsageRange(url.searchParams.get('from'), url.searchParams.get('to')));
+      } catch (error) {
+        const status = error.code === 'invalid_range' ? 400 : 500;
+        return sendJson(res, status, { error: error.code || 'bad_request', message: error.message });
+      }
+    }
     if (req.method === 'GET' && url.pathname === '/api/pricing') return sendJson(res, 200, { pricing: await store.listPricing() });
 
     if (req.method === 'GET' && url.pathname === '/api/stats/stream') {
@@ -372,6 +477,7 @@ function createHub({
     server,
     getStats,
     getHistory,
+    getUsageRange,
     ingest,
     deleteDevice,
     onStats,
@@ -396,4 +502,4 @@ if (require.main === module) {
     .catch((error) => { console.error(`Could not start hub: ${error.message}`); process.exitCode = 1; });
 }
 
-module.exports = { createHub, normalizePrices, priceSnapshot, resolveBindHost, upstreamPrices };
+module.exports = { createHub, normalizePrices, priceSnapshot, resolveBindHost, upstreamPrices, aggregateHistoryRange, emptyUsageRangePayload };

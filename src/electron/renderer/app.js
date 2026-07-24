@@ -157,7 +157,9 @@ const VIEW_DISPLAY_OPTIONS = [
   { id: 'limits', labelKey: 'views.limits' },
   { id: 'trends', labelKey: 'views.trends' }
 ];
-const viewPeriodValues = new Set(['today', 'month', 'allTime']);
+const presetPeriodValues = new Set(['today', 'month', 'allTime']);
+const viewPeriodValues = new Set(['today', 'month', 'allTime', 'custom']);
+const customRangePickerApi = window.TokenMonitorCustomRangePicker;
 const viewBreakdownValues = new Set(['home', ...baseBreakdownOrder, 'status', 'limits', 'trends']);
 const HOME_MODULE_OPTIONS = [
   { id: 'limits', labelKey: 'home.limits', viewId: 'limits' },
@@ -201,11 +203,17 @@ function normalizeInitialViewValue(value, allowed, fallback) {
   return allowed.has(raw) ? raw : fallback;
 }
 
-const state = { period: normalizeInitialViewValue(initialViewState.period, viewPeriodValues, 'today'), appUpdate: null, breakdown: normalizeInitialViewValue(initialViewState.breakdown, viewBreakdownValues, 'home'), viewSwitcherOpen: false, viewSwitcherHasOpened: false, resetCreditsTooltipHasOpened: false, resetCreditsTooltipActive: false, resetCreditsTooltipRenderPending: false, settings: null, stats: null, homeHistory: null, homeHistoryBusy: false, homeHistoryRequested: false, homeHistorySignature: '', homeHistoryRetries: 0, homeHistoryRetryTimer: null, homeActivityScrollLeft: null, homeActivityFollowEnd: true, homeActivityResizeObserver: null, serviceStatus: null, serviceStatusBusy: false, serviceProvidersExpanded: false, trendSettingsExpanded: false, trendsActivating: false, homeSettingsExpanded: false, homeLimitSettingsExpanded: false, serviceStatusTicker: null, refreshTimer: null, refreshBusy: false, refreshFeedbackTimer: null, currentTotal: 0, rowSignature: '', streamConnected: false, streamFailure: null, mode: 'idle', appInfo: null, tokscaleStatus: null, tokscaleCheck: null, tokscaleBusy: false, hubInfo: null, cursorAccount: { status: null, error: '' }, cursorAccountExpanded: false, codexAccountExpanded: false, codexAccountError: '', codexSignInBusy: false, codexSignInFlowId: '', codexLoginUrl: '', codexLoginStatus: '', codexLoginOutput: '', codexActiveAccount: null, codexPendingActiveAccount: null, codexPendingActiveAccountUntil: 0, codexPendingActiveAccountTimer: null, codexSystemSwitchingAccountId: '', codexSystemSwitchErrorAccountId: '', codexSystemSwitchError: '', codexSwitchPopoverHasOpened: false, codexSwitchPopoverActive: false, codexSwitchPopoverRenderPending: false, customPricingExpanded: false, opencodeProfileCount: 0, opencodeCookieExpanded: false, deepseekAccountExpanded: false, deepseekPendingCheckSince: 0, minimaxAccountExpanded: false, minimaxPendingCheckSince: 0, zaiAccountExpanded: false, zaiPendingCheckSince: 0, zaiteamAccountExpanded: false, zaiteamPendingCheckSince: 0, volcengineAccountExpanded: false, volcenginePendingCheckSince: 0, qoderAccountExpanded: false, qoderPendingCheckSince: 0, kimiAccountExpanded: false, kimiPendingCheckSince: 0, ollamaAccountExpanded: false, ollamaPendingCheckSince: 0, mimoAccountExpanded: false, mimoAccountError: '', copilotAccountExpanded: false, copilotManualExpanded: false, copilotPendingCheckSince: 0, copilotSignInBusy: false, copilotSignInCancelable: false, copilotSignInFlowId: '', copilotAuthorizeMessage: '', copilotLoginStatus: '', copilotErrorMessage: '', floatingBubble: initialFloatingBubble, suppressInitialNumberAnimation: window.__TOKEN_MONITOR_SUPPRESS_INITIAL_NUMBER_ANIMATION__ === true, openSession: null, detailSort: 'time', recordingWindowShortcut: false, windowShortcutInvalid: false };
+const state = { period: normalizeInitialViewValue(initialViewState.period, presetPeriodValues, 'today'), appUpdate: null, breakdown: normalizeInitialViewValue(initialViewState.breakdown, viewBreakdownValues, 'home'), viewSwitcherOpen: false, viewSwitcherHasOpened: false, resetCreditsTooltipHasOpened: false, resetCreditsTooltipActive: false, resetCreditsTooltipRenderPending: false, settings: null, stats: null, homeHistory: null, homeHistoryBusy: false, homeHistoryRequested: false, homeHistorySignature: '', homeHistoryRetries: 0, homeHistoryRetryTimer: null, homeActivityScrollLeft: null, homeActivityFollowEnd: true, homeActivityResizeObserver: null, serviceStatus: null, serviceStatusBusy: false, serviceProvidersExpanded: false, trendSettingsExpanded: false, trendsActivating: false, homeSettingsExpanded: false, homeLimitSettingsExpanded: false, serviceStatusTicker: null, refreshTimer: null, refreshBusy: false, refreshFeedbackTimer: null, currentTotal: 0, rowSignature: '', streamConnected: false, streamFailure: null, mode: 'idle', appInfo: null, tokscaleStatus: null, tokscaleCheck: null, tokscaleBusy: false, hubInfo: null, cursorAccount: { status: null, error: '' }, cursorAccountExpanded: false, codexAccountExpanded: false, codexAccountError: '', codexSignInBusy: false, codexSignInFlowId: '', codexLoginUrl: '', codexLoginStatus: '', codexLoginOutput: '', codexActiveAccount: null, codexPendingActiveAccount: null, codexPendingActiveAccountUntil: 0, codexPendingActiveAccountTimer: null, codexSystemSwitchingAccountId: '', codexSystemSwitchErrorAccountId: '', codexSystemSwitchError: '', codexSwitchPopoverHasOpened: false, codexSwitchPopoverActive: false, codexSwitchPopoverRenderPending: false, customPricingExpanded: false, opencodeProfileCount: 0, opencodeCookieExpanded: false, deepseekAccountExpanded: false, deepseekPendingCheckSince: 0, minimaxAccountExpanded: false, minimaxPendingCheckSince: 0, zaiAccountExpanded: false, zaiPendingCheckSince: 0, zaiteamAccountExpanded: false, zaiteamPendingCheckSince: 0, volcengineAccountExpanded: false, volcenginePendingCheckSince: 0, qoderAccountExpanded: false, qoderPendingCheckSince: 0, kimiAccountExpanded: false, kimiPendingCheckSince: 0, ollamaAccountExpanded: false, ollamaPendingCheckSince: 0, mimoAccountExpanded: false, mimoAccountError: '', copilotAccountExpanded: false, copilotManualExpanded: false, copilotPendingCheckSince: 0, copilotSignInBusy: false, copilotSignInCancelable: false, copilotSignInFlowId: '', copilotAuthorizeMessage: '', copilotLoginStatus: '', copilotErrorMessage: '', floatingBubble: initialFloatingBubble, suppressInitialNumberAnimation: window.__TOKEN_MONITOR_SUPPRESS_INITIAL_NUMBER_ANIMATION__ === true, openSession: null, detailSort: 'time', recordingWindowShortcut: false, windowShortcutInvalid: false };
 state.homeHistoryLoadedSignature = '';
 state.homeHistoryRetrySignature = '';
 state.appUpdateNotesPresentedVersion = '';
 state.periodMotionActive = false;
+state.customRange = null;
+state.customRangeDraft = null;
+state.customRangeOpen = false;
+state.customRangeBusy = false;
+state.customRangeError = '';
+state.customRangeMonth = null;
 state.animateBarsFromZero = false;
 state.animateChartsOnRender = true;
 let directBreakdownOverride = null;
@@ -269,6 +277,22 @@ Object.assign(els, {
   appUpdatePopoverAction: document.getElementById('appUpdatePopoverAction'),
   appUpdatePopoverRelease: document.getElementById('appUpdatePopoverRelease'),
   appUpdatePopoverClose: document.getElementById('appUpdatePopoverClose'),
+  customRangeButton: document.getElementById('customRangeButton'),
+  customRangePopover: document.getElementById('customRangePopover'),
+  customRangeClose: document.getElementById('customRangeClose'),
+  customRangePrevMonth: document.getElementById('customRangePrevMonth'),
+  customRangeNextMonth: document.getElementById('customRangeNextMonth'),
+  customRangeMonthLabel: document.getElementById('customRangeMonthLabel'),
+  customRangeWeekdays: document.getElementById('customRangeWeekdays'),
+  customRangeGrid: document.getElementById('customRangeGrid'),
+  customRangeStartDate: document.getElementById('customRangeStartDate'),
+  customRangeEndDate: document.getElementById('customRangeEndDate'),
+  customRangeStartHour: document.getElementById('customRangeStartHour'),
+  customRangeEndHour: document.getElementById('customRangeEndHour'),
+  customRangeError: document.getElementById('customRangeError'),
+  customRangeClear: document.getElementById('customRangeClear'),
+  customRangeApply: document.getElementById('customRangeApply'),
+  customRangeTitle: document.getElementById('customRangeTitle'),
   appUpdateInstalled: document.getElementById('appUpdateInstalled'),
   appUpdateLatest: document.getElementById('appUpdateLatest'),
   appUpdateCheckButton: document.getElementById('appUpdateCheckButton'),
@@ -388,6 +412,11 @@ function translatedLimitProviderTag(tagInfo) {
 function applySettingsTranslations() {
   if (els.languageInput) els.languageInput.value = currentLanguage();
   i18n.applyTranslations(document, currentLocale());
+  if (customRangePickerApi) {
+    syncCustomRangeButton();
+    // Month/weekday labels are built from locale, not data-i18n nodes.
+    if (state.customRangeOpen || state.customRangeDraft || state.customRange) syncCustomRangeFields();
+  }
 }
 
 function applySettingsSectionDom(id, open) {
@@ -4166,6 +4195,17 @@ function settleRefreshButtonState(status) {
 // period export. Overlay it onto periods.allTime here, on the renderer's own copy, so
 // every session-view reader (list, archived count, detail lookup) sees it. See
 // injectLocalDeviceStatus in main.js.
+function preserveCustomPeriod(stats) {
+  if (!stats || state.period !== 'custom' || !state.stats?.periods?.custom) return stats;
+  return {
+    ...stats,
+    periods: {
+      ...(stats.periods || {}),
+      custom: state.stats.periods.custom
+    }
+  };
+}
+
 function overlayAllTimeSessions(stats) {
   if (stats && stats.allTimeSessionsView && stats.periods?.allTime) {
     stats.periods.allTime.sessions = stats.allTimeSessionsView;
@@ -4182,7 +4222,10 @@ async function refreshStats(options = {}) {
     setRefreshButtonState('refreshing');
   }
   try {
-    state.stats = overlayAllTimeSessions(await window.tokenMonitor.getStats(options));
+    state.stats = preserveCustomPeriod(overlayAllTimeSessions(await window.tokenMonitor.getStats(options)));
+    if (state.period === 'custom' && state.customRange && (options.force || options.feedback)) {
+      try { await applyCustomRange(state.customRange); } catch (_) {}
+    }
     if (options.forceHistory === true) {
       // A manual history rescan is an explicit retry boundary. Let Home request the
       // corresponding full payload even when its revision is unchanged, and restore
@@ -4244,6 +4287,279 @@ function publishViewState() {
   window.tokenMonitor.setViewState?.({ period: state.period, breakdown: state.breakdown });
 }
 
+
+function ensureHourSelect(selectEl) {
+  if (!selectEl || selectEl.options.length === 24 || !customRangePickerApi) return;
+  selectEl.replaceChildren();
+  for (const option of customRangePickerApi.hourOptions()) {
+    const node = document.createElement('option');
+    node.value = String(option.value);
+    node.textContent = option.label;
+    selectEl.append(node);
+  }
+}
+
+function currentCustomRangeDraft() {
+  if (state.customRangeDraft) return customRangePickerApi.normalizeDraft(state.customRangeDraft);
+  if (state.customRange) return customRangePickerApi.normalizeDraft(state.customRange);
+  return customRangePickerApi.normalizeDraft({
+    startDate: customRangePickerApi.localDayKey(),
+    endDate: customRangePickerApi.localDayKey(),
+    startHour: 0,
+    endHour: new Date().getHours()
+  });
+}
+
+function setCustomRangeError(message) {
+  state.customRangeError = message || '';
+  if (!els.customRangeError) return;
+  els.customRangeError.textContent = state.customRangeError;
+  els.customRangeError.classList.toggle('hidden', !state.customRangeError);
+}
+
+function syncCustomRangeFields() {
+  if (!customRangePickerApi || !els.customRangeStartDate) return;
+  ensureHourSelect(els.customRangeStartHour);
+  ensureHourSelect(els.customRangeEndHour);
+  const draft = currentCustomRangeDraft();
+  state.customRangeDraft = draft;
+  els.customRangeStartDate.value = draft.startDate;
+  els.customRangeEndDate.value = draft.endDate;
+  els.customRangeStartHour.value = String(draft.startHour);
+  els.customRangeEndHour.value = String(draft.endHour);
+  if (!state.customRangeMonth) {
+    const [y, m] = draft.startDate.split('-').map(Number);
+    state.customRangeMonth = { year: y, monthIndex: m - 1 };
+  }
+  const locale = currentLocale();
+  if (els.customRangeWeekdays) {
+    const labels = customRangePickerApi.weekdayLabels(locale);
+    const frag = document.createDocumentFragment();
+    for (const label of labels) {
+      const span = document.createElement('span');
+      span.textContent = label;
+      frag.append(span);
+    }
+    els.customRangeWeekdays.replaceChildren(frag);
+  }
+  if (els.customRangeMonthLabel) {
+    els.customRangeMonthLabel.textContent = customRangePickerApi.monthLabel(
+      state.customRangeMonth.year,
+      state.customRangeMonth.monthIndex,
+      locale
+    );
+  }
+  if (els.customRangeGrid) {
+    const cells = customRangePickerApi.buildMonthCells(
+      state.customRangeMonth.year,
+      state.customRangeMonth.monthIndex,
+      draft
+    );
+    const frag = document.createDocumentFragment();
+    for (const cell of cells) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'custom-range-day';
+      if (!cell.inMonth) btn.classList.add('outside');
+      if (cell.inRange) btn.classList.add('in-range');
+      if (cell.isEndpoint) btn.classList.add('range-endpoint');
+      btn.textContent = String(cell.dayNumber);
+      btn.dataset.date = cell.date;
+      btn.addEventListener('click', () => {
+        state.customRangeDraft = customRangePickerApi.applyCalendarDayClick(state.customRangeDraft || draft, cell.date);
+        setCustomRangeError('');
+        syncCustomRangeFields();
+      });
+      frag.append(btn);
+    }
+    els.customRangeGrid.replaceChildren(frag);
+  }
+  if (els.customRangeApply) els.customRangeApply.disabled = Boolean(state.customRangeBusy);
+  if (els.customRangeClear) els.customRangeClear.disabled = Boolean(state.customRangeBusy);
+  setCustomRangeError(state.customRangeError);
+}
+
+function setCustomRangeOpen(open) {
+  state.customRangeOpen = Boolean(open);
+  els.shell?.classList.toggle('custom-range-open', state.customRangeOpen);
+  els.customRangePopover?.classList.toggle('hidden', !state.customRangeOpen);
+  els.customRangeButton?.setAttribute('aria-expanded', String(state.customRangeOpen));
+  if (state.customRangeOpen) {
+    if (!state.customRangeDraft) state.customRangeDraft = currentCustomRangeDraft();
+    if (!state.customRangeMonth && state.customRangeDraft?.startDate) {
+      const [y, m] = state.customRangeDraft.startDate.split('-').map(Number);
+      state.customRangeMonth = { year: y, monthIndex: m - 1 };
+    }
+    setCustomRangeError('');
+    syncCustomRangeFields();
+  }
+}
+
+function syncCustomRangeButton() {
+  const active = state.period === 'custom' && Boolean(state.customRange);
+  els.customRangeButton?.classList.toggle('active', active);
+  if (!els.customRangeButton) return;
+  if (active && state.customRange) {
+    const label = customRangePickerApi.formatRangeLabel(state.customRange, { compact: true });
+    els.customRangeButton.title = label || t('period.custom.button');
+    els.customRangeButton.setAttribute('aria-label', label || t('period.custom.button'));
+  } else {
+    els.customRangeButton.title = t('period.custom.button');
+    els.customRangeButton.setAttribute('aria-label', t('period.custom.button'));
+  }
+}
+
+function readCustomRangeDraftFromFields() {
+  return customRangePickerApi.normalizeDraft({
+    startDate: els.customRangeStartDate?.value,
+    endDate: els.customRangeEndDate?.value,
+    startHour: els.customRangeStartHour?.value,
+    endHour: els.customRangeEndHour?.value,
+    _pickPhase: state.customRangeDraft?._pickPhase
+  });
+}
+
+async function applyCustomRange(rangeInput) {
+  if (!window.tokenMonitor.getCustomRangeStats) {
+    setCustomRangeError(t('period.custom.unavailable'));
+    return false;
+  }
+  const draft = customRangePickerApi.normalizeDraft(rangeInput || readCustomRangeDraftFromFields());
+  if (!draft.ok) {
+    setCustomRangeError(t('period.custom.invalid'));
+    syncCustomRangeFields();
+    return false;
+  }
+  state.customRangeBusy = true;
+  state.customRangeError = '';
+  syncCustomRangeFields();
+  try {
+    const result = await window.tokenMonitor.getCustomRangeStats({
+      startDate: draft.startDate,
+      endDate: draft.endDate,
+      startHour: draft.startHour,
+      endHour: draft.endHour
+    });
+    if (!result?.ok || !result.period) {
+      setCustomRangeError(result?.message || t('period.custom.failed'));
+      return false;
+    }
+    state.customRange = {
+      startDate: result.range.startDate,
+      endDate: result.range.endDate,
+      startHour: result.range.startHour,
+      endHour: result.range.endHour
+    };
+    state.customRangeDraft = { ...state.customRange, ok: true, _pickPhase: 'done' };
+    if (state.stats) {
+      state.stats = {
+        ...state.stats,
+        periods: {
+          ...(state.stats.periods || {}),
+          custom: result.period
+        }
+      };
+    } else {
+      state.stats = { periods: { custom: result.period } };
+    }
+    state.period = 'custom';
+    publishViewState();
+    syncPeriodTabs();
+    syncCustomRangeButton();
+    state.rowSignature = '';
+    state.periodMotionActive = true;
+    render();
+    state.periodMotionActive = false;
+    setCustomRangeOpen(false);
+    return true;
+  } catch (error) {
+    setCustomRangeError(error?.message || t('period.custom.failed'));
+    return false;
+  } finally {
+    state.customRangeBusy = false;
+    syncCustomRangeFields();
+    syncCustomRangeButton();
+  }
+}
+
+
+function clearCustomRangeSelection() {
+  state.customRange = null;
+  state.customRangeDraft = customRangePickerApi.normalizeDraft({
+    startDate: customRangePickerApi.localDayKey(),
+    endDate: customRangePickerApi.localDayKey(),
+    startHour: 0,
+    endHour: new Date().getHours()
+  });
+  state.customRangeError = '';
+  if (state.period === 'custom') {
+    state.period = 'today';
+    publishViewState();
+  }
+  if (state.stats?.periods?.custom) {
+    const periods = { ...state.stats.periods };
+    delete periods.custom;
+    state.stats = { ...state.stats, periods };
+  }
+  syncPeriodTabs();
+  syncCustomRangeButton();
+  syncCustomRangeFields();
+  state.rowSignature = '';
+  render();
+}
+
+function setupCustomRangeUI() {
+  if (!els.customRangeButton || !customRangePickerApi) return;
+  ensureHourSelect(els.customRangeStartHour);
+  ensureHourSelect(els.customRangeEndHour);
+  els.customRangeButton.addEventListener('click', (event) => {
+    event.stopPropagation();
+    setCustomRangeOpen(!state.customRangeOpen);
+  });
+  els.customRangeClose?.addEventListener('click', () => setCustomRangeOpen(false));
+  els.customRangePrevMonth?.addEventListener('click', () => {
+    const base = state.customRangeMonth || { year: new Date().getFullYear(), monthIndex: new Date().getMonth() };
+    state.customRangeMonth = customRangePickerApi.shiftMonth(base.year, base.monthIndex, -1);
+    syncCustomRangeFields();
+  });
+  els.customRangeNextMonth?.addEventListener('click', () => {
+    const base = state.customRangeMonth || { year: new Date().getFullYear(), monthIndex: new Date().getMonth() };
+    state.customRangeMonth = customRangePickerApi.shiftMonth(base.year, base.monthIndex, 1);
+    syncCustomRangeFields();
+  });
+  const onFieldChange = () => {
+    state.customRangeDraft = readCustomRangeDraftFromFields();
+    if (state.customRangeDraft.startDate) {
+      const [y, m] = state.customRangeDraft.startDate.split('-').map(Number);
+      state.customRangeMonth = { year: y, monthIndex: m - 1 };
+    }
+    setCustomRangeError(state.customRangeDraft.ok ? '' : t('period.custom.invalid'));
+    syncCustomRangeFields();
+  };
+  els.customRangeStartDate?.addEventListener('change', onFieldChange);
+  els.customRangeEndDate?.addEventListener('change', onFieldChange);
+  els.customRangeStartHour?.addEventListener('change', onFieldChange);
+  els.customRangeEndHour?.addEventListener('change', onFieldChange);
+  els.customRangeApply?.addEventListener('click', async () => {
+    await applyCustomRange();
+  });
+  els.customRangeClear?.addEventListener('click', () => {
+    clearCustomRangeSelection();
+    setCustomRangeOpen(false);
+  });
+  document.addEventListener('pointerdown', (event) => {
+    if (!state.customRangeOpen) return;
+    const target = event.target;
+    if (!(target instanceof Node)) return;
+    if (els.customRangePopover?.contains(target) || els.customRangeButton?.contains(target)) return;
+    setCustomRangeOpen(false);
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && state.customRangeOpen) setCustomRangeOpen(false);
+  });
+  syncCustomRangeButton();
+}
+
 function setPeriod(period) {
   const next = normalizeInitialViewValue(period, viewPeriodValues, state.period);
   if (next === state.period) {
@@ -4251,7 +4567,13 @@ function setPeriod(period) {
     return false;
   }
   state.period = next;
+  if (next !== 'custom') {
+    // Keep the last custom payload around so reopening the picker can re-apply it,
+    // but leave the active period on the chosen preset tab.
+    state.customRangeError = '';
+  }
   publishViewState();
+  syncCustomRangeButton();
   return true;
 }
 
@@ -5079,13 +5401,21 @@ async function refreshHubInfo() {
 
 function syncPeriodTabs() {
   const tabs = Array.from(document.querySelectorAll('.tab'));
-  const activeIndex = Math.max(0, tabs.findIndex((tab) => tab.dataset.period === state.period));
-  document.querySelector('.tabs')?.style.setProperty('--period-index', String(activeIndex));
+  const presetActive = state.period !== 'custom';
+  const activeIndex = presetActive
+    ? Math.max(0, tabs.findIndex((tab) => tab.dataset.period === state.period))
+    : -1;
+  const tabsEl = document.querySelector('.tabs');
+  if (tabsEl) {
+    if (activeIndex >= 0) tabsEl.style.setProperty('--period-index', String(activeIndex));
+    tabsEl.classList.toggle('custom-active', !presetActive);
+  }
   for (const tab of tabs) {
-    const active = tab.dataset.period === state.period;
+    const active = presetActive && tab.dataset.period === state.period;
     tab.classList.toggle('active', active);
     tab.setAttribute('aria-pressed', String(active));
   }
+  syncCustomRangeButton();
 }
 
 function applyInitialBreakdownPreference() {
@@ -6551,6 +6881,7 @@ async function init() {
 
 for (const tab of document.querySelectorAll('.tab')) {
   tab.addEventListener('click', () => {
+    if (state.customRangeOpen) setCustomRangeOpen(false);
     const snapshot = captureBreakdownMotion();
     if (!setPeriod(tab.dataset.period)) return;
     syncPeriodTabs();
@@ -7028,7 +7359,7 @@ window.tokenMonitor.onStatsPush?.((payload) => {
       state.streamFailure = null;
     }
     if (payload.data?.mode) state.mode = payload.data.mode;
-    state.stats = overlayAllTimeSessions(payload.data.stats);
+    state.stats = preserveCustomPeriod(overlayAllTimeSessions(payload.data.stats));
     applyCodexActiveAccountFromStats();
     // Progressive mid-tick pushes never carry a fresh history scan (see
     // AGENTS.md collector notes), so only the final push can retire the
@@ -9367,4 +9698,5 @@ initSettingsAnimationWrappers();
 setupSettingsSections();
 setupCursorAccountUI();
 setupCustomPricingUI();
+setupCustomRangeUI();
 init();

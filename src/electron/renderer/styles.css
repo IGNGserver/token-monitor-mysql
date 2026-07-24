@@ -280,9 +280,9 @@ body.is-windows.floating-bubble-collapsed-right .floating-bubble-tab {
 .title-controls {
   -webkit-app-region: no-drag;
   position: relative;
-  flex: 0 1 148px;
-  min-width: 100px;
-  width: 148px;
+  flex: 0 1 178px;
+  min-width: 128px;
+  width: 178px;
   height: 30px;
 }
 .actions-hotspot {
@@ -323,11 +323,46 @@ body.is-windows.floating-bubble-collapsed-right .floating-bubble-tab {
 }
 .title-controls .tabs {
   position: absolute;
-  inset: 0;
-  width: 100%;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 30px;
+  width: auto;
   transition: opacity 160ms ease 280ms, transform 160ms ease 280ms;
 }
-.title-controls:has(.actions-hotspot:hover) .tabs, .title-controls:has(.window-actions:hover) .tabs, .title-controls:has(.window-actions:focus-within) .tabs, .shell.settings-open .title-controls .tabs {
+.period-calendar-button {
+  position: absolute;
+  top: 1px;
+  left: 0;
+  z-index: 2;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  transition: opacity 160ms ease 280ms, transform 160ms ease 280ms;
+}
+.period-calendar-button::before {
+  content: "";
+  display: block;
+  width: 13px;
+  height: 13px;
+  margin: 0 auto;
+  background: currentColor;
+  -webkit-mask: url("icons/actions/calendar.svg") center / contain no-repeat;
+  mask: url("icons/actions/calendar.svg") center / contain no-repeat;
+}
+.period-calendar-button.active {
+  border-color: rgba(var(--accent-rgb), 0.58);
+  color: var(--green);
+  background: rgba(var(--accent-rgb), 0.08);
+}
+.title-controls:has(.actions-hotspot:hover) .tabs,
+.title-controls:has(.window-actions:hover) .tabs,
+.title-controls:has(.window-actions:focus-within) .tabs,
+.shell.settings-open .title-controls .tabs,
+.title-controls:has(.actions-hotspot:hover) .period-calendar-button,
+.title-controls:has(.window-actions:hover) .period-calendar-button,
+.title-controls:has(.window-actions:focus-within) .period-calendar-button,
+.shell.settings-open .title-controls .period-calendar-button {
   opacity: 0;
   transform: translateY(2px);
   pointer-events: none;
@@ -1914,6 +1949,9 @@ html.is-windows .settings-panel select option {
   box-shadow: none;
 }
 .tab:hover { color: var(--text); }
+.tabs.custom-active .tab-indicator {
+  opacity: 0;
+}
 .tab.active {
   border-color: transparent;
   color: var(--green);
@@ -4196,4 +4234,180 @@ html.is-windows .limit-live-badge {
   box-sizing: border-box;
   font-family: monospace;
   font-size: 12px;
+}
+
+/* Custom range calendar popover */
+.custom-range-popover {
+  position: absolute;
+  top: 46px;
+  right: 12px;
+  z-index: 40;
+  width: min(292px, calc(100vw - 24px));
+  padding: 12px;
+  border: 1px solid rgba(var(--line-rgb), 0.14);
+  border-radius: 12px;
+  background: rgba(var(--panel-rgb, 18, 20, 24), 0.96);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(var(--overlay-rgb), 0.06);
+  -webkit-backdrop-filter: blur(22px);
+  backdrop-filter: blur(22px);
+  color: var(--text);
+}
+.custom-range-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.custom-range-header strong {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+.custom-range-close,
+.custom-range-nav-btn {
+  width: 24px;
+  height: 24px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+}
+.custom-range-close:hover,
+.custom-range-nav-btn:hover {
+  color: var(--text);
+  background: rgba(var(--overlay-rgb), 0.06);
+  border-color: rgba(var(--line-rgb), 0.12);
+}
+.custom-range-month-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.custom-range-month-label {
+  font-size: 12px;
+  font-weight: 600;
+}
+.custom-range-weekdays,
+.custom-range-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+.custom-range-weekdays {
+  margin-bottom: 4px;
+}
+.custom-range-weekdays span {
+  text-align: center;
+  font-size: 9px;
+  color: var(--muted);
+  padding: 2px 0;
+}
+.custom-range-day {
+  height: 28px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text);
+  font-size: 11px;
+  cursor: pointer;
+}
+.custom-range-day:hover:not(:disabled) {
+  background: rgba(var(--overlay-rgb), 0.07);
+}
+.custom-range-day:disabled {
+  opacity: 0.28;
+  cursor: default;
+}
+.custom-range-day.outside {
+  color: var(--muted);
+  opacity: 0.55;
+}
+.custom-range-day.in-range {
+  background: rgba(var(--accent-rgb), 0.12);
+  border-color: rgba(var(--accent-rgb), 0.08);
+}
+.custom-range-day.range-endpoint {
+  color: var(--green);
+  background: rgba(var(--accent-rgb), 0.2);
+  border-color: rgba(var(--accent-rgb), 0.45);
+  font-weight: 600;
+}
+.custom-range-fields {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+.custom-range-field {
+  display: grid;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.custom-range-field-controls {
+  display: grid;
+  grid-template-columns: 1fr 78px;
+  gap: 6px;
+}
+.custom-range-field-controls input,
+.custom-range-field-controls select {
+  height: 28px;
+  border: 1px solid rgba(var(--line-rgb), 0.14);
+  border-radius: 7px;
+  background: rgba(var(--overlay-rgb), 0.04);
+  color: var(--text);
+  font-size: 11px;
+  padding: 0 8px;
+}
+.custom-range-error {
+  margin-top: 8px;
+  color: #ff8e8e;
+  font-size: 11px;
+}
+.custom-range-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+}
+.custom-range-secondary,
+.custom-range-primary {
+  height: 28px;
+  min-width: 68px;
+  padding: 0 12px;
+  border-radius: 7px;
+  border: 1px solid rgba(var(--line-rgb), 0.14);
+  font-size: 11px;
+  cursor: pointer;
+}
+.custom-range-secondary {
+  background: transparent;
+  color: var(--muted);
+}
+.custom-range-secondary:hover {
+  color: var(--text);
+  background: rgba(var(--overlay-rgb), 0.06);
+}
+.custom-range-primary {
+  background: rgba(var(--accent-rgb), 0.16);
+  border-color: rgba(var(--accent-rgb), 0.42);
+  color: var(--green);
+}
+.custom-range-primary:hover {
+  background: rgba(var(--accent-rgb), 0.24);
+}
+.custom-range-primary:disabled,
+.custom-range-secondary:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.shell.custom-range-open .title-controls .tabs,
+.shell.custom-range-open .title-controls .period-calendar-button {
+  opacity: 1 !important;
+  transform: none !important;
+  pointer-events: auto !important;
 }

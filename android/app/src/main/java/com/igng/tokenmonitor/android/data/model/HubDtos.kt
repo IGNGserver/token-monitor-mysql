@@ -188,6 +188,21 @@ data class BatchPricingResultDto(
 )
 
 @Serializable
+data class UsageRangeDto(
+  val from: String = "",
+  val to: String = "",
+  val source: String = "",
+  val totalTokens: Long = 0,
+  val costUsd: Double = 0.0,
+  val clients: Map<String, Long> = emptyMap(),
+  val clientCosts: Map<String, Double> = emptyMap(),
+  val models: Map<String, Long> = emptyMap(),
+  val modelCosts: Map<String, Double> = emptyMap(),
+  val clientModels: Map<String, Map<String, Long>> = emptyMap(),
+  val clientModelCosts: Map<String, Map<String, Double>> = emptyMap()
+)
+
+@Serializable
 data class SseStatsDto(
   val type: String? = null,
   val reason: String? = null,

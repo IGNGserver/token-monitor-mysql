@@ -37,6 +37,11 @@ function iso(value) {
   return Number.isNaN(parsed.getTime()) ? '' : parsed.toISOString();
 }
 
+function number(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
 function pricingRow(row) {
   return {
     id: Number(row.id),
@@ -59,6 +64,26 @@ function allPeriodModels(record) {
     }
   }
   return models;
+}
+
+function emptyUsageRange() {
+  return {
+    totalTokens: 0,
+    costUsd: 0,
+    clients: {},
+    clientCosts: {},
+    models: {},
+    modelCosts: {},
+    clientModels: {},
+    clientModelCosts: {},
+    eventCount: 0
+  };
+}
+
+function addTokenCost(mapTokens, mapCosts, key, tokens, cost) {
+  const id = String(key || '').trim() || 'unknown';
+  mapTokens[id] = (mapTokens[id] || 0) + tokens;
+  mapCosts[id] = (mapCosts[id] || 0) + cost;
 }
 
 function createRepository(pool) {
@@ -188,7 +213,9 @@ function createRepository(pool) {
     await executor.execute('DELETE FROM sessions WHERE device_id = ?', [deviceId]);
     await executor.execute('DELETE FROM device_ingest_state WHERE device_id = ?', [deviceId]);
     const [result] = await executor.execute('DELETE FROM devices WHERE device_id = ?', [deviceId]);
-    return result.affectedRows > 0;
+    // usage_events stay as an immutable ledger; only detach the device pointer.
+    await executor.execute('UPDATE usage_events SET device_id = NULL WHERE device_id = ?', [deviceId]);
+    return Number(result.affectedRows || 0) > 0;
   }
 
   async function listKnownModels(executor = pool) {
@@ -198,6 +225,47 @@ function createRepository(pool) {
       for (const model of allPeriodModels(record)) if (model && model !== 'unknown') models.add(model);
     }
     return [...models].sort((a, b) => a.localeCompare(b));
+  }
+
+  async function aggregateUsageRange({ from, to }, executor = pool) {
+    const fromAt = date(from);
+    const toAt = date(to);
+    const result = emptyUsageRange();
+    if (!(fromAt.getTime() < toAt.getTime())) return result;
+
+    const [countRows] = await executor.execute(
+      'SELECT COUNT(*) AS count FROM usage_events WHERE recorded_at >= ? AND recorded_at < ?',
+      [fromAt, toAt]
+    );
+    result.eventCount = Number(countRows[0]?.count || 0);
+    if (result.eventCount === 0) return result;
+
+    const [rows] = await executor.execute(`
+      SELECT
+        client,
+        model,
+        SUM(input_tokens + output_tokens + cache_read_tokens + cache_write_tokens) AS tokens,
+        SUM(cost_usd) AS cost_usd
+      FROM usage_events
+      WHERE recorded_at >= ? AND recorded_at < ?
+      GROUP BY client, model
+    `, [fromAt, toAt]);
+
+    for (const row of rows) {
+      const tokens = Math.round(number(row.tokens));
+      const cost = number(row.cost_usd);
+      const client = String(row.client || 'unknown');
+      const model = String(row.model || 'unknown');
+      result.totalTokens += tokens;
+      result.costUsd += cost;
+      addTokenCost(result.clients, result.clientCosts, client, tokens, cost);
+      addTokenCost(result.models, result.modelCosts, model, tokens, cost);
+      if (!result.clientModels[client]) result.clientModels[client] = {};
+      if (!result.clientModelCosts[client]) result.clientModelCosts[client] = {};
+      result.clientModels[client][model] = (result.clientModels[client][model] || 0) + tokens;
+      result.clientModelCosts[client][model] = (result.clientModelCosts[client][model] || 0) + cost;
+    }
+    return result;
   }
 
   async function transaction(work) {
@@ -216,6 +284,7 @@ function createRepository(pool) {
   }
 
   return {
+    aggregateUsageRange,
     countDevices,
     deleteDevice,
     getDeviceRecord,
@@ -231,4 +300,4 @@ function createRepository(pool) {
   };
 }
 
-module.exports = { createMySqlPool, createRepository, parseJson };
+module.exports = { createMySqlPool, createRepository, parseJson, emptyUsageRange };
