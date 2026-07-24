@@ -6,14 +6,13 @@
 
 <!-- app-update-notes:en:start -->
 ### Added
-- **Android dashboard redesign:** Overview and Analytics now include token, cost, dual-metric, and active-time trend charts, plus device comparison views.
-- **Client branding:** Desktop-aligned client colors and monogram badges across client rows and charts.
-- **Skeleton loaders:** Loading placeholders while hub stats stream in.
+- **Chart grow animations:** Progress bars, donut charts, quota rings, and segmented token bars animate from empty to current values.
+- **Theme colors:** Pick a seed color (Blue / Green / Purple / Teal / Orange / Rose) in Settings, or use **System** dynamic color from the wallpaper on Android 12+.
+- **Haptics:** Off / Standard / Enhanced vibration feedback with distinct patterns for taps, toggles, success, errors, and refresh. Enhanced mode includes in-settings previews.
 
 ### Improved
-- **Session cost ranking:** Clearer ranking of recent high-cost sessions on Overview.
-- **Empty states:** More helpful empty / disconnected guidance throughout the Android app.
-- **Dark-theme charts:** Higher chart contrast and peak date labels for readability.
+- **Today hero donut:** Larger ring and no empty stretch beside the chart in the Overview hero card.
+- **Android settings:** Appearance and haptics controls live under Settings with clearer Chinese labels.
 <!-- app-update-notes:en:end -->
 
 ## Download
@@ -61,14 +60,13 @@ open-source: https://github.com/junhoyeo/tokscale
 
 <!-- app-update-notes:zh:start -->
 ### 新增
-- **安卓端仪表盘重做：** 概览与分析页提供 Token / 费用 / 双指标 / 活跃时间趋势图，以及设备对比视图。
-- **客户端品牌色：** 与桌面端对齐的客户端配色与字母徽章，覆盖列表与图表。
-- **骨架屏加载：** 在 Hub 数据流式到达前展示加载占位。
+- **图表伸展动画：** 进度条、饼/环图、配额环与分段 Token 条会从空值动画到当前值。
+- **主题色：** 可在设置中选择蓝 / 绿 / 紫 / 青 / 橙 / 玫红，或选择「系统」在 Android 12+ 跟随壁纸动态取色。
+- **触感反馈：** 关闭 / 标准 / 增强三档震动；点击、切换、成功、错误、刷新等使用不同震动模式；增强模式可在设置中试听。
 
 ### 改进
-- **会话费用排行：** 概览页更清晰地展示近期高费用会话。
-- **空状态：** 未连接 / 无数据时的引导更明确。
-- **暗色图表：** 提升图表对比度，并标注峰值日期，便于阅读。
+- **今日概览饼图：** 环图更大，并消除英雄卡片旁大片空白。
+- **安卓设置页：** 外观与触感选项集中在设置页，中文说明更清晰。
 <!-- app-update-notes:zh:end -->
 
 ## 下载
