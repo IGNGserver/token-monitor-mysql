@@ -199,6 +199,7 @@ fun QuotaRing(
 ) {
   val track = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)
   val safeUsed = usedPercent.coerceIn(0f, 100f)
+  val animatedUsed = animateGrowFraction(safeUsed / 100f, durationMillis = 1000) * 100f
   Box(contentAlignment = Alignment.Center, modifier = Modifier.size(size)) {
     Canvas(Modifier.size(size)) {
       val strokePx = stroke.toPx()
@@ -214,15 +215,17 @@ fun QuotaRing(
         size = arcSize,
         style = Stroke(width = strokePx, cap = StrokeCap.Round)
       )
-      drawArc(
-        color = color,
-        startAngle = -90f,
-        sweepAngle = 360f * (safeUsed / 100f),
-        useCenter = false,
-        topLeft = topLeft,
-        size = arcSize,
-        style = Stroke(width = strokePx, cap = StrokeCap.Round)
-      )
+      if (animatedUsed > 0f) {
+        drawArc(
+          color = color,
+          startAngle = -90f,
+          sweepAngle = 360f * (animatedUsed / 100f),
+          useCenter = false,
+          topLeft = topLeft,
+          size = arcSize,
+          style = Stroke(width = strokePx, cap = StrokeCap.Round)
+        )
+      }
     }
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
       Text(

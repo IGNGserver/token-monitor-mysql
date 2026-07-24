@@ -47,12 +47,15 @@ import com.igng.tokenmonitor.android.ui.components.formatUsd
 import com.igng.tokenmonitor.android.ui.components.takeMonths
 import com.igng.tokenmonitor.android.ui.components.takeRange
 import com.igng.tokenmonitor.android.ui.components.topShareEntries
+import com.igng.tokenmonitor.android.ui.haptics.HapticEvent
+import com.igng.tokenmonitor.android.ui.haptics.rememberAppHaptics
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AnalyticsScreen(stats: StatsDto?) {
   var tabIndex by rememberSaveable { mutableIntStateOf(0) }
   val tabLabels = listOf("客户端", "模型", "趋势")
+  val haptics = rememberAppHaptics()
 
   Column(Modifier.fillMaxSize()) {
     Column(
@@ -66,7 +69,7 @@ fun AnalyticsScreen(stats: StatsDto?) {
         tabLabels.forEachIndexed { index, label ->
           Tab(
             selected = tabIndex == index,
-            onClick = { tabIndex = index },
+            onClick = { haptics.perform(HapticEvent.Selection); tabIndex = index },
             text = { Text(label) }
           )
         }
@@ -86,6 +89,7 @@ fun AnalyticsScreen(stats: StatsDto?) {
 private fun ShareAnalyticsTab(stats: StatsDto?, clients: Boolean) {
   var periodIndex by rememberSaveable(clients) { mutableIntStateOf(0) }
   val periodLabels = listOf("今日", "本月", "全部")
+  val haptics = rememberAppHaptics()
   val period: PeriodDto? = when (periodIndex) {
     0 -> stats?.periods?.today
     1 -> stats?.periods?.month
@@ -107,7 +111,7 @@ private fun ShareAnalyticsTab(stats: StatsDto?, clients: Boolean) {
       periodLabels.forEachIndexed { index, label ->
         SegmentedButton(
           selected = periodIndex == index,
-          onClick = { periodIndex = index },
+          onClick = { haptics.perform(HapticEvent.Selection); periodIndex = index },
           shape = SegmentedButtonDefaults.itemShape(index, periodLabels.size),
           label = { Text(label) }
         )

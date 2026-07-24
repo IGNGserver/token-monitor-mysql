@@ -40,15 +40,24 @@ fun DonutChart(
   val total = entries.sumOf { it.tokens }.coerceAtLeast(1L)
   val colors = ChartPalette
   val track = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
+  val resetKey = entries.joinToString("|") { "${it.key}:${it.tokens}" }
+  val grow = animateGrowProgress(resetKey = resetKey, durationMillis = 1000)
 
   fun sliceColor(index: Int, key: String): Color {
     return if (brandClients) ClientBranding.color(key) else colors[index % colors.size]
   }
 
+  val rowModifier = if (showLegend) {
+    modifier.fillMaxWidth()
+  } else {
+    // Compact trailing usage (e.g. hero card): wrap chart only, avoid empty stretch.
+    modifier
+  }
+
   Row(
-    modifier = modifier.fillMaxWidth(),
+    modifier = rowModifier,
     verticalAlignment = Alignment.CenterVertically,
-    horizontalArrangement = Arrangement.spacedBy(16.dp)
+    horizontalArrangement = if (showLegend) Arrangement.spacedBy(16.dp) else Arrangement.Center
   ) {
     Box(contentAlignment = Alignment.Center, modifier = Modifier.size(chartSize)) {
       Canvas(Modifier.size(chartSize)) {
@@ -65,22 +74,23 @@ fun DonutChart(
           size = arcSize,
           style = Stroke(width = stroke, cap = StrokeCap.Butt)
         )
-        if (entries.isEmpty()) return@Canvas
+        if (entries.isEmpty() || grow <= 0f) return@Canvas
         var start = -90f
         entries.forEachIndexed { index, entry ->
-          val sweep = (entry.tokens.toFloat() / total.toFloat()) * 360f
+          val fullSweep = (entry.tokens.toFloat() / total.toFloat()) * 360f
+          val sweep = fullSweep * grow
           if (sweep > 0f) {
             drawArc(
               color = sliceColor(index, entry.key),
               startAngle = start,
-              sweepAngle = sweep.coerceAtLeast(0.8f),
+              sweepAngle = sweep.coerceAtLeast(0.8f * grow.coerceAtLeast(0.01f)),
               useCenter = false,
               topLeft = topLeft,
               size = arcSize,
               style = Stroke(width = stroke, cap = StrokeCap.Butt)
             )
           }
-          start += sweep
+          start += fullSweep * grow
         }
       }
       Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -226,7 +236,7 @@ fun ShareProgressBar(
   height: Dp = 8.dp
 ) {
   val track = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)
-  val safe = fraction.coerceIn(0f, 1f)
+  val animated = animateGrowFraction(fraction, durationMillis = 900)
   Canvas(
     modifier
       .fillMaxWidth()
@@ -237,11 +247,13 @@ fun ShareProgressBar(
       color = track,
       cornerRadius = androidx.compose.ui.geometry.CornerRadius(h / 2f, h / 2f)
     )
-    drawRoundRect(
-      color = color,
-      size = Size(size.width * safe, h),
-      cornerRadius = androidx.compose.ui.geometry.CornerRadius(h / 2f, h / 2f)
-    )
+    if (animated > 0f) {
+      drawRoundRect(
+        color = color,
+        size = Size((size.width * animated).coerceAtLeast(h), h),
+        cornerRadius = androidx.compose.ui.geometry.CornerRadius(h / 2f, h / 2f)
+      )
+    }
   }
 }
 
@@ -253,12 +265,14 @@ fun SegmentedTokenBar(
 ) {
   val total = segments.sumOf { it.second }.coerceAtLeast(1L)
   val colors = ChartPalette
+  val resetKey = segments.joinToString("|") { "${it.first}:${it.second}" }
+  val grow = animateGrowProgress(resetKey = resetKey, durationMillis = 900)
   Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
     Canvas(Modifier.fillMaxWidth().height(height)) {
       val r = size.height / 2f
       var x = 0f
       segments.forEachIndexed { index, (_, value) ->
-        val w = size.width * (value.toFloat() / total.toFloat())
+        val w = size.width * (value.toFloat() / total.toFloat()) * grow
         if (w > 0f) {
           drawRoundRect(
             color = colors[index % colors.size],

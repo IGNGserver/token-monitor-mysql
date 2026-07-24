@@ -44,6 +44,8 @@ import com.igng.tokenmonitor.android.ui.more.SessionsScreen
 import com.igng.tokenmonitor.android.ui.more.SettingsScreen
 import com.igng.tokenmonitor.android.ui.overview.OverviewScreen
 import android.net.Uri
+import com.igng.tokenmonitor.android.ui.haptics.HapticEvent
+import com.igng.tokenmonitor.android.ui.haptics.rememberAppHaptics
 
 private data class Destination(
   val route: String,
@@ -181,11 +183,13 @@ fun TokenMonitorApp(
 
 @Composable
 private fun AppNavigationBar(navController: NavHostController, currentRoute: String?) {
+  val haptics = rememberAppHaptics()
   NavigationBar {
     primaryDestinations.forEach { destination ->
       NavigationBarItem(
         selected = currentRoute == destination.route,
         onClick = {
+          haptics.perform(HapticEvent.Selection)
           navController.navigate(destination.route) {
             popUpTo(navController.graph.findStartDestination().id) {
               saveState = true

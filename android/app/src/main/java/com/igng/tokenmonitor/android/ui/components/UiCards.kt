@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Inbox
@@ -106,9 +107,9 @@ fun MetricHeroCard(
     Row(
       Modifier.fillMaxWidth(),
       horizontalArrangement = Arrangement.SpaceBetween,
-      verticalAlignment = Alignment.Top
+      verticalAlignment = Alignment.CenterVertically
     ) {
-      Column(Modifier.weight(1f)) {
+      Column(Modifier.weight(1f, fill = false)) {
         Text(
           formatTokensShort(period?.totalTokens ?: 0L),
           style = MaterialTheme.typography.displaySmall,
@@ -127,7 +128,10 @@ fun MetricHeroCard(
           color = MaterialTheme.colorScheme.onSurface
         )
       }
-      trailing?.invoke()
+      if (trailing != null) {
+        Spacer(Modifier.width(12.dp))
+        Box { trailing() }
+      }
     }
   }
 }

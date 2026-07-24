@@ -63,7 +63,8 @@ fun DeviceComparisonChart(
 
   Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
     shares.forEachIndexed { index, share ->
-      val fraction = (share.tokens.toFloat() / maxTokens.toFloat()).coerceIn(0.02f, 1f)
+      val targetFraction = (share.tokens.toFloat() / maxTokens.toFloat()).coerceIn(0.02f, 1f)
+      val fraction = animateGrowFraction(targetFraction, durationMillis = 900)
       val barColor = if (share.stale) staleColor else ChartPalette[index % ChartPalette.size].let {
         // Prefer brand primary for top device for clearer hierarchy
         if (index == 0 && !share.stale) primary else it

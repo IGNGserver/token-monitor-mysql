@@ -1,6 +1,22 @@
 package com.igng.tokenmonitor.android.ui.more
 
 import android.net.Uri
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.FilterChip
+import androidx.compose.ui.draw.clip
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.igng.tokenmonitor.android.data.local.HapticsMode
+import com.igng.tokenmonitor.android.data.local.ThemeSeedId
+import com.igng.tokenmonitor.android.ui.PreferencesViewModel
+import com.igng.tokenmonitor.android.ui.haptics.HapticEvent
+import com.igng.tokenmonitor.android.ui.haptics.rememberAppHaptics
+import com.igng.tokenmonitor.android.ui.theme.themeSeedSwatch
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -108,7 +124,7 @@ fun MoreHubScreen(navController: NavHostController) {
       item {
         MoreNavCard(
           title = "设置",
-          subtitle = "Hub 连接与关于",
+          subtitle = "主题色、触感与 Hub 连接",
           icon = Icons.Outlined.Settings,
           onClick = { navController.navigate("settings") }
         )
@@ -521,14 +537,21 @@ fun SettingsScreen(
   state: ConnectionUiState,
   viewModel: ConnectionViewModel,
   restartRealtime: () -> Unit,
-  onBack: () -> Unit
+  onBack: () -> Unit,
+  preferencesViewModel: PreferencesViewModel = hiltViewModel()
 ) {
   val uriHandler = LocalUriHandler.current
+  val prefs by preferencesViewModel.preferences.collectAsStateWithLifecycle()
+  val haptics = rememberAppHaptics()
+
   Column(Modifier.fillMaxSize()) {
     TopAppBar(
       title = { Text("设置") },
       navigationIcon = {
-        IconButton(onClick = onBack) {
+        IconButton(onClick = {
+          haptics.perform(HapticEvent.Tap)
+          onBack()
+        }) {
           Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
         }
       }
@@ -540,6 +563,105 @@ fun SettingsScreen(
         .padding(16.dp),
       verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
+      AppCard {
+        Text("外观", style = MaterialTheme.typography.titleMedium)
+        Text(
+          "主题色会应用到按钮、导航与强调色。选择「系统」可跟随壁纸动态取色（Android 12+）。",
+          style = MaterialTheme.typography.bodySmall,
+          color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(Modifier.height(12.dp))
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+          listOf(
+            listOf(ThemeSeedId.System, ThemeSeedId.Blue, ThemeSeedId.Green, ThemeSeedId.Purple),
+            listOf(ThemeSeedId.Teal, ThemeSeedId.Orange, ThemeSeedId.Rose)
+          ).forEach { rowSeeds ->
+            Row(
+              Modifier.fillMaxWidth(),
+              horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+              rowSeeds.forEach { seed ->
+                val selected = prefs.themeSeed == seed
+                val swatch = themeSeedSwatch(seed)
+                Column(
+                  horizontalAlignment = Alignment.CenterHorizontally,
+                  modifier = Modifier
+                    .weight(1f)
+                    .clickable {
+                      preferencesViewModel.setThemeSeed(seed)
+                      haptics.perform(HapticEvent.Selection)
+                    }
+                ) {
+                  Box(
+                    Modifier
+                      .size(40.dp)
+                      .clip(CircleShape)
+                      .background(swatch)
+                      .then(
+                        if (selected) {
+                          Modifier.border(3.dp, MaterialTheme.colorScheme.onSurface, CircleShape)
+                        } else {
+                          Modifier.border(1.dp, MaterialTheme.colorScheme.outlineVariant, CircleShape)
+                        }
+                      )
+                  )
+                  Spacer(Modifier.height(4.dp))
+                  Text(
+                    seed.labelZh,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (selected) {
+                      MaterialTheme.colorScheme.primary
+                    } else {
+                      MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                    maxLines = 1
+                  )
+                }
+              }
+              // keep second row spacing balanced when only 3 chips
+              if (rowSeeds.size < 4) {
+                repeat(4 - rowSeeds.size) { Spacer(Modifier.weight(1f)) }
+              }
+            }
+          }
+        }
+      }
+
+      AppCard {
+        Text("触感反馈", style = MaterialTheme.typography.titleMedium)
+        Text(
+          "标准：按钮轻触反馈。增强：切换、成功、错误等使用更丰富的震动模式。",
+          style = MaterialTheme.typography.bodySmall,
+          color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(Modifier.height(10.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+          HapticsMode.entries.forEach { mode ->
+            FilterChip(
+              selected = prefs.hapticsMode == mode,
+              onClick = {
+                preferencesViewModel.setHapticsMode(mode)
+                if (mode != HapticsMode.Off) {
+                  haptics.perform(
+                    if (mode == HapticsMode.Enhanced) HapticEvent.Confirm else HapticEvent.Tap,
+                    forceMode = mode
+                  )
+                }
+              },
+              label = { Text(mode.labelZh) }
+            )
+          }
+        }
+        if (prefs.hapticsMode == HapticsMode.Enhanced) {
+          Spacer(Modifier.height(8.dp))
+          Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = { haptics.perform(HapticEvent.Success) }) { Text("试听成功") }
+            OutlinedButton(onClick = { haptics.perform(HapticEvent.Error) }) { Text("试听错误") }
+            OutlinedButton(onClick = { haptics.perform(HapticEvent.Refresh) }) { Text("试听刷新") }
+          }
+        }
+      }
+
       AppCard {
         Text("Hub 连接", style = MaterialTheme.typography.titleMedium)
         Spacer(Modifier.height(12.dp))
@@ -567,15 +689,22 @@ fun SettingsScreen(
         Spacer(Modifier.height(12.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
           Button(
-            onClick = viewModel::testConnection,
+            onClick = {
+              haptics.perform(HapticEvent.Confirm)
+              viewModel.testConnection()
+            },
             enabled = !state.testing
           ) { Text(if (state.testing) "测试中" else "测试连接") }
           OutlinedButton(onClick = {
+            haptics.perform(HapticEvent.Success)
             viewModel.save()
             restartRealtime()
           }) { Text("加密保存") }
         }
-        TextButton(onClick = viewModel::clear) { Text("清除本机连接") }
+        TextButton(onClick = {
+          haptics.perform(HapticEvent.Error)
+          viewModel.clear()
+        }) { Text("清除本机连接") }
       }
 
       AppCard {
@@ -605,6 +734,7 @@ fun SettingsScreen(
         Spacer(Modifier.height(4.dp))
         TextButton(
           onClick = {
+            haptics.perform(HapticEvent.Tap)
             uriHandler.openUri("https://github.com/IGNGserver/token-monitor-mysql/releases/latest")
           }
         ) { Text("检查并下载最新 Android 版本") }

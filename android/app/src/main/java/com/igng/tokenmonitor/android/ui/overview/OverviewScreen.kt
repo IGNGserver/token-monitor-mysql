@@ -53,6 +53,8 @@ import com.igng.tokenmonitor.android.ui.components.formatTokensShort
 import com.igng.tokenmonitor.android.ui.components.formatUsd
 import com.igng.tokenmonitor.android.ui.components.takeRange
 import com.igng.tokenmonitor.android.ui.components.topShareEntries
+import com.igng.tokenmonitor.android.ui.haptics.HapticEvent
+import com.igng.tokenmonitor.android.ui.haptics.rememberAppHaptics
 
 @OptIn(ExperimentalMaterialApi::class)
 @Composable
@@ -63,7 +65,11 @@ fun OverviewScreen(
   onOpenDevices: () -> Unit,
   onOpenSettings: () -> Unit
 ) {
-  val refreshState = rememberPullRefreshState(refreshing = state.isLoading, onRefresh = onRefresh)
+  val haptics = rememberAppHaptics()
+  val refreshState = rememberPullRefreshState(refreshing = state.isLoading, onRefresh = {
+    haptics.perform(HapticEvent.Refresh)
+    onRefresh()
+  })
   val periods = state.stats?.periods
   val today = periods?.today
   val clientShares = topShareEntries(today?.clients.orEmpty(), today?.clientCosts.orEmpty(), limit = 6)
@@ -129,8 +135,8 @@ fun OverviewScreen(
                 {
                   DonutChart(
                     entries = clientShares,
-                    chartSize = 88.dp,
-                    strokeWidth = 14.dp,
+                    chartSize = 120.dp,
+                    strokeWidth = 16.dp,
                     showLegend = false,
                     centerPrimary = null,
                     centerSecondary = null
@@ -189,7 +195,7 @@ fun OverviewScreen(
                   listOf("Token", "费用", "对比").forEachIndexed { index, label ->
                     FilterChip(
                       selected = trendMetricIndex == index,
-                      onClick = { trendMetricIndex = index },
+                      onClick = { haptics.perform(HapticEvent.Selection); trendMetricIndex = index },
                       label = { Text(label) }
                     )
                   }
