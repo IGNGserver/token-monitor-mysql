@@ -6,14 +6,14 @@
 
 <!-- app-update-notes:en:start -->
 ### Added
-- **Sync upload frequency:** Choose Live or every 10, 20, or 30 minutes under Multi-device Sync. Interval modes send the latest snapshot on the selected schedule. (#148)
+- **Android dashboard redesign:** Overview and Analytics now include token, cost, dual-metric, and active-time trend charts, plus device comparison views.
+- **Client branding:** Desktop-aligned client colors and monogram badges across client rows and charts.
+- **Skeleton loaders:** Loading placeholders while hub stats stream in.
 
 ### Improved
-- **All-new Settings:** A complete visual and interaction redesign brings Settings in line with the modernized main interface, with one continuous card, clearer title-left/control-right rows, iOS-style switches, compact inline options, refined sliders, and cleaner shortcut and status controls. (#172)
-- **Default window:** The main window now opens narrower and taller to better fit the interface.
-
-### Fixed
-- **Settings navigation:** Clicked section headers now stay in place while accordion sections collapse. (#168)
+- **Session cost ranking:** Clearer ranking of recent high-cost sessions on Overview.
+- **Empty states:** More helpful empty / disconnected guidance throughout the Android app.
+- **Dark-theme charts:** Higher chart contrast and peak date labels for readability.
 <!-- app-update-notes:en:end -->
 
 ## Download
@@ -61,14 +61,14 @@ open-source: https://github.com/junhoyeo/tokscale
 
 <!-- app-update-notes:zh:start -->
 ### 新增
-- **同步上传频率：** 可在多设备同步中选择实时，或每 10、20、30 分钟上传；定时模式会按所选频率发送最新快照。（#148）
+- **安卓端仪表盘重做：** 概览与分析页提供 Token / 费用 / 双指标 / 活跃时间趋势图，以及设备对比视图。
+- **客户端品牌色：** 与桌面端对齐的客户端配色与字母徽章，覆盖列表与图表。
+- **骨架屏加载：** 在 Hub 数据流式到达前展示加载占位。
 
 ### 改进
-- **全新设置：** 设置面板迎来完整的视觉与交互设计升级，与现代化主界面保持一致；采用一体式卡片、清晰的左侧标题／右侧控件布局、iOS 风格开关、紧凑的行内选项、精致滑杆，以及更简洁的快捷键与状态控件。（#172）
-- **默认窗口：** 主窗口现在以更窄、更高的比例打开，更贴合界面内容。
-
-### 修复
-- **设置导航：** 折叠分区时，已点击的标题现在会保持在原位。（#168）
+- **会话费用排行：** 概览页更清晰地展示近期高费用会话。
+- **空状态：** 未连接 / 无数据时的引导更明确。
+- **暗色图表：** 提升图表对比度，并标注峰值日期，便于阅读。
 <!-- app-update-notes:zh:end -->
 
 ## 下载
