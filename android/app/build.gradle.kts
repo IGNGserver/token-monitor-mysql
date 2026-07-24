@@ -85,6 +85,9 @@ dependencies {
   implementation(libs.okhttp.sse)
   implementation(libs.kotlinx.serialization.json)
   implementation(libs.kotlinx.coroutines.android)
+  implementation(libs.vico.compose)
+  implementation(libs.vico.compose.m3)
+  implementation(libs.vico.core)
 
   testImplementation(libs.junit)
   testImplementation(libs.mockwebserver)
@@ -98,21 +101,44 @@ val repositoryTestOutput = layout.buildDirectory.dir("intermediates/classes/debu
 val appRuntimeClasses = layout.buildDirectory.dir("intermediates/runtime_app_classes_jar/debug/bundleDebugClassesToRuntimeJar/classes.jar")
 val testJavaResources = layout.buildDirectory.dir("intermediates/java_res/debugUnitTest/processDebugUnitTestJavaRes/out")
 
-val runRepositoryTests by tasks.registering(Exec::class) {
-  group = "verification"
-  description = "Runs Repository MockWebServer tests without Gradle's Windows argfile worker."
-  dependsOn("transformDebugUnitTestClassesWithAsm", "bundleDebugClassesToRuntimeJar", "processDebugUnitTestJavaRes")
-  val launcher = javaToolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(21)) }
-  val testRuntime = configurations.named("debugUnitTestRuntimeClasspath")
-  doFirst {
-    val classpath = files(repositoryTestOutput, appRuntimeClasses, testJavaResources, testRuntime)
-    commandLine(
-      launcher.get().executablePath.asFile.absolutePath,
-      "-cp", classpath.asPath,
-      "org.junit.runner.JUnitCore",
-      "com.igng.tokenmonitor.android.data.repository.HubRepositoryTest"
-    )
+fun registerJunitCoreTask(name: String, descriptionText: String, vararg testClasses: String) =
+  tasks.register(name, Exec::class) {
+    group = "verification"
+    description = descriptionText
+    dependsOn("transformDebugUnitTestClassesWithAsm", "bundleDebugClassesToRuntimeJar", "processDebugUnitTestJavaRes")
+    val launcher = javaToolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(21)) }
+    val testRuntime = configurations.named("debugUnitTestRuntimeClasspath")
+    doFirst {
+      val classpath = files(repositoryTestOutput, appRuntimeClasses, testJavaResources, testRuntime)
+      commandLine(
+        listOf(
+          launcher.get().executablePath.asFile.absolutePath,
+          "-cp",
+          classpath.asPath,
+          "org.junit.runner.JUnitCore"
+        ) + testClasses
+      )
+    }
   }
-}
+
+val runRepositoryTests = registerJunitCoreTask(
+  "runRepositoryTests",
+  "Runs Repository MockWebServer tests without Gradle's Windows argfile worker.",
+  "com.igng.tokenmonitor.android.data.repository.HubRepositoryTest"
+)
+
+val runHistoryLimitsTests = registerJunitCoreTask(
+  "runHistoryLimitsTests",
+  "Runs historyPreview/limits DTO parsing tests without Gradle's Windows argfile worker.",
+  "com.igng.tokenmonitor.android.data.model.HubDtosHistoryLimitsTest"
+)
+
+val runUnitTests = registerJunitCoreTask(
+  "runUnitTests",
+  "Runs all local unit tests via JUnitCore (Windows argfile workaround).",
+  "com.igng.tokenmonitor.android.data.repository.HubRepositoryTest",
+  "com.igng.tokenmonitor.android.data.model.HubDtosHistoryLimitsTest"
+)
 
 tasks.withType<Test>().configureEach { enabled = false }
+

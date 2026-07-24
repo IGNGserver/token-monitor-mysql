@@ -17,7 +17,86 @@ data class StatsDto(
   val staleAfterMs: Long? = null,
   val periods: PeriodsDto = PeriodsDto(),
   val devices: List<DeviceDto> = emptyList(),
-  val projectsIncomplete: Boolean? = null
+  val projectsIncomplete: Boolean? = null,
+  val historyPreview: HistoryPreviewDto? = null,
+  val limits: LimitsDto? = null
+)
+
+@Serializable
+data class HistoryPreviewDto(
+  val daily: List<HistoryDayDto> = emptyList(),
+  val monthly: List<HistoryMonthDto> = emptyList(),
+  val summary: HistorySummaryDto = HistorySummaryDto()
+)
+
+@Serializable
+data class HistoryDayDto(
+  val date: String = "",
+  val tokens: Double = 0.0,
+  val cost: Double = 0.0,
+  val activeTimeMs: Double = 0.0
+)
+
+@Serializable
+data class HistoryMonthDto(
+  val month: String = "",
+  val tokens: Double = 0.0,
+  val cost: Double = 0.0,
+  val activeTimeMs: Double = 0.0
+)
+
+@Serializable
+data class HistorySummaryDto(
+  val totalTokens: Double = 0.0,
+  val totalCost: Double = 0.0,
+  val activeDays: Double = 0.0,
+  val currentStreak: Double = 0.0,
+  val longestStreak: Double = 0.0,
+  val peakDayTokens: Double = 0.0,
+  val favoriteModel: String? = null,
+  val messages: Double = 0.0,
+  val activeTimeMs: Double = 0.0
+)
+
+@Serializable
+data class LimitsDto(
+  val updatedAt: String? = null,
+  val refreshMs: Long? = null,
+  val providers: List<LimitProviderDto> = emptyList()
+)
+
+@Serializable
+data class LimitProviderDto(
+  val provider: String = "",
+  val accountKey: String? = null,
+  val accountEmail: String? = null,
+  val accountLabel: String? = null,
+  val status: String? = null,
+  val source: String? = null,
+  val updatedAt: String? = null,
+  val balanceUsd: Double? = null,
+  val balance: BalanceDto? = null,
+  val windows: List<LimitWindowDto> = emptyList()
+)
+
+@Serializable
+data class BalanceDto(
+  val amount: Double? = null,
+  val currency: String? = null
+)
+@Serializable
+data class LimitWindowDto(
+  val kind: String = "",
+  val label: String? = null,
+  val used: Double? = null,
+  val limit: Double? = null,
+  val remaining: Double? = null,
+  val usedPercent: Double? = null,
+  val remainingPercent: Double? = null,
+  val resetsAt: String? = null,
+  val windowMinutes: Double? = null,
+  val resetDescription: String? = null,
+  val showMeter: Boolean = true
 )
 
 @Serializable
@@ -63,7 +142,8 @@ data class DeviceDto(
   val updatedAt: String? = null,
   val receivedAt: String? = null,
   val stale: Boolean = false,
-  val periods: PeriodsDto = PeriodsDto()
+  val periods: PeriodsDto = PeriodsDto(),
+  val limits: LimitsDto? = null
 )
 
 @Serializable
