@@ -5,14 +5,9 @@
 ## What's changed
 
 <!-- app-update-notes:en:start -->
-### Added
-- **Custom hour-range analytics:** On Android and the desktop widget, open **Analytics → Custom**, pick a calendar day range (same day allowed), and dial start/end hours. Client and model share charts load from the hub event ledger with hour precision; day-level history is used only as a fallback.
-- **Client / model detail drill-down:** Tap a client or model row in analytics to open a detail screen for the selected period, including custom ranges.
-- **Hub range API:** `GET /api/usage/range?from=&to=` aggregates usage for an exclusive-end window (events first, history daily fallback).
-
-### Improved
-- **Today hero donut:** Larger ring (140dp) and tighter hero metrics so the Overview “今日” card no longer leaves a large empty stretch beside a tiny pie.
-- **Chart grow animations & haptics:** Progress bars, donuts, and segmented bars keep grow-in animations; the custom-range hour wheels and confirm actions use selection/confirm/error haptics according to Settings (Off / Standard / Enhanced).
+### Fixed
+- **Custom range calendar popover:** The desktop calendar dialog no longer opens on launch, can be closed with × / outside click / Escape, and the calendar button height matches the DAY / MONTH / TOTAL tabs.
+- **Android hour wheel:** Custom range hour picker snapping and selection alignment are more reliable.
 <!-- app-update-notes:en:end -->
 
 ## Download
@@ -59,14 +54,9 @@ open-source: https://github.com/junhoyeo/tokscale
 ## 更新内容
 
 <!-- app-update-notes:zh:start -->
-### 新增
-- **自定义小时级分析：** 在 Android 与桌面小组件的「分析 → 自定义」中，可用日历选择起止日期（允许同一天），并用滚轮设置起止小时。客户端/模型占比会按 Hub 事件账本按小时聚合；仅在事件不足时回退到按日历史。
-- **客户端 / 模型详情下钻：** 在分析页点击某一客户端或模型行，可进入该时间范围内的详情页（含自定义范围）。
-- **Hub 范围接口：** `GET /api/usage/range?from=&to=` 按半开区间聚合用量（优先事件，历史按日回退）。
-
-### 改进
-- **今日英雄卡饼图：** 饼图放大到 140dp，并收紧左侧指标排版，避免「今日」卡片里小饼图旁大片空白。
-- **图表生长动画与触感：** 进度条、饼图、分段条保持生长动画；自定义范围的小时滚轮与确认/错误操作会按设置（关闭 / 标准 / 增强）触发不同震动。
+### 修复
+- **自定义时间范围日历弹层：** 桌面端日历不再启动时自动弹出，可用 × / 点击外侧 / Esc 关闭，日历按钮高度与「日 / 月 / 累计」页签一致。
+- **Android 小时滚轮：** 自定义范围小时选择的吸附与对齐更稳定。
 <!-- app-update-notes:zh:end -->
 
 ## 下载
