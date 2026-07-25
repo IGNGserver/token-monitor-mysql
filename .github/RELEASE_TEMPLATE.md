@@ -5,12 +5,20 @@
 ## What's changed
 
 <!-- app-update-notes:en:start -->
-### Fixed
-- **Custom range token totals:** Desktop and Android custom calendar ranges now use the same day-level counting family as the Day/Month tabs (tokscale `--since`/`--until` locally; hub `history.daily` when synced). Totals are no longer rebuilt from incomplete session timestamps or preferred from mis-dated usage events.
-- **Custom range calendar popover:** The desktop calendar dialog no longer opens on launch, can be closed with × / outside click / Escape, and the calendar button height matches the DAY / MONTH / TOTAL tabs.
-- **Android range calendar alignment:** Day circles and numbers are centered on each cell; the range highlight band now shares the same geometric center as the selection circles.
-- **Android hour wheel contrast:** Selected hour uses primary/bold emphasis; unselected hours are de-emphasized so the active row is obvious.
-- **Android overview density:** Removed the duplicate client-share donut under the hero card; the share card keeps the ranked bars only.
+### Added
+- **Hub web dashboard + PWA:** The MySQL Hub now serves a same-port SaaS-style web UI (`http://host:17321`) with PWA install support for iOS / HarmonyOS and other devices without a native client.
+- **Hub Docker image on GHCR:** Releases publish `ghcr.io/igngserver/token-monitor-hub` (`latest`, `<version>`, `v<version>`) plus `Token-Monitor-Hub-Compose-<version>.zip`. Deploy with `docker compose pull && docker compose up -d` (no local image build required).
+- **OpenRouter multi-account limits:** Track OpenRouter usage/limits alongside other providers.
+- **Windows glass modes:** Acrylic, Mica, Mica Alt, and Accent backdrop options for the desktop widget.
+- **Tray composer / layout:** Richer tray text composition and layout controls.
+- **Device runtime & breakdown:** Clearer per-device runtime status and usage breakdown presentation.
+- **Automatic app updates UI:** In-app update presentation for desktop releases.
+- **SignPath Windows packaging pipeline:** Release workflow prepares/signs Windows artifacts via SignPath-compatible steps when configured.
+- **Credential store isolation:** Provider credentials are isolated more safely across accounts/providers.
+
+### Changed
+- **Upstream v0.35 parity:** Ports core desktop/shared improvements from token-monitor v0.35 while keeping fork-only MySQL Hub, Android, custom hour ranges, and IGNGserver release metadata.
+- **Compose default path:** Root `docker-compose.yml` pulls the published Hub image by default; local source builds use `docker-compose.build.yml`.
 <!-- app-update-notes:en:end -->
 
 ## Download
@@ -58,12 +66,20 @@ open-source: https://github.com/junhoyeo/tokscale
 ## 更新内容
 
 <!-- app-update-notes:zh:start -->
-### 修复
-- **自定义时间范围 Token 计数：** 桌面端与 Android 自定义日历范围改用与「日 / 月」页签同一套按日计数逻辑（本地 tokscale `--since`/`--until`；同步模式下使用 hub 的 `history.daily`）。不再用残缺会话时间戳重建总数，也不再优先采用可能误标日期的 usage_events。
-- **自定义时间范围日历弹层：** 桌面端日历不再启动时自动弹出，可用 × / 点击外侧 / Esc 关闭，日历按钮高度与「日 / 月 / 累计」页签一致。
-- **Android 日历对齐：** 日期圆圈与数字在格子中居中，区间高光与选中圆共用同一几何中心，不再看起来偏右。
-- **Android 小时滚轮对比度：** 选中小时使用主题色加粗；未选中小时降低对比度，选中行更清晰。
-- **Android 概览密度：** 去掉「客户端占比」中与顶部英雄卡重复的甜甜圈图，仅保留占比条，减少空白。
+### 新增
+- **Hub 网页仪表板 + PWA：** MySQL Hub 在同一端口提供 SaaS 风格网页（`http://主机:17321`），支持 PWA，方便 iOS / 鸿蒙等无官方客户端的设备查看数据。
+- **Hub Docker 镜像（GHCR）：** 随 Release 发布 `ghcr.io/igngserver/token-monitor-hub`（`latest` / `<version>` / `v<version>`）以及 `Token-Monitor-Hub-Compose-<version>.zip`。部署使用 `docker compose pull && docker compose up -d`，无需本机构建镜像。
+- **OpenRouter 多账号额度：** 可与其他供应商一样查看 OpenRouter 用量/额度。
+- **Windows 毛玻璃模式：** 桌面小组件支持 Acrylic、Mica、Mica Alt、Accent。
+- **托盘文案编排 / 布局：** 更丰富的托盘文本组合与布局控制。
+- **设备运行时与拆分展示：** 更清晰的设备状态与用量拆分。
+- **自动更新界面：** 桌面端应用内更新展示。
+- **SignPath Windows 打包流水线：** 在配置密钥后，Release 可走 SignPath 兼容的签名步骤。
+- **凭据隔离：** 供应商账号凭据隔离更安全。
+
+### 变更
+- **对齐上游 v0.35：** 合入 token-monitor v0.35 的桌面/共享能力，同时保留本 fork 的 MySQL Hub、Android、自定义小时范围与 IGNGserver 发布元数据。
+- **Compose 默认拉镜像：** 根目录 `docker-compose.yml` 默认拉取已发布 Hub 镜像；本地源码构建使用 `docker-compose.build.yml`。
 <!-- app-update-notes:zh:end -->
 
 ## 下载
