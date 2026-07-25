@@ -35,7 +35,21 @@ jobs:
       # preserve the same updater config that a normal NSIS build would embed.
       - name: Write Windows updater configuration
         run: node scripts/signpath-windows-artifacts.js write-update-config dist/win-unpacked
+      - name: Detect SignPath configuration
+        id: signpath
+        shell: bash
+        env:
+          SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
+        run: |
+          if [ -n "$SIGNPATH_API_TOKEN" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+            echo "SignPath is configured; Windows artifacts will be signed."
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "SIGNPATH_API_TOKEN is not configured; publishing an unsigned Windows build (SmartScreen may warn)."
+          fi
       - name: Prepare Windows application for signing
+        if: steps.signpath.outputs.enabled == 'true'
         id: prepare-unsigned-win-app
         shell: bash
         run: |
@@ -43,6 +57,7 @@ jobs:
           node scripts/signpath-windows-artifacts.js prepare-application \
             dist/win-unpacked "$RUNNER_TEMP/signpath-application-input" >> "$GITHUB_OUTPUT"
       - name: Upload unsigned Windows application
+        if: steps.signpath.outputs.enabled == 'true'
         id: upload-unsigned-win-app
         uses: actions/upload-artifact@v4
         with:
@@ -54,6 +69,7 @@ jobs:
           # path required by the SignPath artifact configuration.
           path: ${{ runner.temp }}/signpath-application-input
       - name: Code-sign Windows application (SignPath)
+        if: steps.signpath.outputs.enabled == 'true'
         uses: SignPath/github-action-submit-signing-request@b9d91eadd323de506c0c81cf0c7fe7438f3360fd # v2.2
         with:
           api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
@@ -67,12 +83,14 @@ jobs:
           parameters: |
             version: ${{ toJSON(steps.prepare-unsigned-win-app.outputs.product_version) }}
       - name: Apply signed Windows application
+        if: steps.signpath.outputs.enabled == 'true'
         shell: bash
         run: |
           set -euo pipefail
           node scripts/signpath-windows-artifacts.js apply-application \
             dist/win-unpacked dist/signpath-application-output
       - name: Verify Windows application Authenticode signature
+        if: steps.signpath.outputs.enabled == 'true'
         shell: pwsh
         run: |
           $application = Get-Item -LiteralPath (Join-Path 'dist/win-unpacked' '${{ steps.prepare-unsigned-win-app.outputs.application }}') -ErrorAction Stop
@@ -88,12 +106,13 @@ jobs:
           if (-not $signature.TimeStamperCertificate) {
             throw "$($application.Name) has no Authenticode timestamp"
           }
-      - name: Package signed Windows application
+      - name: Package Windows application
         run: npm run dist:win:prepackaged
       # Keep the two public filenames in separate directories so SignPath can
       # require exactly one installer and one portable exe without overlapping
       # wildcard patterns.
       - name: Prepare Windows artifacts for signing
+        if: steps.signpath.outputs.enabled == 'true'
         id: prepare-unsigned-win
         shell: bash
         run: |
@@ -101,6 +120,7 @@ jobs:
           node scripts/signpath-windows-artifacts.js prepare-artifacts \
             dist "$RUNNER_TEMP/signpath-artifact-input" >> "$GITHUB_OUTPUT"
       - name: Upload unsigned Windows artifacts
+        if: steps.signpath.outputs.enabled == 'true'
         id: upload-unsigned-win
         uses: actions/upload-artifact@v4
         with:
@@ -115,6 +135,7 @@ jobs:
             ${{ runner.temp }}/signpath-artifact-input/installer/${{ steps.prepare-unsigned-win.outputs.installer }}
             ${{ runner.temp }}/signpath-artifact-input/portable/${{ steps.prepare-unsigned-win.outputs.portable }}
       - name: Code-sign Windows artifacts (SignPath)
+        if: steps.signpath.outputs.enabled == 'true'
         uses: SignPath/github-action-submit-signing-request@b9d91eadd323de506c0c81cf0c7fe7438f3360fd # v2.2
         with:
           api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
@@ -132,6 +153,7 @@ jobs:
       # unsigned one; this rewrites latest.yml's sha512/size and rebuilds the
       # blockmap from the signed bytes so differential updates keep working.
       - name: Apply signed Windows artifacts
+        if: steps.signpath.outputs.enabled == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -141,6 +163,7 @@ jobs:
       # confirm the file it gave back is actually validly signed by the expected
       # certificate before it ships.
       - name: Verify Windows artifact Authenticode signatures
+        if: steps.signpath.outputs.enabled == 'true'
         shell: pwsh
         run: |
           $expected = @(

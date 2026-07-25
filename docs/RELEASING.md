@@ -36,7 +36,7 @@ Android 的 `versionName` 和 `versionCode` 会根据 tag 自动生成，保证 
 
 ## Windows 签名
 
-当前 Windows 安装包可以正常构建，但未配置 Windows 代码签名证书时，用户首次运行可能看到 SmartScreen 警告。配置 electron-builder 支持的 `CSC_LINK` 和 `CSC_KEY_PASSWORD` secrets 后，Release workflow 会使用证书签名 Windows 包。
+当前 Windows 安装包可以正常构建。未配置 `SIGNPATH_API_TOKEN` 时，Release workflow 会自动跳过 SignPath，发布**未签名**的 Windows 包（用户首次运行可能看到 SmartScreen 警告）。配置 SignPath 的 `SIGNPATH_API_TOKEN` secret 后，同一 workflow 会走 SignPath 双阶段签名（应用本体 + 安装包/便携版）。
 
 ## Hub Docker 镜像（GHCR）
 
