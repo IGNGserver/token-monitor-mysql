@@ -8,7 +8,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -45,7 +44,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.PlatformTextStyle
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -59,9 +61,12 @@ import java.time.LocalTime
 import java.time.YearMonth
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
-import java.time.format.TextStyle
+import java.time.format.TextStyle as DateTextStyle
 import java.util.Locale
+import kotlin.math.abs
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
 @Composable
@@ -81,7 +86,7 @@ fun DateTimeRangePickerDialog(
 
   var startDate by remember { mutableStateOf(startLdt.toLocalDate()) }
   var endDate by remember { mutableStateOf(endInclusiveLdt.toLocalDate()) }
-  // null = next click sets start; non-null = next click completes range
+  // false = next click sets start; true = next click completes range
   var pickingEnd by remember { mutableStateOf(true) }
   var visibleMonth by remember { mutableStateOf(YearMonth.from(endDate)) }
   var startHour by remember { mutableIntStateOf(startLdt.hour.coerceIn(0, 23)) }
@@ -226,7 +231,6 @@ private fun RangeCalendar(
 ) {
   val locale = Locale.CHINA
   val weekdays = remember(locale) {
-    // Monday-first to match common Chinese calendars
     listOf(
       DayOfWeek.MONDAY,
       DayOfWeek.TUESDAY,
@@ -235,7 +239,7 @@ private fun RangeCalendar(
       DayOfWeek.FRIDAY,
       DayOfWeek.SATURDAY,
       DayOfWeek.SUNDAY
-    ).map { it.getDisplayName(TextStyle.NARROW, locale) }
+    ).map { it.getDisplayName(DateTextStyle.NARROW, locale) }
   }
   val firstOfMonth = month.atDay(1)
   val lead = (firstOfMonth.dayOfWeek.value + 6) % 7 // Monday = 0
@@ -252,6 +256,18 @@ private fun RangeCalendar(
   }
   val rangeStart = if (startDate.isAfter(endDate)) endDate else startDate
   val rangeEnd = if (startDate.isAfter(endDate)) startDate else endDate
+  val dayTextStyle = remember {
+    TextStyle(
+      fontSize = 14.sp,
+      fontWeight = FontWeight.Medium,
+      textAlign = TextAlign.Center,
+      platformStyle = PlatformTextStyle(includeFontPadding = false),
+      lineHeightStyle = LineHeightStyle(
+        alignment = LineHeightStyle.Alignment.Center,
+        trim = LineHeightStyle.Trim.Both
+      )
+    )
+  }
 
   Column(Modifier.fillMaxWidth()) {
     Row(
@@ -285,12 +301,17 @@ private fun RangeCalendar(
     }
     Spacer(Modifier.height(4.dp))
     cells.chunked(7).forEach { week ->
-      Row(Modifier.fillMaxWidth()) {
+      Row(
+        Modifier
+          .fillMaxWidth()
+          .height(44.dp),
+        verticalAlignment = Alignment.CenterVertically
+      ) {
         week.forEach { date ->
           Box(
             modifier = Modifier
               .weight(1f)
-              .aspectRatio(1f)
+              .fillMaxHeight()
               .then(if (date != null) Modifier.clickable { onDayClick(date) } else Modifier),
             contentAlignment = Alignment.Center
           ) {
@@ -300,44 +321,56 @@ private fun RangeCalendar(
               val isEnd = date == rangeEnd
               val isEndpoint = isStart || isEnd
               val today = date == LocalDate.now()
+              val multiDay = rangeStart != rangeEnd
+              val stripColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)
 
-              // Full-width range band shares the same center as the day circle/number.
-              if (inRange && rangeStart != rangeEnd) {
-                val stripColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.75f)
-                Box(
+              // Range connector through geometric center keeps circles aligned with highlight.
+              if (inRange && multiDay) {
+                Row(
                   Modifier
                     .fillMaxWidth()
-                    .height(36.dp)
+                    .height(34.dp)
                     .align(Alignment.Center)
-                    .background(
-                      color = stripColor,
-                      shape = when {
-                        isStart -> RoundedCornerShape(topStartPercent = 50, bottomStartPercent = 50)
-                        isEnd -> RoundedCornerShape(topEndPercent = 50, bottomEndPercent = 50)
-                        else -> RoundedCornerShape(0.dp)
-                      }
-                    )
-                )
+                ) {
+                  Box(
+                    Modifier
+                      .weight(1f)
+                      .fillMaxHeight()
+                      .background(if (!isStart) stripColor else Color.Transparent)
+                  )
+                  Box(
+                    Modifier
+                      .weight(1f)
+                      .fillMaxHeight()
+                      .background(if (!isEnd) stripColor else Color.Transparent)
+                  )
+                }
               }
 
               Box(
                 modifier = Modifier
-                  .size(36.dp)
+                  .align(Alignment.Center)
+                  .size(34.dp)
                   .clip(CircleShape)
-                  .background(if (isEndpoint) MaterialTheme.colorScheme.primary else Color.Transparent),
+                  .background(
+                    when {
+                      isEndpoint -> MaterialTheme.colorScheme.primary
+                      today -> MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+                      else -> Color.Transparent
+                    }
+                  ),
                 contentAlignment = Alignment.Center
               ) {
                 Text(
                   text = date.dayOfMonth.toString(),
-                  modifier = Modifier.fillMaxWidth(),
-                  textAlign = TextAlign.Center,
-                  style = MaterialTheme.typography.bodyMedium,
-                  fontWeight = if (isEndpoint || today) FontWeight.SemiBold else FontWeight.Normal,
-                  color = when {
-                    isEndpoint -> MaterialTheme.colorScheme.onPrimary
-                    today -> MaterialTheme.colorScheme.primary
-                    else -> MaterialTheme.colorScheme.onSurface
-                  }
+                  style = dayTextStyle.copy(
+                    fontWeight = if (isEndpoint || today) FontWeight.SemiBold else FontWeight.Medium,
+                    color = when {
+                      isEndpoint -> MaterialTheme.colorScheme.onPrimary
+                      today -> MaterialTheme.colorScheme.primary
+                      else -> MaterialTheme.colorScheme.onSurface
+                    }
+                  )
                 )
               }
             }
@@ -356,14 +389,19 @@ private fun ComposeHourWheel(
 ) {
   val itemHeight = 40.dp
   val visibleCount = 3
-  val listState = rememberLazyListState(initialFirstVisibleItemIndex = value)
+  // Index layout: [top spacer][h0..h23][bottom spacer]
+  // firstVisibleItemIndex == hour keeps that hour centered in the 3-row viewport.
+  val listState = rememberLazyListState(
+    initialFirstVisibleItemIndex = value.coerceIn(0, 23)
+  )
   val fling = rememberSnapFlingBehavior(lazyListState = listState)
   val scope = rememberCoroutineScope()
   var suppress by remember { mutableStateOf(false) }
 
-  // Keep list aligned when value changes externally
+  fun listIndexForHour(hour: Int): Int = hour.coerceIn(0, 23)
+
   LaunchedEffect(value) {
-    val target = value.coerceIn(0, 23)
+    val target = listIndexForHour(value)
     if (listState.firstVisibleItemIndex != target || listState.firstVisibleItemScrollOffset != 0) {
       suppress = true
       listState.scrollToItem(target)
@@ -371,23 +409,26 @@ private fun ComposeHourWheel(
     }
   }
 
-  // Emit selected hour when snap settles on a new index
   LaunchedEffect(listState) {
     snapshotFlow {
       val info = listState.layoutInfo
-      val center = info.viewportStartOffset + (info.viewportEndOffset - info.viewportStartOffset) / 2
+      if (info.visibleItemsInfo.isEmpty()) return@snapshotFlow null
+      val viewportCenter = (info.viewportStartOffset + info.viewportEndOffset) / 2
       info.visibleItemsInfo
         .minByOrNull { item ->
           val itemCenter = item.offset + item.size / 2
-          kotlin.math.abs(itemCenter - center)
+          abs(itemCenter - viewportCenter)
         }
         ?.index
     }
-      .distinctUntilChanged()
-      .collect { index ->
-        if (index == null || suppress) return@collect
+      .filter { it != null }
+      .map { index ->
         // index 0 = top spacer, 1..24 = hours 0..23, 25 = bottom spacer
-        val hour = (index - 1).coerceIn(0, 23)
+        (index!! - 1).coerceIn(0, 23)
+      }
+      .distinctUntilChanged()
+      .collect { hour ->
+        if (suppress) return@collect
         if (hour != value) onValueChange(hour)
       }
   }
@@ -402,16 +443,15 @@ private fun ComposeHourWheel(
     Box(
       modifier = Modifier
         .height(itemHeight * visibleCount)
-        .width(96.dp),
+        .width(104.dp),
       contentAlignment = Alignment.Center
     ) {
-      // Center selection band
       Box(
         Modifier
           .fillMaxWidth()
           .height(itemHeight)
           .clip(RoundedCornerShape(12.dp))
-          .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f))
+          .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f))
           .align(Alignment.Center)
       )
       LazyColumn(
@@ -420,37 +460,44 @@ private fun ComposeHourWheel(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier.fillMaxSize()
       ) {
-        // top spacer so first item can center
-        item { Spacer(Modifier.height(itemHeight)) }
-        items(24) { hour ->
-          val selected = hour == value
-          Box(
-            modifier = Modifier
-              .fillMaxWidth()
-              .height(itemHeight)
-              .clickable {
-                scope.launch {
-                  listState.animateScrollToItem(hour)
-                }
-                onValueChange(hour)
-              },
-            contentAlignment = Alignment.Center
-          ) {
-            Text(
-              text = "%02d:00".format(hour),
-              textAlign = TextAlign.Center,
-              fontSize = if (selected) 18.sp else 15.sp,
-              fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-              color = if (selected) {
-                MaterialTheme.colorScheme.primary
-              } else {
-                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f)
-              }
-            )
+        item(key = "top-spacer") {
+          Spacer(Modifier.height(itemHeight))
+        }
+        for (hour in 0..23) {
+          item(key = "hour-$hour") {
+            val selected = hour == value
+            Box(
+              modifier = Modifier
+                .fillMaxWidth()
+                .height(itemHeight)
+                .clickable {
+                  onValueChange(hour)
+                  scope.launch {
+                    listState.animateScrollToItem(listIndexForHour(hour))
+                  }
+                },
+              contentAlignment = Alignment.Center
+            ) {
+              Text(
+                text = "%02d:00".format(hour),
+                textAlign = TextAlign.Center,
+                fontSize = if (selected) 18.sp else 15.sp,
+                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                color = if (selected) {
+                  MaterialTheme.colorScheme.primary
+                } else {
+                  MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                },
+                style = TextStyle(
+                  platformStyle = PlatformTextStyle(includeFontPadding = false)
+                )
+              )
+            }
           }
         }
-        // bottom spacer so last item can center
-        item { Spacer(Modifier.height(itemHeight)) }
+        item(key = "bottom-spacer") {
+          Spacer(Modifier.height(itemHeight))
+        }
       }
     }
   }

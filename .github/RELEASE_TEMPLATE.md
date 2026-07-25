@@ -7,7 +7,9 @@
 <!-- app-update-notes:en:start -->
 ### Fixed
 - **Custom range calendar popover:** The desktop calendar dialog no longer opens on launch, can be closed with × / outside click / Escape, and the calendar button height matches the DAY / MONTH / TOTAL tabs.
-- **Android hour wheel:** Custom range hour picker snapping and selection alignment are more reliable.
+- **Android range calendar alignment:** Day circles and numbers are centered on each cell; the range highlight band now shares the same geometric center as the selection circles.
+- **Android hour wheel contrast:** Selected hour uses primary/bold emphasis; unselected hours are de-emphasized so the active row is obvious.
+- **Android overview density:** Removed the duplicate client-share donut under the hero card; the share card keeps the ranked bars only.
 <!-- app-update-notes:en:end -->
 
 ## Download
@@ -56,7 +58,9 @@ open-source: https://github.com/junhoyeo/tokscale
 <!-- app-update-notes:zh:start -->
 ### 修复
 - **自定义时间范围日历弹层：** 桌面端日历不再启动时自动弹出，可用 × / 点击外侧 / Esc 关闭，日历按钮高度与「日 / 月 / 累计」页签一致。
-- **Android 小时滚轮：** 自定义范围小时选择的吸附与对齐更稳定。
+- **Android 日历对齐：** 日期圆圈与数字在格子中居中，区间高光与选中圆共用同一几何中心，不再看起来偏右。
+- **Android 小时滚轮对比度：** 选中小时使用主题色加粗；未选中小时降低对比度，选中行更清晰。
+- **Android 概览密度：** 去掉「客户端占比」中与顶部英雄卡重复的甜甜圈图，仅保留占比条，减少空白。
 <!-- app-update-notes:zh:end -->
 
 ## 下载

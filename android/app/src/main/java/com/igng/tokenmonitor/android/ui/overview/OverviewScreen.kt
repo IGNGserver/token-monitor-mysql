@@ -220,12 +220,6 @@ fun OverviewScreen(
                   onAction = onOpenAnalytics
                 )
                 Spacer(Modifier.height(12.dp))
-                DonutChart(
-                  entries = clientShares,
-                  centerPrimary = formatTokensShort(today?.totalTokens ?: 0L),
-                  centerSecondary = formatUsd(today?.costUsd ?: 0.0, compact = true)
-                )
-                Spacer(Modifier.height(14.dp))
                 ShareBarList(clientShares)
               }
             }
