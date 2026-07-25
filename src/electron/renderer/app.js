@@ -4382,7 +4382,12 @@ function syncCustomRangeFields() {
 function setCustomRangeOpen(open) {
   state.customRangeOpen = Boolean(open);
   els.shell?.classList.toggle('custom-range-open', state.customRangeOpen);
-  els.customRangePopover?.classList.toggle('hidden', !state.customRangeOpen);
+  if (els.customRangePopover) {
+    els.customRangePopover.classList.toggle('hidden', !state.customRangeOpen);
+    // Belt-and-suspenders: class + HTML hidden attribute (this codebase has no global .hidden rule).
+    els.customRangePopover.hidden = !state.customRangeOpen;
+    els.customRangePopover.setAttribute('aria-hidden', String(!state.customRangeOpen));
+  }
   els.customRangeButton?.setAttribute('aria-expanded', String(state.customRangeOpen));
   if (state.customRangeOpen) {
     if (!state.customRangeDraft) state.customRangeDraft = currentCustomRangeDraft();
@@ -4516,7 +4521,15 @@ function setupCustomRangeUI() {
     event.stopPropagation();
     setCustomRangeOpen(!state.customRangeOpen);
   });
-  els.customRangeClose?.addEventListener('click', () => setCustomRangeOpen(false));
+  els.customRangeClose?.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setCustomRangeOpen(false);
+  });
+  els.customRangePopover?.addEventListener('pointerdown', (event) => {
+    // Keep interactions inside the dialog from being treated as outside dismiss.
+    event.stopPropagation();
+  });
   els.customRangePrevMonth?.addEventListener('click', () => {
     const base = state.customRangeMonth || { year: new Date().getFullYear(), monthIndex: new Date().getMonth() };
     state.customRangeMonth = customRangePickerApi.shiftMonth(base.year, base.monthIndex, -1);
@@ -4555,8 +4568,13 @@ function setupCustomRangeUI() {
     setCustomRangeOpen(false);
   });
   document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape' && state.customRangeOpen) setCustomRangeOpen(false);
+    if (event.key === 'Escape' && state.customRangeOpen) {
+      event.preventDefault();
+      setCustomRangeOpen(false);
+    }
   });
+  // Popover must start closed; never auto-open on launch.
+  setCustomRangeOpen(false);
   syncCustomRangeButton();
 }
 

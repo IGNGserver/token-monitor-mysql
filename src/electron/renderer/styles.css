@@ -280,9 +280,9 @@ body.is-windows.floating-bubble-collapsed-right .floating-bubble-tab {
 .title-controls {
   -webkit-app-region: no-drag;
   position: relative;
-  flex: 0 1 178px;
-  min-width: 128px;
-  width: 178px;
+  flex: 0 1 182px;
+  min-width: 132px;
+  width: 182px;
   height: 30px;
 }
 .actions-hotspot {
@@ -326,34 +326,45 @@ body.is-windows.floating-bubble-collapsed-right .floating-bubble-tab {
   top: 0;
   right: 0;
   bottom: 0;
-  left: 30px;
+  left: 34px; /* 30px calendar button + 4px gap */
   width: auto;
   transition: opacity 160ms ease 280ms, transform 160ms ease 280ms;
 }
 .period-calendar-button {
   position: absolute;
-  top: 1px;
+  top: 0;
   left: 0;
   z-index: 2;
-  width: 28px;
-  height: 28px;
+  /* Match the period tabs track (title-controls height = 30px). */
+  width: 30px;
+  height: 30px;
   padding: 0;
+  border-radius: 10px;
+  border-color: rgba(var(--line-rgb), 0.09);
+  background: rgba(var(--overlay-rgb), 0.026);
+  box-shadow: inset 0 1px 0 rgba(var(--overlay-rgb), 0.045);
   transition: opacity 160ms ease 280ms, transform 160ms ease 280ms;
 }
 .period-calendar-button::before {
   content: "";
   display: block;
-  width: 13px;
-  height: 13px;
+  width: 12px;
+  height: 12px;
   margin: 0 auto;
   background: currentColor;
   -webkit-mask: url("icons/actions/calendar.svg") center / contain no-repeat;
   mask: url("icons/actions/calendar.svg") center / contain no-repeat;
 }
+.period-calendar-button:hover {
+  color: var(--text);
+  border-color: rgba(var(--line-rgb), 0.13);
+  background: rgba(var(--overlay-rgb), 0.06);
+}
 .period-calendar-button.active {
   border-color: rgba(var(--accent-rgb), 0.58);
   color: var(--green);
   background: rgba(var(--accent-rgb), 0.08);
+  box-shadow: inset 0 1px 0 rgba(var(--overlay-rgb), 0.075);
 }
 .title-controls:has(.actions-hotspot:hover) .tabs,
 .title-controls:has(.window-actions:hover) .tabs,
@@ -4236,6 +4247,11 @@ html.is-windows .limit-live-badge {
   font-size: 12px;
 }
 
+/* Custom range calendar popover */
+.custom-range-popover.hidden,
+.custom-range-error.hidden {
+  display: none !important;
+}
 /* Custom range calendar popover */
 .custom-range-popover {
   position: absolute;
