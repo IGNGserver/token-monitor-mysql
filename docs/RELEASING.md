@@ -37,3 +37,28 @@ Android 的 `versionName` 和 `versionCode` 会根据 tag 自动生成，保证 
 ## Windows 签名
 
 当前 Windows 安装包可以正常构建，但未配置 Windows 代码签名证书时，用户首次运行可能看到 SmartScreen 警告。配置 electron-builder 支持的 `CSC_LINK` 和 `CSC_KEY_PASSWORD` secrets 后，Release workflow 会使用证书签名 Windows 包。
+
+## Hub Docker 镜像（GHCR）
+
+推送 `v*` tag 后，Release workflow 会额外：
+
+1. 多架构构建并推送 `ghcr.io/<owner>/token-monitor-hub`（`linux/amd64` + `linux/arm64`）。
+2. 打标签：`<version>`、`v<version>`、`latest`。
+3. 打包 `Token-Monitor-Hub-Compose-<version>.zip`（最小 compose 部署包）并挂到 Release Assets。
+
+镜像名固定为 **`token-monitor-hub`**。Compose 通过环境变量 `TOKEN_MONITOR_VERSION` 选择标签，默认 `latest`。
+
+首次在组织/账号下推送 GHCR 包后，如需匿名拉取，请到 GitHub → Packages → `token-monitor-hub` → Package settings 将可见性设为 **Public**。
+
+本地验证 compose 包（不推镜像）：
+
+```bash
+node scripts/package-hub-compose.js 0.34.2
+```
+
+本地从源码构建（不经过 GHCR）：
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.build.yml build hub
+```
+

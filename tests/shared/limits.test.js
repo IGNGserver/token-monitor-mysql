@@ -5,6 +5,7 @@ const test = require('node:test');
 
 const { aggregateLimits, mergeCodexTransientWindows, publicLimits, syncLimits } = require('../../src/shared/limits');
 const { collectLimitsOnce } = require('../../src/shared/limitCollector');
+const { codexAccountKey } = require('../../src/shared/codexAuth');
 
 function codexProvider(accountKey, accountEmail, remainingPercent, updatedAt) {
   return {
@@ -76,6 +77,70 @@ test('aggregateLimits preserves distinct Codex accounts by hashed account key', 
   );
 });
 
+test('aggregateLimits preserves same-email Codex workspaces by hashed account key', () => {
+  const aggregate = aggregateLimits([{
+    deviceId: 'macbook',
+    limits: {
+      updatedAt: '2026-06-14T10:01:00.000Z',
+      providers: [
+        codexProvider('sha256:personal', 'member@example.com', 18, '2026-06-14T10:00:00.000Z'),
+        codexProvider('sha256:team', 'member@example.com', 72, '2026-06-14T10:01:00.000Z')
+      ]
+    }
+  }], 0, Date.parse('2026-06-14T10:02:00.000Z'));
+
+  const codexProviders = aggregate.providers.filter((provider) => provider.provider === 'codex');
+  assert.equal(codexProviders.length, 2);
+  assert.deepEqual(
+    new Set(codexProviders.map((provider) => provider.accountKey)),
+    new Set(['sha256:personal', 'sha256:team'])
+  );
+});
+
+test('aggregateLimits dedupes same-email Personal and Team workspaces independently across devices', () => {
+  const email = 'member@example.com';
+  const personalKey = codexAccountKey(email, 'workspace-personal');
+  const teamKey = codexAccountKey(email, 'workspace-team');
+  const aggregate = aggregateLimits([
+    {
+      deviceId: 'macbook',
+      limits: {
+        updatedAt: '2026-07-24T10:01:00.000Z',
+        providers: [
+          codexProvider(personalKey, email, 18, '2026-07-24T10:00:00.000Z'),
+          codexProvider(teamKey, email, 72, '2026-07-24T10:01:00.000Z')
+        ]
+      }
+    },
+    {
+      deviceId: 'desktop',
+      limits: {
+        updatedAt: '2026-07-24T10:05:00.000Z',
+        providers: [
+          codexProvider(personalKey, email, 48, '2026-07-24T10:04:00.000Z'),
+          codexProvider(teamKey, email, 82, '2026-07-24T10:05:00.000Z')
+        ]
+      }
+    }
+  ], 0, Date.parse('2026-07-24T10:06:00.000Z'));
+
+  const codexProviders = aggregate.providers.filter((provider) => provider.provider === 'codex');
+  assert.equal(codexProviders.length, 2);
+  assert.deepEqual(
+    new Set(codexProviders.map((provider) => provider.accountKey)),
+    new Set([personalKey, teamKey])
+  );
+  assert.equal(
+    codexProviders.find((provider) => provider.accountKey === personalKey).windows[0].remainingPercent,
+    48
+  );
+  assert.equal(
+    codexProviders.find((provider) => provider.accountKey === teamKey).windows[0].remainingPercent,
+    82
+  );
+  assert.ok(codexProviders.every((provider) => provider.sourceDeviceId === 'desktop'));
+});
+
 test('aggregateLimits preserves distinct MiMo accounts by hashed account key', () => {
   const aggregate = aggregateLimits([
     {
@@ -98,6 +163,55 @@ test('aggregateLimits preserves distinct MiMo accounts by hashed account key', (
   );
 });
 
+test('aggregateLimits preserves distinct OpenRouter accounts and public stats scrub profile identity', () => {
+  const providers = ['work', 'personal'].map((accountName, index) => ({
+    provider: 'openrouter',
+    accountKey: `sha256:openrouter-${index}`,
+    accountName,
+    accountLabel: accountName,
+    status: 'ok',
+    source: 'api',
+    updatedAt: `2026-07-23T10:0${index}:00.000Z`,
+    windows: [{
+      kind: 'billing',
+      metric: 'credits',
+      label: 'Account credit',
+      used: index + 1,
+      limit: 10,
+      remaining: 9 - index
+    }],
+    balance: {
+      amount: 9 - index,
+      currency: 'USD',
+      todaySpend: index + 0.25,
+      weekSpend: index + 1.25,
+      monthSpend: index + 2.25,
+      allTimeSpend: index + 3.25
+    }
+  }));
+  const aggregate = aggregateLimits([{
+    deviceId: 'macbook',
+    limits: { updatedAt: '2026-07-23T10:02:00.000Z', providers }
+  }], 0, Date.parse('2026-07-23T10:03:00.000Z'));
+  const openrouter = aggregate.providers.filter((provider) => provider.provider === 'openrouter');
+  assert.equal(openrouter.length, 2);
+  assert.deepEqual(new Set(openrouter.map((provider) => provider.accountName)), new Set(['work', 'personal']));
+  const work = openrouter.find((provider) => provider.accountName === 'work');
+  assert.equal(work.balance.amount, 9);
+  assert.equal(work.balance.currency, 'USD');
+  assert.equal(work.balance.todaySpend, 0.25);
+  assert.equal(work.balance.weekSpend, 1.25);
+  assert.equal(work.balance.monthSpend, 2.25);
+  assert.equal(work.balance.allTimeSpend, 3.25);
+  assert.equal(work.windows[0].metric, 'credits');
+  assert.equal(work.windows[0].label, 'Account credit');
+
+  const publicPayload = publicLimits({ providers: openrouter });
+  assert.ok(publicPayload.providers.every((provider) => !Object.hasOwn(provider, 'accountKey')));
+  assert.ok(publicPayload.providers.every((provider) => !Object.hasOwn(provider, 'accountName')));
+  assert.ok(publicPayload.providers.every((provider) => provider.windows[0].metric === 'credits'));
+});
+
 test('publicLimits preserves MiMo plan status while removing account identity', () => {
   const payload = publicLimits({
     providers: [{
@@ -109,6 +223,25 @@ test('publicLimits preserves MiMo plan status while removing account identity', 
   assert.equal(payload.providers[0].balance.planStatus, 'expired');
   assert.equal(Object.hasOwn(payload.providers[0], 'accountKey'), false);
   assert.equal(Object.hasOwn(payload.providers[0], 'accountName'), false);
+});
+
+test('publicLimits preserves a bounded window detail for shared quota composition', () => {
+  const payload = publicLimits({
+    providers: [{
+      provider: 'kimi',
+      status: 'ok',
+      source: 'web',
+      windows: [{
+        kind: 'billing',
+        metric: 'provider-private-value',
+        usedPercent: 16.12,
+        detail: 'Kimi 11.12% · Code 5%\n'
+      }]
+    }]
+  });
+
+  assert.equal(payload.providers[0].windows[0].detail, 'Kimi 11.12% · Code 5%');
+  assert.equal(Object.hasOwn(payload.providers[0].windows[0], 'metric'), false);
 });
 
 test('aggregateLimits merges the same Codex account across devices and keeps distinct ones', () => {
@@ -240,13 +373,17 @@ test('aggregateLimits still exposes stale configured Codex quota when no fresh o
 test('mergeCodexTransientWindows keeps recent Codex windows when the same account reads empty', () => {
   const previous = {
     updatedAt: '2026-06-14T10:00:00.000Z',
-    providers: [codexProvider('sha256:codex-a', 'a@example.com', 50, '2026-06-14T10:00:00.000Z')]
+    providers: [{
+      ...codexProvider('sha256:codex-a', 'a@example.com', 50, '2026-06-14T10:00:00.000Z'),
+      planLabel: 'Plus'
+    }]
   };
   const current = {
     updatedAt: '2026-06-14T10:05:00.000Z',
     providers: [
       {
         ...codexProvider('sha256:codex-a', 'a@example.com', 0, '2026-06-14T10:05:00.000Z'),
+        planLabel: '',
         windows: []
       }
     ]
@@ -258,6 +395,7 @@ test('mergeCodexTransientWindows keeps recent Codex windows when the same accoun
   assert.equal(merged.providers.length, 1);
   assert.equal(merged.providers[0].windows.length, 1);
   assert.equal(merged.providers[0].windows[0].remainingPercent, 50);
+  assert.equal(merged.providers[0].planLabel, 'Plus');
   assert.equal(merged.providers[0].updatedAt, '2026-06-14T10:00:00.000Z');
 });
 
@@ -450,12 +588,13 @@ test('mergeCodexTransientWindows stops keeping old Codex windows after retention
   assert.equal(merged.providers[0].updatedAt, '2026-06-14T10:12:00.000Z');
 });
 
-test('syncLimits carries Codex account key, email and plan label to the authenticated hub', () => {
+test('syncLimits carries Codex account identity and legacy plan label to the authenticated hub', () => {
   const payload = syncLimits({
     updatedAt: '2026-06-14T10:00:00.000Z',
     providers: [
       {
         ...codexProvider('sha256:codex-a', 'a@example.com', 18, '2026-06-14T10:00:00.000Z'),
+        workspaceKind: 'personal',
         resetCredits: {
           availableCount: 2,
           nextExpiresAt: '2026-07-18T23:00:00Z',
@@ -474,6 +613,8 @@ test('syncLimits carries Codex account key, email and plan label to the authenti
   assert.equal(payload.providers[0].accountName, 'a');
   assert.equal(payload.providers[0].accountEmail, 'a@example.com');
   assert.equal(payload.providers[0].accountLabel, 'Plus');
+  assert.equal(payload.providers[0].planLabel, '');
+  assert.equal(payload.providers[0].workspaceKind, 'personal');
   assert.deepEqual(payload.providers[0].resetCredits, {
     availableCount: 2,
     nextExpiresAt: '2026-07-18T23:00:00.000Z',
@@ -488,7 +629,10 @@ test('publicLimits strips Codex account identity fields', () => {
   const payload = publicLimits({
     updatedAt: '2026-06-14T10:00:00.000Z',
     providers: [
-      codexProvider('sha256:codex-a', 'a@example.com', 18, '2026-06-14T10:00:00.000Z')
+      {
+        ...codexProvider('sha256:codex-a', 'a@example.com', 18, '2026-06-14T10:00:00.000Z'),
+        workspaceKind: 'personal'
+      }
     ]
   });
 
@@ -498,6 +642,34 @@ test('publicLimits strips Codex account identity fields', () => {
   assert.equal(Object.hasOwn(payload.providers[0], 'accountName'), false);
   assert.equal(Object.hasOwn(payload.providers[0], 'accountEmail'), false);
   assert.equal(Object.hasOwn(payload.providers[0], 'accountLabel'), false);
+  assert.equal(Object.hasOwn(payload.providers[0], 'planLabel'), false);
+  assert.equal(Object.hasOwn(payload.providers[0], 'workspaceKind'), false);
+});
+
+test('OpenCode sync keeps the legacy profile label and explicit plan while public stats scrub both', () => {
+  const limits = {
+    providers: [{
+      provider: 'opencode',
+      accountKey: 'sha256:opencode-work',
+      accountName: 'work',
+      accountLabel: 'work',
+      planLabel: 'Go',
+      status: 'ok',
+      source: 'web',
+      updatedAt: '2026-07-20T00:00:00.000Z',
+      windows: []
+    }]
+  };
+
+  const synced = syncLimits(limits).providers[0];
+  assert.equal(synced.accountName, 'work');
+  assert.equal(synced.accountLabel, 'work');
+  assert.equal(synced.planLabel, 'Go');
+
+  const publicProvider = publicLimits(limits).providers[0];
+  assert.equal(Object.hasOwn(publicProvider, 'accountName'), false);
+  assert.equal(Object.hasOwn(publicProvider, 'accountLabel'), false);
+  assert.equal(Object.hasOwn(publicProvider, 'planLabel'), false);
 });
 
 test('collectLimitsOnce flattens multiple providers returned by a provider fetcher', async () => {

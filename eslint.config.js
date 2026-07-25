@@ -33,6 +33,24 @@ module.exports = [
     },
   },
 
+
+  {
+    // Hub-hosted PWA assets are browser ESM (not Node CommonJS)
+    files: ['src/hub/web/**/*.js'],
+    ignores: ['src/hub/web/sw.js'],
+    languageOptions: {
+      sourceType: 'module',
+      globals: { ...globals.browser },
+    },
+  },
+
+  {
+    files: ['src/hub/web/sw.js'],
+    languageOptions: {
+      sourceType: 'script',
+      globals: { ...globals.serviceworker, ...globals.browser },
+    },
+  },
   {
     // Cloudflare Worker is ESM with service-worker runtime globals
     files: ['worker/**/*.js'],

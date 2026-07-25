@@ -5,7 +5,7 @@ const path = require('node:path');
 const test = require('node:test');
 
 const { codexCommandCandidates, codexCommandSourceDetail, createLimitsCollector, fetchCodexLimits, mapCodexRateLimitsToProvider } = require('../../src/shared/limitCollector');
-const { hashAccountKey } = require('../../src/shared/codexAuth');
+const { codexAccountKey, hashAccountKey } = require('../../src/shared/codexAuth');
 
 function dirent(name, directory = true) {
   return {
@@ -380,12 +380,131 @@ test('fetchCodexLimits returns one provider per managed Codex account', async ()
   assert.deepEqual(providers.map((provider) => provider.sourceDetail), ['managed', 'managed']);
 });
 
-test('fetchCodexLimits can refresh only the requested managed Codex account', async () => {
-  const seenHomes = [];
+test('fetchCodexLimits preserves same-email workspaces by account key', async () => {
   const providers = await fetchCodexLimits({
     includeLiveCodexAccount: false,
     codexManagedAccounts: [
-      { id: 'target', email: 'target@example.com', homePath: '/tmp/token-monitor-codex/target' }
+      {
+        id: 'personal',
+        accountKey: 'sha256:personal',
+        email: 'member@example.com',
+        workspaceAccountId: 'workspace-personal',
+        workspaceKind: 'personal',
+        homePath: '/tmp/token-monitor-codex/personal'
+      },
+      {
+        id: 'team',
+        accountKey: 'sha256:team',
+        email: 'member@example.com',
+        workspaceAccountId: 'workspace-team',
+        workspaceLabel: 'Team',
+        homePath: '/tmp/token-monitor-codex/team'
+      }
+    ]
+  }, {
+    now: () => Date.parse('2026-06-01T00:00:00Z'),
+    env: { PATH: '/usr/bin' },
+    readCodexRpc: async () => codexPayload('member@example.com')
+  });
+
+  assert.equal(providers.length, 2);
+  assert.deepEqual(providers.map((provider) => provider.accountKey), [
+    codexAccountKey('member@example.com', 'workspace-personal'),
+    codexAccountKey('member@example.com', 'workspace-team')
+  ]);
+  assert.deepEqual(providers.map((provider) => provider.accountName), ['', 'Team']);
+  assert.deepEqual(providers.map((provider) => provider.workspaceKind), ['personal', '']);
+});
+
+test('fetchCodexLimits keeps same-workspace members distinct when auth omits email', async () => {
+  const idToken = makeIdToken({ chatgpt_plan_type: 'team' });
+  const accounts = [
+    {
+      id: 'one',
+      email: 'one@example.com',
+      workspaceAccountId: 'workspace-team',
+      homePath: '/tmp/token-monitor-codex/one',
+      authPath: '/tmp/token-monitor-codex/one/auth.json'
+    },
+    {
+      id: 'two',
+      email: 'two@example.com',
+      workspaceAccountId: 'workspace-team',
+      homePath: '/tmp/token-monitor-codex/two',
+      authPath: '/tmp/token-monitor-codex/two/auth.json'
+    }
+  ];
+  const providers = await fetchCodexLimits({
+    includeLiveCodexAccount: false,
+    codexManagedAccounts: accounts
+  }, {
+    now: () => Date.parse('2026-06-01T00:00:00Z'),
+    env: { PATH: '/usr/bin' },
+    readFileSync: () => JSON.stringify({
+      tokens: { account_id: 'workspace-team', id_token: idToken }
+    }),
+    readCodexRpc: async (deps) => codexPayload(
+      deps.env.CODEX_HOME.endsWith('/one') ? 'one@example.com' : 'two@example.com'
+    )
+  });
+
+  assert.equal(providers.length, 2);
+  assert.deepEqual(providers.map((provider) => provider.accountKey), [
+    codexAccountKey('one@example.com', 'workspace-team'),
+    codexAccountKey('two@example.com', 'workspace-team')
+  ]);
+});
+
+test('fetchCodexLimits error rows keep same-workspace members distinct', async () => {
+  const idToken = makeIdToken({ chatgpt_plan_type: 'team' });
+  const providers = await fetchCodexLimits({
+    includeLiveCodexAccount: false,
+    codexManagedAccounts: [
+      {
+        id: 'one',
+        email: 'one@example.com',
+        workspaceAccountId: 'workspace-team',
+        homePath: '/tmp/token-monitor-codex/one'
+      },
+      {
+        id: 'two',
+        email: 'two@example.com',
+        workspaceAccountId: 'workspace-team',
+        homePath: '/tmp/token-monitor-codex/two'
+      }
+    ]
+  }, {
+    now: () => Date.parse('2026-06-01T00:00:00Z'),
+    env: { PATH: '/usr/bin' },
+    readFileSync: () => JSON.stringify({
+      tokens: { account_id: 'workspace-team', id_token: idToken }
+    }),
+    readCodexRpc: async () => {
+      throw Object.assign(new Error('temporary failure'), { status: 'unavailable' });
+    }
+  });
+
+  assert.equal(providers.length, 2);
+  assert.deepEqual(providers.map((provider) => provider.accountKey), [
+    codexAccountKey('one@example.com', 'workspace-team'),
+    codexAccountKey('two@example.com', 'workspace-team')
+  ]);
+  assert.deepEqual(providers.map((provider) => provider.status), ['unavailable', 'unavailable']);
+});
+
+test('fetchCodexLimits can refresh only the requested managed Codex account', async () => {
+  const seenHomes = [];
+  const providers = await fetchCodexLimits({
+    limitRefreshScope: {
+      provider: 'codex',
+      accountKey: 'sha256:target',
+      accountEmail: 'target@example.com',
+      accountLabel: '',
+      sourceDetail: 'managed'
+    },
+    codexManagedAccounts: [
+      { id: 'other', accountKey: 'sha256:other', email: 'other@example.com', homePath: '/tmp/token-monitor-codex/other' },
+      { id: 'target', accountKey: 'sha256:target', email: 'target@example.com', homePath: '/tmp/token-monitor-codex/target' }
     ]
   }, {
     now: () => Date.parse('2026-06-01T00:00:00Z'),
@@ -401,6 +520,7 @@ test('fetchCodexLimits can refresh only the requested managed Codex account', as
 
   assert.deepEqual(seenHomes, ['/tmp/token-monitor-codex/target']);
   assert.equal(providers.length, 1);
+  assert.equal(providers[0].accountKey, 'sha256:target');
   assert.equal(providers[0].accountEmail, 'target@example.com');
   assert.equal(providers[0].sourceDetail, 'managed');
 });
@@ -425,7 +545,57 @@ test('fetchCodexLimits does not fall back to live account when scoped accounts n
   assert.deepEqual(providers, []);
 });
 
-test('createLimitsCollector retains recent Codex quota windows across one empty refresh', async () => {
+test('createLimitsCollector scoped snapshot preserves unrelated providers and accounts', async () => {
+  const oldAt = '2026-06-01T00:00:00.000Z';
+  const newAt = '2026-06-01T00:01:00.000Z';
+  const calls = [];
+  const collector = createLimitsCollector({
+    limitsEnabled: true,
+    limitProviders: 'claude,codex',
+    previousLimits: {
+      updatedAt: oldAt,
+      refreshMs: 300000,
+      providers: [
+        { provider: 'claude', accountKey: 'claude-a', status: 'ok', updatedAt: oldAt, windows: [] },
+        { provider: 'codex', accountKey: 'codex-a', status: 'ok', updatedAt: oldAt, windows: [{ kind: 'session', usedPercent: 10 }] },
+        { provider: 'codex', accountKey: 'codex-b', status: 'ok', updatedAt: oldAt, windows: [{ kind: 'session', usedPercent: 20 }] }
+      ]
+    }
+  }, {
+    now: () => Date.parse(newAt),
+    providerFetchers: {
+      claude: async () => {
+        calls.push('claude');
+        throw new Error('unrelated provider must not refresh');
+      },
+      codex: async (options) => {
+        calls.push(`codex:${options.limitRefreshScope.accountKey}`);
+        return {
+          provider: 'codex',
+          accountKey: 'codex-b',
+          status: 'ok',
+          updatedAt: newAt,
+          windows: [{ kind: 'session', usedPercent: 30 }]
+        };
+      }
+    }
+  });
+
+  const summary = await collector.refreshScope({
+    provider: 'codex',
+    accountKey: 'codex-b',
+    accountEmail: '',
+    accountLabel: '',
+    sourceDetail: ''
+  });
+
+  assert.deepEqual(calls, ['codex:codex-b']);
+  assert.equal(summary.providers.find((provider) => provider.accountKey === 'claude-a').updatedAt, oldAt);
+  assert.equal(summary.providers.find((provider) => provider.accountKey === 'codex-a').windows[0].usedPercent, 10);
+  assert.equal(summary.providers.find((provider) => provider.accountKey === 'codex-b').windows[0].usedPercent, 30);
+});
+
+test('LimitsRuntime compatibility treats a successful empty Codex refresh as authoritative', async () => {
   let now = Date.parse('2026-06-01T00:00:00Z');
   let calls = 0;
   const collector = createLimitsCollector({
@@ -447,12 +617,12 @@ test('createLimitsCollector retains recent Codex quota windows across one empty 
   const second = await collector.snapshot(true);
 
   assert.equal(first.providers[0].windows.length, 1);
-  assert.equal(second.providers[0].windows.length, 1);
-  assert.equal(second.providers[0].windows[0].remainingPercent, 80);
-  assert.equal(second.providers[0].updatedAt, '2026-06-01T00:00:00.000Z');
+  assert.equal(second.providers[0].status, 'ok');
+  assert.equal(second.providers[0].windows.length, 0);
+  assert.equal(second.providers[0].updatedAt, '2026-06-01T00:05:00.000Z');
 });
 
-test('createLimitsCollector retains the only live Codex account across a transient fetch error', async () => {
+test('LimitsRuntime compatibility retains Codex windows while exposing a transient attempt status', async () => {
   let now = Date.parse('2026-06-01T00:00:00Z');
   let calls = 0;
   const collector = createLimitsCollector({
@@ -476,7 +646,7 @@ test('createLimitsCollector retains the only live Codex account across a transie
   const second = await collector.snapshot(true);
 
   assert.equal(first.providers[0].windows[0].remainingPercent, 80);
-  assert.equal(second.providers[0].status, 'ok');
+  assert.equal(second.providers[0].status, 'unavailable');
   assert.equal(second.providers[0].accountKey, 'sha256:codex-live');
   assert.equal(second.providers[0].accountEmail, 'live@example.com');
   assert.equal(second.providers[0].source, 'rpc');
@@ -484,7 +654,28 @@ test('createLimitsCollector retains the only live Codex account across a transie
   assert.equal(second.providers[0].updatedAt, '2026-06-01T00:00:00.000Z');
 });
 
-test('createLimitsCollector seeds retention from previousLimits so a collector restart keeps a transiently-failing Codex account', async () => {
+test('LimitsRuntime compatibility keeps retries demand-driven instead of starting background timers', async () => {
+  let scheduledTimers = 0;
+  const collector = createLimitsCollector({
+    limitProviders: 'codex',
+    limitsRefreshMs: 60_000
+  }, {
+    setTimeout: () => {
+      scheduledTimers += 1;
+      return scheduledTimers;
+    },
+    clearTimeout: () => {},
+    providerFetchers: {
+      codex: async () => ({ provider: 'codex', status: 'unavailable', windows: [] })
+    }
+  });
+
+  await collector.snapshot(true);
+  assert.equal(scheduledTimers, 0);
+  collector.stop();
+});
+
+test('LimitsRuntime compatibility seeds last-good windows across a transient first refresh', async () => {
   // Switching the active Codex account reloads the collector (startMode), which
   // used to reset the in-memory transient-window cache. Seeding it from the last
   // published limits keeps each account's bars through the cold RPC/token-refresh
@@ -524,7 +715,7 @@ test('createLimitsCollector seeds retention from previousLimits so a collector r
   const first = await collector.snapshot(true);
   const c = first.providers.find((provider) => provider.accountKey === 'sha256:codex-c');
 
-  assert.equal(c.status, 'ok');
+  assert.equal(c.status, 'unavailable');
   assert.equal(c.windows.length, 1);
   assert.equal(c.windows[0].remainingPercent, 30);
   assert.equal(c.updatedAt, seededAt);
@@ -592,6 +783,36 @@ test('fetchCodexLimits does not show the live account twice when it is also mana
   assert.equal(providers.length, 1);
   assert.equal(providers[0].accountEmail, 'a@example.com');
   assert.equal(providers[0].sourceDetail, 'app');
+});
+
+test('fetchCodexLimits carries the managed workspace label into the live account', async () => {
+  const idToken = makeIdToken({ email: 'member@example.com' });
+  const providers = await fetchCodexLimits({
+    codexManagedAccounts: [
+      {
+        id: 'team',
+        email: 'member@example.com',
+        workspaceAccountId: 'workspace-team',
+        workspaceLabel: 'Acme Team',
+        homePath: '/tmp/token-monitor-codex/team'
+      }
+    ]
+  }, {
+    now: () => Date.parse('2026-06-01T00:00:00Z'),
+    env: { PATH: '/usr/bin' },
+    codexAuthPath: '/fake/.codex/auth.json',
+    readFileSync: () => JSON.stringify({
+      tokens: { account_id: 'workspace-team', id_token: idToken }
+    }),
+    readCodexRpc: async (deps) => codexPayload(
+      'member@example.com',
+      deps.env.CODEX_HOME ? undefined : 'app'
+    )
+  });
+
+  assert.equal(providers.length, 1);
+  assert.equal(providers[0].sourceDetail, 'app');
+  assert.equal(providers[0].accountName, 'Acme Team');
 });
 
 test('fetchCodexLimits dedups the live account against the same managed account by account id (no email needed)', async () => {
@@ -983,4 +1204,31 @@ test('fetchCodexLimits augments reset credits expiry from the Codex OAuth endpoi
       '2026-07-18T00:39:53.731Z'
     ]
   });
+});
+
+test('LimitsRuntime compatibility snapshot probes initially and reuses the configured TTL', async () => {
+  let now = Date.parse('2026-07-21T00:00:00.000Z');
+  let calls = 0;
+  const collector = createLimitsCollector({
+    limitProviders: ['codex'],
+    limitsRefreshMs: 60_000
+  }, {
+    now: () => now,
+    providerFetchers: {
+      codex: async () => {
+        calls += 1;
+        return codexProvider('sha256:codex-a', 'a@example.com', 80, new Date(now).toISOString());
+      }
+    }
+  });
+
+  assert.equal((await collector.snapshot()).providers.length, 1);
+  assert.equal(calls, 1);
+  now += 59_999;
+  await collector.snapshot();
+  assert.equal(calls, 1);
+  now += 1;
+  await collector.snapshot();
+  assert.equal(calls, 2);
+  collector.stop();
 });

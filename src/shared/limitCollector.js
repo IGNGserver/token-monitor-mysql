@@ -8,18 +8,20 @@ const path = require('node:path');
 const { appVersion } = require('./appVersion');
 const {
   DEFAULT_LIMITS_REFRESH_MS,
-  mergeCodexTransientWindows,
   normalizeLimitProvider,
   normalizeLimitsSummary
 } = require('./limits');
+const { parseRetryAfterHeader } = require('./limitsRetryPolicy');
+const { abortError } = require('./probeDeadline');
 const cursorAuth = require('./cursorAuth');
 const cursorProbe = require('./cursorProbe');
 const antigravityProbe = require('./antigravityProbe');
 const opencodeLimits = require('./opencodeLimits');
 const opencodeWeb = require('./opencodeWeb');
+const openrouterLimits = require('./openrouterLimits');
 const { sharedDataDir } = require('./config');
 const { recordConsumption } = require('./deepseekBalanceHistory');
-const { codexAuthIdentity } = require('./codexAuth');
+const { codexAccountKey, codexAuthIdentity } = require('./codexAuth');
 const minimaxLimits = require('./minimaxLimits');
 const { minimaxToken, minimaxBaseUrl, parseMinimaxTiers, fetchMinimaxLimits } = minimaxLimits;
 const mimoLimits = require('./mimoLimits');
@@ -40,7 +42,7 @@ const { qoderCookie, fetchQoderLimits } = qoderLimits;
 const ollamaLimits = require('./ollamaLimits');
 const { ollamaSessionCookie, fetchOllamaLimits } = ollamaLimits;
 const kimiLimits = require('./kimiLimits');
-const { kimiToken, fetchKimiLimits } = kimiLimits;
+const { kimiToken, kimiWebToken, fetchKimiLimits } = kimiLimits;
 const {
   grokCredential,
   readAuthJson,
@@ -51,7 +53,9 @@ const {
   fetchGrokLimits
 } = grokLimits;
 
-const LIMIT_PROVIDER_IDS = ['claude', 'codex', 'cursor', 'antigravity', 'opencode', 'deepseek', 'minimax', 'mimo', 'grok', 'copilot', 'kiro', 'zai', 'volcengine', 'qoder', 'zaiteam', 'kimi', 'ollama'];
+const LIMIT_PROVIDER_IDS = ['claude', 'codex', 'cursor', 'antigravity', 'opencode', 'openrouter', 'deepseek', 'minimax', 'mimo', 'grok', 'copilot', 'kiro', 'zai', 'volcengine', 'qoder', 'zaiteam', 'kimi', 'ollama'];
+const DEFAULT_PROVIDER_PHYSICAL_BOUND_MS = 120_000;
+const PROVIDER_CLEANUP_GRACE_MS = 5_000;
 const LIMIT_REFRESH_VALUES = new Set([60_000, 120_000, 300_000, 900_000, 1_800_000]);
 const CLAUDE_USAGE_URL = 'https://api.anthropic.com/api/oauth/usage';
 const CLAUDE_OAUTH_TOKEN_URL = 'https://console.anthropic.com/v1/oauth/token';
@@ -477,28 +481,45 @@ function readWindowsCredentialSecret(_service, targets, deps = {}) {
 
 function readMacKeychainSecret(service, deps = {}) {
   const spawnFn = deps.spawn || spawn;
+  const signal = deps.signal;
+  if (signal?.aborted) return Promise.reject(abortError(signal));
   return new Promise((resolve, reject) => {
     const child = spawnFn('security', ['find-generic-password', '-s', service, '-w'], { windowsHide: true });
     let stdout = '';
     let stderr = '';
+    let settled = false;
+    const finish = (callback, value) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      signal?.removeEventListener?.('abort', onAbort);
+      callback(value);
+    };
+    const onAbort = () => {
+      try { child.kill('SIGTERM'); } catch (_) {}
+      finish(reject, abortError(signal));
+    };
     const timer = setTimeout(() => {
-      child.kill('SIGTERM');
-      reject(new Error('macOS keychain lookup timed out'));
+      try { child.kill('SIGTERM'); } catch (_) {}
+      finish(reject, new Error('macOS keychain lookup timed out'));
     }, 5000);
     child.stdout.on('data', (chunk) => { stdout += chunk.toString(); });
     child.stderr.on('data', (chunk) => { stderr += chunk.toString(); });
-    child.on('error', (error) => { clearTimeout(timer); reject(error); });
+    child.on('error', (error) => finish(reject, error));
     child.on('close', (code) => {
-      clearTimeout(timer);
-      if (code !== 0) reject(new Error(stderr.trim() || `security exited ${code}`));
-      else resolve(stdout.trim());
+      if (code !== 0) finish(reject, new Error(stderr.trim() || `security exited ${code}`));
+      else finish(resolve, stdout.trim());
     });
+    signal?.addEventListener?.('abort', onAbort, { once: true });
+    if (signal?.aborted) onAbort();
   });
 }
 
 function runProcessText(command, args = [], options = {}) {
   const spawnFn = options.spawn || spawn;
   const timeoutMs = Number(options.timeoutMs || 30000);
+  const signal = options.signal;
+  if (signal?.aborted) return Promise.reject(abortError(signal));
   return new Promise((resolve, reject) => {
     const child = spawnFn(command, args, {
       cwd: options.cwd,
@@ -508,21 +529,34 @@ function runProcessText(command, args = [], options = {}) {
     });
     let stdout = '';
     let stderr = '';
-    const timer = setTimeout(() => {
+    let settled = false;
+    const finish = (callback, value) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      signal?.removeEventListener?.('abort', onAbort);
+      callback(value);
+    };
+    const stopChild = () => {
       try { child.kill('SIGTERM'); } catch (_) {}
-      reject(errorWithStatus('unavailable', `${command} timed out`));
+    };
+    const onAbort = () => {
+      stopChild();
+      finish(reject, abortError(signal));
+    };
+    const timer = setTimeout(() => {
+      stopChild();
+      finish(reject, errorWithStatus('unavailable', `${command} timed out`));
     }, timeoutMs);
     child.stdout?.on('data', (chunk) => { stdout += chunk.toString(); });
     child.stderr?.on('data', (chunk) => { stderr += chunk.toString(); });
-    child.on('error', (error) => {
-      clearTimeout(timer);
-      reject(error);
-    });
+    child.on('error', (error) => finish(reject, error));
     child.on('close', (code) => {
-      clearTimeout(timer);
-      if (code === 0 && stdout.trim()) resolve(stdout);
-      else reject(errorWithStatus('unavailable', stderr.trim() || `${command} exited ${code}`));
+      if (code === 0 && stdout.trim()) finish(resolve, stdout);
+      else finish(reject, errorWithStatus('unavailable', stderr.trim() || `${command} exited ${code}`));
     });
+    signal?.addEventListener?.('abort', onAbort, { once: true });
+    if (signal?.aborted) onAbort();
   });
 }
 
@@ -1439,8 +1473,18 @@ function shouldRetryCodexEmptyQuotaPayload(payload = {}) {
 async function waitForCodexEmptyQuotaRetry(deps = {}) {
   const delayMs = Number(deps.codexEmptyQuotaRetryDelayMs ?? CODEX_EMPTY_QUOTA_RETRY_DELAY_MS);
   if (!Number.isFinite(delayMs) || delayMs <= 0) return;
-  await new Promise((resolve) => {
-    setTimeout(resolve, delayMs);
+  if (deps.signal?.aborted) throw abortError(deps.signal);
+  await new Promise((resolve, reject) => {
+    const timer = setTimeout(finish, delayMs);
+    const onAbort = () => finish(abortError(deps.signal));
+    function finish(error) {
+      clearTimeout(timer);
+      deps.signal?.removeEventListener?.('abort', onAbort);
+      if (error) reject(error);
+      else resolve();
+    }
+    deps.signal?.addEventListener?.('abort', onAbort, { once: true });
+    if (deps.signal?.aborted) onAbort();
   });
 }
 
@@ -1461,7 +1505,9 @@ function mapCodexRateLimitsToProvider(payload, meta = {}) {
     provider: 'codex',
     accountKey: meta.accountKey || '',
     accountLabel: meta.accountLabel || codexAccountLabel(payload),
+    accountName: meta.accountName || '',
     accountEmail: meta.accountEmail || payload.account?.email || '',
+    workspaceKind: meta.workspaceKind || '',
     source: meta.source || 'rpc',
     sourceDetail: meta.sourceDetail || payload.sourceDetail,
     status: 'ok',
@@ -1841,8 +1887,16 @@ function createJsonRpcClient(child, timeoutMs) {
   const pending = new Map();
 
   function rejectAll(error) {
-    for (const { reject } of pending.values()) reject(error);
+    for (const { reject, timer } of pending.values()) {
+      clearTimeout(timer);
+      reject(error);
+    }
     pending.clear();
+  }
+
+  function abort(error) {
+    closed = true;
+    rejectAll(error);
   }
 
   function handleMessage(message) {
@@ -1891,7 +1945,7 @@ function createJsonRpcClient(child, timeoutMs) {
     if (!closed) child.stdin.write(`${JSON.stringify(params === undefined ? { method } : { method, params })}\n`);
   }
 
-  return { send, notify, rejectAll };
+  return { abort, send, notify, rejectAll };
 }
 
 function shouldTryNextCodexCommand(error) {
@@ -1920,15 +1974,27 @@ function codexRpcPayload(rateLimitResult, account, command, deps = {}) {
 
 async function readCodexRpcWithCommand(command, deps = {}) {
   const timeoutMs = Number(deps.codexRpcTimeoutMs || CODEX_RPC_TIMEOUT_MS);
+  const platform = deps.platform || process.platform;
+  const signal = deps.signal;
+  if (signal?.aborted) throw abortError(signal);
   const child = spawnCodexAppServer({ ...deps, codexCommand: command });
   const rpc = createJsonRpcClient(child, timeoutMs);
+  const onAbort = () => {
+    rpc.abort(abortError(signal));
+    killCodexLoginProcess(child, platform, deps);
+  };
+  signal?.addEventListener?.('abort', onAbort, { once: true });
   try {
+    if (signal?.aborted) throw abortError(signal);
     await rpc.send('initialize', {
       clientInfo: { name: 'token-monitor', title: 'Token Monitor', version: appVersion() }
     });
     rpc.notify('initialized', {});
     let rateLimitResult = await rpc.send('account/rateLimits/read');
-    const accountResult = await rpc.send('account/read').catch(() => null);
+    const accountResult = await rpc.send('account/read').catch(() => {
+      if (signal?.aborted) throw abortError(signal);
+      return null;
+    });
     const account = accountResult?.account || null;
     let payload = codexRpcPayload(rateLimitResult, account, command, deps);
     if (deps.codexEmptyQuotaRetry !== false && shouldRetryCodexEmptyQuotaPayload(payload)) {
@@ -1942,14 +2008,19 @@ async function readCodexRpcWithCommand(command, deps = {}) {
             rateLimitResetCredits: retryPayload.rateLimitResetCredits || payload.rateLimitResetCredits
           };
         }
-      } catch (_) {}
+      } catch (_) {
+        if (signal?.aborted) throw abortError(signal);
+      }
     }
     if (!account && !hasCodexRateLimitWindows(codexRateLimitSnapshot(payload))) {
       throw errorWithStatus('notConfigured', 'Codex account not configured');
     }
+    if (signal?.aborted) throw abortError(signal);
     return payload;
   } finally {
-    try { child.kill('SIGTERM'); } catch (_) {}
+    signal?.removeEventListener?.('abort', onAbort);
+    rpc.abort(new Error('codex app-server closed'));
+    if (!signal?.aborted) killCodexLoginProcess(child, platform, deps);
   }
 }
 
@@ -1982,6 +2053,9 @@ function normalizeCodexManagedAccounts(value) {
       email: String(account.email || '').trim().toLowerCase(),
       accountKey: String(account.accountKey || '').trim(),
       accountLabel: String(account.accountLabel || account.plan || '').trim(),
+      workspaceAccountId: String(account.workspaceAccountId || account.providerAccountId || '').trim().toLowerCase(),
+      workspaceLabel: String(account.workspaceLabel || '').trim(),
+      workspaceKind: account.workspaceKind === 'personal' ? 'personal' : '',
       enabled: account.enabled !== false
     };
   }).filter(Boolean);
@@ -1990,6 +2064,31 @@ function normalizeCodexManagedAccounts(value) {
 function codexAccountKeyFromSeed(seed) {
   const raw = String(seed || '').trim();
   return raw.startsWith('sha256:') ? raw : hashKey('codex', raw || 'account');
+}
+
+function resolvedCodexAccountKey(email, workspaceAccountId, fallbackSeed) {
+  const normalizedEmail = String(email || '').trim().toLowerCase();
+  const normalizedWorkspaceAccountId = String(workspaceAccountId || '').trim().toLowerCase();
+  if (normalizedEmail && normalizedWorkspaceAccountId) {
+    return codexAccountKey(normalizedEmail, normalizedWorkspaceAccountId);
+  }
+  return codexAccountKeyFromSeed(fallbackSeed || normalizedEmail || normalizedWorkspaceAccountId);
+}
+
+function managedCodexAccountKey(account, authIdentity = {}, resolvedEmail = '') {
+  const email = String(resolvedEmail || authIdentity.email || account.email || '').trim().toLowerCase();
+  const workspaceAccountId = String(
+    authIdentity.workspaceAccountId
+    || authIdentity.providerAccountId
+    || account.workspaceAccountId
+    || account.providerAccountId
+    || ''
+  ).trim().toLowerCase();
+  return resolvedCodexAccountKey(
+    email,
+    workspaceAccountId,
+    account.accountKey || authIdentity.accountKey || email || account.id || account.homePath
+  );
 }
 
 async function fetchManagedCodexAccountLimits(account, _options = {}, deps = {}) {
@@ -2005,25 +2104,29 @@ async function fetchManagedCodexAccountLimits(account, _options = {}, deps = {})
     codexAuthPath: account.authPath || pathApi.join(account.homePath, 'auth.json')
   };
   const reader = deps.readCodexRpc || readCodexRpc;
-  const accountKeySeed = account.accountKey || account.email || account.id || account.homePath;
+  const authIdentity = readLiveCodexIdentity(accountDeps);
   try {
     const payload = await withCodexOAuthResetCredits(await reader(accountDeps), accountDeps);
-    const email = payload.account?.email || account.email;
-    const identity = account.accountKey || email || account.id || account.homePath;
+    const email = authIdentity.email || payload.account?.email || account.email;
     return mapCodexRateLimitsToProvider(payload, {
-      accountKey: codexAccountKeyFromSeed(identity),
+      accountKey: managedCodexAccountKey(account, authIdentity, email),
       accountEmail: email,
       accountLabel: account.accountLabel || codexAccountLabel(payload),
+      accountName: account.workspaceLabel,
+      workspaceKind: account.workspaceKind,
       updatedAt: nowIso(nowMs),
       source: 'rpc',
       sourceDetail: 'managed'
     });
   } catch (error) {
+    const email = authIdentity.email || account.email;
     return normalizeLimitProvider({
       provider: 'codex',
-      accountKey: codexAccountKeyFromSeed(accountKeySeed),
-      accountEmail: account.email,
+      accountKey: managedCodexAccountKey(account, authIdentity, email),
+      accountEmail: email,
       accountLabel: account.accountLabel,
+      accountName: account.workspaceLabel,
+      workspaceKind: account.workspaceKind,
       source: 'rpc',
       sourceDetail: 'managed',
       status: providerStatusFromError(error),
@@ -2033,10 +2136,10 @@ async function fetchManagedCodexAccountLimits(account, _options = {}, deps = {})
   }
 }
 
-// Reads the live login's identity (email + stable account id) from its
+// Reads the live login's identity (email + selected workspace id) from its
 // auth.json. The RPC `account/read` often omits the email, so the JWT in
-// auth.json is the reliable source — and keying on the account id keeps the
-// live account consistent with managed accounts for cross-device dedup.
+// auth.json is the reliable source. The shared composite key keeps the live
+// account consistent with managed accounts for cross-device dedup.
 function readLiveCodexIdentity(deps = {}) {
   const read = deps.readFileSync || fs.readFileSync;
   const authPath = deps.codexAuthPath || codexAuthPath(deps.env || process.env);
@@ -2047,16 +2150,26 @@ function readLiveCodexIdentity(deps = {}) {
   }
 }
 
-async function fetchLiveCodexAccount(deps = {}, nowMs = Date.now()) {
+async function fetchLiveCodexAccount(deps = {}, nowMs = Date.now(), managedAccounts = []) {
   const reader = deps.readCodexRpc || readCodexRpc;
   const payload = await withCodexOAuthResetCredits(await reader(deps), deps);
   const authIdentity = readLiveCodexIdentity(deps);
   const email = authIdentity.email || payload.account?.email || '';
   const fallbackSeed = payload.account?.email || `${payload.account?.type || 'account'}:${payload.account?.planType || ''}:${deps.codexAuthPath || codexAuthPath(deps.env || process.env)}`;
+  const accountKey = resolvedCodexAccountKey(
+    email,
+    authIdentity.workspaceAccountId || authIdentity.providerAccountId,
+    authIdentity.accountKey || fallbackSeed
+  );
+  const matchingManagedAccount = managedAccounts.find(
+    (account) => managedCodexAccountKey(account, {}, account.email) === accountKey
+  );
   return mapCodexRateLimitsToProvider(payload, {
-    accountKey: authIdentity.accountKey || hashKey('codex', fallbackSeed),
+    accountKey,
     accountEmail: email,
     accountLabel: codexAccountLabel(payload),
+    accountName: matchingManagedAccount?.workspaceLabel || '',
+    workspaceKind: matchingManagedAccount?.workspaceKind || '',
     updatedAt: nowIso(nowMs),
     source: 'rpc',
     sourceDetail: payload.sourceDetail
@@ -2065,9 +2178,28 @@ async function fetchLiveCodexAccount(deps = {}, nowMs = Date.now()) {
 
 async function fetchCodexLimits(options = {}, deps = {}) {
   const nowMs = (deps.now || Date.now)();
+  const scope = options.limitRefreshScope?.provider === 'codex'
+    ? options.limitRefreshScope
+    : null;
   const managedAccounts = normalizeCodexManagedAccounts(options.codexManagedAccounts || deps.codexManagedAccounts)
-    .filter((account) => account.enabled !== false);
-  const includeLiveAccount = options.includeLiveCodexAccount !== false;
+    .filter((account) => account.enabled !== false)
+    .filter((account) => {
+      if (!scope) return true;
+      if (scope.sourceDetail && scope.sourceDetail !== 'managed') return false;
+      const accountKey = managedCodexAccountKey(account, {}, account.email);
+      if (scope.accountKey) return accountKey === scope.accountKey;
+      if (scope.accountEmail) return account.email === scope.accountEmail;
+      if (scope.accountLabel) return account.accountLabel === scope.accountLabel;
+      return false;
+    });
+  let includeLiveAccount = options.includeLiveCodexAccount !== false;
+  if (scope) {
+    if (scope.sourceDetail) {
+      includeLiveAccount = includeLiveAccount && scope.sourceDetail !== 'managed';
+    } else if (scope.accountKey) {
+      includeLiveAccount = includeLiveAccount && readLiveCodexIdentity(deps).accountKey === scope.accountKey;
+    }
+  }
   // Single live account: keep the original single-provider shape (and error
   // propagation) so a signed-out/not-configured state surfaces as before.
   if (managedAccounts.length === 0) {
@@ -2075,15 +2207,14 @@ async function fetchCodexLimits(options = {}, deps = {}) {
   }
 
   const providers = [];
-  // Dedupe by account id (accountKey) first, then email — so signing in the
-  // account that's already the live login shows ONE row, even if one side has
-  // no email. Both paths key on the stable account id, so the same account
-  // matches regardless of how it was added.
+  // Prefer the composite account key; use email only for legacy providers that
+  // do not expose one. This keeps same-email workspaces distinct while still
+  // collapsing the live and managed views of the exact same login.
   const seen = new Set();
-  const identityKeys = (provider) => [
-    provider.accountKey ? `key:${provider.accountKey}` : '',
-    provider.accountEmail ? `email:${provider.accountEmail}` : ''
-  ].filter(Boolean);
+  const identityKeys = (provider) => {
+    if (provider.accountKey) return [`key:${provider.accountKey}`];
+    return provider.accountEmail ? [`email:${provider.accountEmail}`] : [];
+  };
   const markSeen = (provider) => { for (const key of identityKeys(provider)) seen.add(key); };
   const alreadySeen = (provider) => identityKeys(provider).some((key) => seen.has(key));
   // The live system account (the one the Codex app/CLI is currently signed into)
@@ -2092,7 +2223,7 @@ async function fetchCodexLimits(options = {}, deps = {}) {
   // only live account just drops out, leaving the managed accounts.
   if (includeLiveAccount) {
     try {
-      const live = await fetchLiveCodexAccount(deps, nowMs);
+      const live = await fetchLiveCodexAccount(deps, nowMs, managedAccounts);
       providers.push(live);
       markSeen(live);
     } catch (_) {}
@@ -2114,18 +2245,32 @@ async function fetchAntigravityLimits(_options = {}, deps = {}) {
     const snapshot = await probeFn(deps);
     const accountLabel = snapshot.accountPlan ? antigravityPlanLabelFromParts(snapshot.accountPlan) : '';
     const accountKeySeed = snapshot.accountEmail || snapshot.accountPlan || 'default';
-    const windows = (snapshot.pools || []).map((pool) => ({
-      kind: 'weekly',
-      label: pool.name,
-      usedPercent: Math.max(0, Math.min(100, (1 - pool.remainingFraction) * 100)),
-      resetsAt: pool.resetTime || null,
-      windowMinutes: null
-    }));
+    const windows = Array.isArray(snapshot.windows)
+      ? snapshot.windows.map((window) => ({
+          kind: window.kind,
+          label: window.name,
+          usedPercent: typeof window.remainingFraction === 'number'
+            ? Math.max(0, Math.min(100, (1 - window.remainingFraction) * 100))
+            : null,
+          resetsAt: window.resetTime || null,
+          resetDescription: window.resetDescription || '',
+          windowMinutes: window.kind === 'session' ? 300 : window.kind === 'weekly' ? 10_080 : null,
+          showMeter: window.showMeter !== false
+        }))
+      : (snapshot.pools || []).map((pool) => ({
+          kind: 'weekly',
+          label: pool.name,
+          usedPercent: Math.max(0, Math.min(100, (1 - pool.remainingFraction) * 100)),
+          resetsAt: pool.resetTime || null,
+          windowMinutes: null
+        }));
     return normalizeLimitProvider({
       provider: 'antigravity',
       accountKey: hashKey('antigravity', accountKeySeed),
       accountLabel,
+      accountEmail: snapshot.accountEmail || '',
       source: 'rpc',
+      sourceDetail: snapshot.sourceDetail || '',
       status: 'ok',
       updatedAt,
       windows
@@ -2168,10 +2313,20 @@ async function fetchOpenCodeLimits(options = {}, deps = {}) {
     cookies.push({ name: 'default (env)', cookie: envCookie });
   }
 
-  const goLocal = collectGo({ env: deps.env || process.env, now: () => nowMs });
+  const multiAccountMode = cookies.length > 1;
+  const scope = options.limitRefreshScope?.provider === 'opencode'
+    ? options.limitRefreshScope
+    : null;
+  if (scope && multiAccountMode) {
+    const profileName = scope.accountName || scope.accountLabel;
+    cookies = profileName
+      ? cookies.filter(({ name }) => name === profileName)
+      : [];
+  }
 
-  // ── Single account (<1 cookie): OLD merged behavior ──────────────────────
-  if (cookies.length <= 1) {
+  // ── Single account (0 or 1 cookie): existing merged behavior ─────────────
+  if (!multiAccountMode) {
+    const goLocal = collectGo({ env: deps.env || process.env, now: () => nowMs });
     const cookie = cookies[0]?.cookie;
     const [goWeb, zen] = cookie
       ? await Promise.all([
@@ -2260,16 +2415,19 @@ async function fetchSingleOpenCodeProfile(name, cookie, fetchGoWeb, fetchZen, no
     const { goWeb, zen } = result;
     const windows = [];
     let status = 'notConfigured';
+    let planLabel = '';
     let balanceUsd = null;
 
     if (goWeb && goWeb.status === 'ok' && goWeb.windows.length > 0) {
       windows.push(...goWeb.windows);
       status = 'ok';
+      planLabel = 'Go';
     }
 
     if (zen && zen.status === 'ok') {
       windows.push(...zen.windows);
       status = 'ok';
+      if (!planLabel) planLabel = 'Zen';
       if (typeof zen.balanceUsd === 'number' && Number.isFinite(zen.balanceUsd)) balanceUsd = zen.balanceUsd;
     }
 
@@ -2296,7 +2454,11 @@ async function fetchSingleOpenCodeProfile(name, cookie, fetchGoWeb, fetchZen, no
     return normalizeLimitProvider({
       provider: 'opencode',
       accountKey,
+      accountName: name,
+      // Keep accountLabel as the profile name for pre-accountName renderers.
+      // New renderers use planLabel for Go/Zen and accountName for identity.
       accountLabel: name,
+      planLabel,
       source: 'web',
       status,
       updatedAt,
@@ -2308,7 +2470,7 @@ async function fetchSingleOpenCodeProfile(name, cookie, fetchGoWeb, fetchZen, no
     const cookieHash = crypto.createHash('sha256').update(cookie).digest('hex').slice(0, 12);
     return normalizeLimitProvider({
       provider: 'opencode', accountKey: hashKey('opencode', `cookie:${cookieHash}`),
-      accountLabel: name, source: 'web', status: 'unavailable',
+      accountName: name, accountLabel: name, planLabel: '', source: 'web', status: 'unavailable',
       updatedAt, windows: [], balanceUsd: null
     });
   }
@@ -2378,9 +2540,12 @@ async function fetchDeepSeekLimits(options = {}, deps = {}) {
     }
     const row = selectFundedRow(data.balance_infos);
     const accountKey = hashKey('deepseek', key);
-    const storePath = deps.deepseekStorePath || path.join(sharedDataDir({ env }), 'deepseek-balance.json');
+    const dataDir = sharedDataDir({ env });
+    const storePath = deps.deepseekStorePath || path.join(dataDir, 'deepseek-balance-v2.json');
+    const legacyStorePath = deps.deepseekLegacyStorePath
+      || (deps.deepseekStorePath ? null : path.join(dataDir, 'deepseek-balance.json'));
     const spend = recordConsumption(
-      { accountKey, currency: row.currency, paid: row.paid, now, storePath },
+      { accountKey, currency: row.currency, paid: row.paid, now, storePath, legacyStorePath },
       deps
     );
     return normalizeLimitProvider({
@@ -2396,6 +2561,8 @@ async function fetchDeepSeekLimits(options = {}, deps = {}) {
         currency: row.currency,
         todaySpend: spend.todaySpend,
         monthSpend: spend.monthSpend,
+        allTimeSpend: spend.allTimeSpend,
+        trackingSince: spend.trackingSince,
         monthSinceTracking: spend.monthSinceTracking
       }
     });
@@ -2410,74 +2577,147 @@ async function fetchDeepSeekLimits(options = {}, deps = {}) {
   }
 }
 
+function providerFetchers(deps = {}) {
+  return {
+    claude: (providerOptions, probeDeps) => fetchClaudeLimits(providerOptions, probeDeps),
+    codex: (providerOptions, probeDeps) => fetchCodexLimits(providerOptions, probeDeps),
+    cursor: (providerOptions, probeDeps) => fetchCursorLimits(providerOptions, probeDeps),
+    antigravity: (providerOptions, probeDeps) => fetchAntigravityLimits(providerOptions, probeDeps),
+    opencode: (providerOptions, probeDeps) => fetchOpenCodeLimits(providerOptions, probeDeps),
+    openrouter: (providerOptions, probeDeps) => openrouterLimits.fetchOpenRouterLimits(providerOptions, probeDeps),
+    deepseek: (providerOptions, probeDeps) => fetchDeepSeekLimits(providerOptions, probeDeps),
+    minimax: (providerOptions, probeDeps) => minimaxLimits.fetchMinimaxLimits(providerOptions, probeDeps),
+    mimo: (providerOptions, probeDeps) => fetchMimoLimits(providerOptions, probeDeps),
+    grok: (providerOptions, probeDeps) => grokLimits.fetchGrokLimits(providerOptions, probeDeps),
+    copilot: (providerOptions, probeDeps) => copilotLimits.fetchCopilotLimits(providerOptions, probeDeps),
+    kiro: (providerOptions, probeDeps) => kiroLimits.fetchKiroLimits(providerOptions, probeDeps),
+    zai: (providerOptions, probeDeps) => zaiLimits.fetchZaiLimits(providerOptions, probeDeps),
+    zaiteam: (providerOptions, probeDeps) => zaiTeamLimits.fetchZaiTeamLimits(providerOptions, probeDeps),
+    volcengine: (providerOptions, probeDeps) => volcengineLimits.fetchVolcengineLimits(providerOptions, probeDeps),
+    qoder: (providerOptions, probeDeps) => qoderLimits.fetchQoderLimits(providerOptions, probeDeps),
+    ollama: (providerOptions, probeDeps) => ollamaLimits.fetchOllamaLimits(providerOptions, probeDeps),
+    kimi: (providerOptions, probeDeps) => kimiLimits.fetchKimiLimits(providerOptions, probeDeps),
+    ...(deps.providerFetchers || {})
+  };
+}
+
+function providerPhysicalBoundMs(provider, options = {}, deps = {}) {
+  const configured = Number(deps.providerPhysicalBounds?.[provider]);
+  const base = Number.isFinite(configured) && configured > 0
+    ? configured
+    : DEFAULT_PROVIDER_PHYSICAL_BOUND_MS;
+  let jobs = 1;
+  if (provider === 'codex') {
+    const managed = normalizeCodexManagedAccounts(options.codexManagedAccounts || deps.codexManagedAccounts);
+    jobs = options.limitRefreshScope?.provider === 'codex' && [
+      'accountKey',
+      'accountId',
+      'managedAccountId',
+      'id',
+      'accountEmail',
+      'email',
+      'accountName',
+      'name',
+      'accountLabel'
+    ].some((key) => String(options.limitRefreshScope[key] || '').trim())
+      ? 1
+      : Math.max(1, managed.length + 1);
+  } else if (provider === 'mimo') {
+    const managed = Array.isArray(options.mimoManagedAccounts || deps.mimoManagedAccounts)
+      ? (options.mimoManagedAccounts || deps.mimoManagedAccounts)
+      : [];
+    jobs = options.limitRefreshScope?.provider === 'mimo' ? 1 : Math.max(1, managed.length);
+  }
+  return base * jobs;
+}
+
+function createProbeFetch(fetchFn, context = {}, deps = {}) {
+  return async (url, init = {}) => {
+    const signals = [context.signal, init.signal].filter(Boolean);
+    const signal = signals.length > 1 ? AbortSignal.any(signals) : signals[0];
+    const response = await fetchFn(url, {
+      ...init,
+      ...(signal ? { signal } : {})
+    });
+    if (Number(response?.status) >= 400) {
+      const retryAfterMs = parseRetryAfterHeader(
+        response?.headers?.get?.('retry-after'),
+        (deps.now || Date.now)()
+      );
+      if (retryAfterMs !== null) context.onRetryAfter?.(retryAfterMs);
+    }
+    return response;
+  };
+}
+
+function resolveProviderFetch(provider, deps = {}) {
+  if (typeof deps.fetch === 'function') return deps.fetch;
+  if (provider === 'grok') return grokLimits.resolveGrokFetch(deps);
+  return fetch;
+}
+
+async function probeLimitProvider(provider, options = {}, context = {}, deps = {}) {
+  const nowMs = (deps.now || Date.now)();
+  const fetcher = providerFetchers(deps)[provider];
+  if (!fetcher) return [statusProvider(provider, 'notConfigured', nowIso(nowMs))];
+  try {
+    const signal = context.signal ?? deps.signal;
+    const result = await fetcher(options, {
+      ...deps,
+      fetch: createProbeFetch(resolveProviderFetch(provider, deps), { ...context, signal }, deps),
+      signal
+    });
+    return (Array.isArray(result) ? result : [result]).filter(Boolean);
+  } catch (error) {
+    return [statusProvider(provider, providerStatusFromError(error), nowIso(nowMs))];
+  }
+}
+
 async function collectLimitsOnce(options = {}, deps = {}) {
   const enabled = parseBoolean(options.limitsEnabled ?? options.enabled, true);
   const refreshMs = normalizeLimitsRefreshMs(options.limitsRefreshMs ?? options.refreshMs);
   const nowMs = (deps.now || Date.now)();
   if (!enabled) return normalizeLimitsSummary({ updatedAt: nowIso(nowMs), refreshMs, providers: [] });
 
-  const fetchers = {
-    claude: (providerOptions) => fetchClaudeLimits(providerOptions, deps),
-    codex: (providerOptions) => fetchCodexLimits(providerOptions, deps),
-    cursor: (providerOptions) => fetchCursorLimits(providerOptions, deps),
-    antigravity: (providerOptions) => fetchAntigravityLimits(providerOptions, deps),
-    opencode: (providerOptions) => fetchOpenCodeLimits(providerOptions, deps),
-    deepseek: (providerOptions) => fetchDeepSeekLimits(providerOptions, deps),
-    minimax: (providerOptions) => minimaxLimits.fetchMinimaxLimits(providerOptions, deps),
-    mimo: (providerOptions) => fetchMimoLimits(providerOptions, deps),
-    grok: (providerOptions) => grokLimits.fetchGrokLimits(providerOptions, deps),
-    copilot: (providerOptions) => copilotLimits.fetchCopilotLimits(providerOptions, deps),
-    kiro: (providerOptions) => kiroLimits.fetchKiroLimits(providerOptions, deps),
-    zai: (providerOptions) => zaiLimits.fetchZaiLimits(providerOptions, deps),
-    zaiteam: (providerOptions) => zaiTeamLimits.fetchZaiTeamLimits(providerOptions, deps),
-    volcengine: (providerOptions) => volcengineLimits.fetchVolcengineLimits(providerOptions, deps),
-    qoder: (providerOptions) => qoderLimits.fetchQoderLimits(providerOptions, deps),
-    ollama: (providerOptions) => ollamaLimits.fetchOllamaLimits(providerOptions, deps),
-    kimi: (providerOptions) => kimiLimits.fetchKimiLimits(providerOptions, deps),
-    ...(deps.providerFetchers || {})
-  };
   const providers = [];
-  for (const provider of parseLimitProviders(options.limitProviders ?? options.providers)) {
-    try {
-      const result = await fetchers[provider](options);
-      if (Array.isArray(result)) providers.push(...result);
-      else providers.push(result);
-    } catch (error) {
-      providers.push(statusProvider(provider, providerStatusFromError(error), nowIso(nowMs)));
-    }
+  const scope = options.limitRefreshScope;
+  const selectedProviders = parseLimitProviders(options.limitProviders ?? options.providers)
+    .filter((provider) => !scope?.provider || provider === scope.provider);
+  for (const provider of selectedProviders) {
+    providers.push(...await probeLimitProvider(provider, options, {}, deps));
   }
   return normalizeLimitsSummary({ updatedAt: nowIso(nowMs), refreshMs, providers });
 }
 
+// Compatibility facade for internal callers that still use the former
+// snapshot/refreshScope API. All ordering, identity, retention, and deadline
+// semantics are owned by LimitsRuntime; this facade only retains the former
+// full-snapshot TTL and has no in-flight coordination of its own.
 function createLimitsCollector(options = {}, deps = {}) {
+  const { createLimitsRuntime } = require('./limitsRuntime');
+  const runtime = createLimitsRuntime(options, { ...deps, autoStart: false, autoRetry: false });
   const refreshMs = normalizeLimitsRefreshMs(options.limitsRefreshMs ?? options.refreshMs);
-  // Seed the Codex transient-window retention from the last published limits.
-  // The collector is recreated on any settings change that reloads it (notably
-  // switching the active Codex account), and without a seed that restart wipes
-  // the 10-minute window that keeps an account's bars visible through a
-  // transient probe failure — which is exactly the cold RPC/token-refresh that
-  // tends to fail on the first tick after a switch. cachedAt stays 0 so the seed
-  // is never served as fresh: the first snapshot still refetches and only uses
-  // the seed as the retention baseline.
-  let cached = options.previousLimits ? normalizeLimitsSummary(options.previousLimits) : null;
-  let cachedAt = 0;
-  let inFlight = null;
-
-  async function snapshot(force = false) {
-    const current = (deps.now || Date.now)();
-    if (!force && cached && current - cachedAt < refreshMs) return cached;
-    if (inFlight) return inFlight;
-    inFlight = collectLimitsOnce({ ...options, limitsRefreshMs: refreshMs }, deps)
-      .then((summary) => {
-        cached = mergeCodexTransientWindows(cached, summary, current);
-        cachedAt = current;
-        return cached;
-      })
-      .finally(() => { inFlight = null; });
-    return inFlight;
-  }
-
-  return { snapshot };
+  const now = deps.now || Date.now;
+  let lastFullRefreshAt = null;
+  const refreshedSnapshot = async (scope, reason) => {
+    const result = await runtime.refresh(scope, reason);
+    return result?.snapshot || (result?.providers ? result : runtime.getSnapshot());
+  };
+  const refreshedFullSnapshot = async (reason) => {
+    const result = await refreshedSnapshot({}, reason);
+    lastFullRefreshAt = now();
+    return result;
+  };
+  return {
+    refreshScope: (scope) => refreshedSnapshot(scope, 'compat-scoped'),
+    snapshot: (force = false) => {
+      const stale = lastFullRefreshAt === null || now() - lastFullRefreshAt >= refreshMs;
+      return force || stale
+        ? refreshedFullSnapshot(force ? 'compat-full' : 'compat-stale')
+        : Promise.resolve(runtime.getSnapshot());
+    },
+    stop: () => runtime.stop()
+  };
 }
 
 function hashCursorAccountKey(account) {
@@ -2537,7 +2777,7 @@ async function fetchCursorLimits(_options = {}, deps = {}) {
     };
   }
 
-  const result = await probe(account.sessionToken);
+  const result = await probe(account.sessionToken, deps);
   if (!result.ok) {
     const kind = result.error?.kind === 'unauthorized' ? 'unauthorized' : 'unavailable';
     return {
@@ -2651,20 +2891,29 @@ async function fetchCursorLimits(_options = {}, deps = {}) {
 }
 
 module.exports = {
+  DEFAULT_PROVIDER_PHYSICAL_BOUND_MS,
+  PROVIDER_CLEANUP_GRACE_MS,
   collectLimitsOnce,
   claudeCommandCandidates,
   codexCommandCandidates,
   codexCommandSourceDetail,
+  createProbeFetch,
+  resolveProviderFetch,
   createLimitsCollector,
+  probeLimitProvider,
+  providerPhysicalBoundMs,
   fetchAntigravityLimits,
   fetchOpenCodeLimits,
+  fetchOpenRouterLimits: openrouterLimits.fetchOpenRouterLimits,
   fetchSingleOpenCodeProfile,
   fetchClaudeLimits,
   fetchCodexLimits,
   fetchCursorLimits,
   fetchDeepSeekLimits,
   fetchMimoLimits,
+  readCodexRpcWithCommand,
   runCodexLogin,
+  runProcessText,
   deepseekToken,
   selectFundedRow,
   minimaxToken,
@@ -2694,6 +2943,7 @@ module.exports = {
   ollamaSessionCookie,
   fetchOllamaLimits,
   kimiToken,
+  kimiWebToken,
   fetchKimiLimits,
   mapClaudeCliUsageToProvider,
   mapClaudeUsageToProvider,

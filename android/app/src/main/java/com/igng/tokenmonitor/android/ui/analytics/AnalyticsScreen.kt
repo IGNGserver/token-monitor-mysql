@@ -283,12 +283,14 @@ private fun ShareAnalyticsTab(
   if (showPicker) {
     DateTimeRangePickerDialog(
       onDismiss = { showPicker = false },
-      onConfirm = { from, to ->
+      onConfirm = { startDate, endDate, startHour, endHour ->
         showPicker = false
-        viewModel.loadCustomRange(from, to)
+        viewModel.loadCustomRange(startDate.toString(), endDate.toString(), startHour, endHour)
       },
-      initialFrom = state.customRange?.fromInclusive,
-      initialToExclusive = state.customRange?.toExclusive
+      initialStartDate = state.customRange?.startDate?.let { java.time.LocalDate.parse(it) },
+      initialEndDate = state.customRange?.endDate?.let { java.time.LocalDate.parse(it) },
+      initialStartHour = state.customRange?.startHour,
+      initialEndHour = state.customRange?.endHour
     )
   }
 }

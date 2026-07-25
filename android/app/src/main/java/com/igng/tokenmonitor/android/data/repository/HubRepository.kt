@@ -47,8 +47,13 @@ class HubRepository @Inject constructor(
   suspend fun testConnection(config: ConnectionConfig): HubResult<HealthDto> = safeCall { apiFactory.create(config).health() }
   suspend fun stats(): HubResult<StatsDto> = withConnection { apiFactory.create(it).stats() }
   suspend fun devices(): HubResult<DevicesResponseDto> = withConnection { apiFactory.create(it).devices() }
-  suspend fun usageRange(from: String, to: String): HubResult<UsageRangeDto> =
-    withConnection { apiFactory.create(it).usageRange(from, to) }
+  suspend fun usageRange(
+    startDate: String,
+    endDate: String,
+    startHour: Int = 0,
+    endHour: Int = 23
+  ): HubResult<UsageRangeDto> =
+    withConnection { apiFactory.create(it).usageRange(startDate, endDate, startHour, endHour) }
   suspend fun pricing(): HubResult<PricingListDto> = withConnection { apiFactory.create(it).pricing() }
   suspend fun putPricing(model: String, request: PricingRequestDto): HubResult<PricingResponseDto> = withConnection { apiFactory.create(it).putPricing(model, request) }
   suspend fun fetchUpstream(model: String): HubResult<PricingResponseDto> = withConnection { apiFactory.create(it).fetchUpstream(model) }
@@ -95,3 +100,4 @@ class HubRepository @Inject constructor(
     HubResult.Failure(HubError(error.message ?: "Hub 地址无效。", HubError.Kind.Api))
   }
 }
+

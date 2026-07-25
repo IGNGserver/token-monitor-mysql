@@ -29,63 +29,48 @@ function fakeTokscaleSpawn() {
   };
 }
 
-function waitForUpdates(updates, count) {
-  if (updates.length >= count) return Promise.resolve();
-  return new Promise((resolve) => {
-    const interval = setInterval(() => {
-      if (updates.length >= count) {
-        clearInterval(interval);
-        resolve();
-      }
-    }, 5);
-  });
-}
-
-test('manual collector tick can force the limits snapshot', async () => {
-  const childProcess = require('node:child_process');
-  const originalSpawn = childProcess.spawn;
-  childProcess.spawn = fakeTokscaleSpawn();
-
-  const limitCollectorPath = require.resolve('../../src/shared/limitCollector');
+test('reset boundary scheduling caps timers that exceed the Node timeout range', () => {
   const collectorPath = require.resolve('../../src/shared/collector');
-  const limitCollector = require(limitCollectorPath);
-  const originalCreateLimitsCollector = limitCollector.createLimitsCollector;
-  const snapshotForces = [];
-  limitCollector.createLimitsCollector = () => ({
-    snapshot: async (force = false) => {
-      snapshotForces.push(Boolean(force));
-      return { updatedAt: new Date().toISOString(), refreshMs: 300000, providers: [] };
-    }
-  });
   delete require.cache[collectorPath];
+  const {
+    LIMITS_RESET_BOUNDARY_MAX_TIMER_MS,
+    nextLimitsResetBoundary
+  } = require(collectorPath);
+  const now = Date.parse('2026-07-01T00:00:00.000Z');
+  const next = nextLimitsResetBoundary({
+    providers: [{
+      provider: 'copilot',
+      accountKey: 'copilot-test',
+      windows: [{ kind: 'monthly', resetsAt: '2026-08-01T00:00:00.000Z' }]
+    }]
+  }, now);
 
-  try {
-    const { startCollector } = require(collectorPath);
-    const updates = [];
-    const handle = startCollector({
-      clients: 'claude',
-      allTimeSince: '2024-01-01',
-      commandTimeoutMs: 1000,
-      deviceId: 'test-device',
-      agentVersion: 'test',
-      intervalMs: 60000,
-      watchEnabled: false,
-      watchDebounceMs: 10,
-      limitsEnabled: true,
-      onUpdate: (summary, reason) => updates.push({ summary, reason })
-    });
+  assert.equal(next.delayMs, LIMITS_RESET_BOUNDARY_MAX_TIMER_MS);
+  assert.equal(next.refreshAt, Date.parse('2026-08-01T00:00:30.000Z'));
+  delete require.cache[collectorPath];
+});
 
-    await waitForUpdates(updates, 1);
-    await handle.tick('manual', { forceLimits: true });
-    await waitForUpdates(updates, 2);
-    handle.stop();
+test('reset boundary scheduling prunes historical attempted keys but retains current stale keys', () => {
+  const collectorPath = require.resolve('../../src/shared/collector');
+  delete require.cache[collectorPath];
+  const {
+    nextLimitsResetBoundary,
+    pruneAttemptedResetBoundaries
+  } = require(collectorPath);
+  const limits = {
+    providers: [{
+      provider: 'codex',
+      accountKey: 'codex-test',
+      windows: [{ kind: 'session', resetsAt: '2026-07-20T00:01:00.000Z' }]
+    }]
+  };
+  const currentKey = nextLimitsResetBoundary(limits).keys[0];
+  const attempted = new Set(['historical-reset-key', currentKey]);
 
-    assert.deepEqual(snapshotForces.slice(0, 2), [false, true]);
-  } finally {
-    childProcess.spawn = originalSpawn;
-    limitCollector.createLimitsCollector = originalCreateLimitsCollector;
-    delete require.cache[collectorPath];
-  }
+  pruneAttemptedResetBoundaries(limits, attempted);
+
+  assert.deepEqual([...attempted], [currentKey]);
+  delete require.cache[collectorPath];
 });
 
 test('collectUsageOnce returns empty usage without spawning tokscale when clients is empty', async () => {

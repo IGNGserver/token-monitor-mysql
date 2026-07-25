@@ -120,9 +120,17 @@ contextBridge.exposeInMainWorld('tokenMonitor', {
     renameProfile: (oldName, newName) => ipcRenderer.invoke('opencode:renameProfile', oldName, newName),
     setProfileEnabled: (name, enabled) => ipcRenderer.invoke('opencode:setProfileEnabled', name, enabled)
   },
+  openrouter: {
+    getProfiles: () => ipcRenderer.invoke('openrouter:getProfiles'),
+    saveProfile: (name, apiKey) => ipcRenderer.invoke('openrouter:saveProfile', name, apiKey),
+    deleteProfile: (name) => ipcRenderer.invoke('openrouter:deleteProfile', name),
+    renameProfile: (oldName, newName) => ipcRenderer.invoke('openrouter:renameProfile', oldName, newName),
+    setProfileEnabled: (name, enabled) => ipcRenderer.invoke('openrouter:setProfileEnabled', name, enabled)
+  },
   codex: {
     accounts: () => ipcRenderer.invoke('codex:accounts'),
     addAccount: (options = {}) => ipcRenderer.invoke('codex:addAccount', options),
+    selectWorkspace: (options = {}) => ipcRenderer.invoke('codex:selectWorkspace', options),
     cancelLogin: (options = {}) => ipcRenderer.invoke('codex:cancelLogin', options),
     removeAccount: (id) => ipcRenderer.invoke('codex:removeAccount', id),
     setAccountEnabled: (id, enabled) => ipcRenderer.invoke('codex:setAccountEnabled', id, enabled),

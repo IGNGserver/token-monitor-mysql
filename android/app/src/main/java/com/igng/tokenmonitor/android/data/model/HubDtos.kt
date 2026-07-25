@@ -191,6 +191,10 @@ data class BatchPricingResultDto(
 data class UsageRangeDto(
   val from: String = "",
   val to: String = "",
+  val startDate: String? = null,
+  val endDate: String? = null,
+  val startHour: Int? = null,
+  val endHour: Int? = null,
   val source: String = "",
   val totalTokens: Long = 0,
   val costUsd: Double = 0.0,

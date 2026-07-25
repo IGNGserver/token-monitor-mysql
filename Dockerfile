@@ -14,9 +14,11 @@ COPY package.json ./
 COPY migrations ./migrations
 COPY src/hub ./src/hub
 COPY src/shared ./src/shared
+COPY assets/icon.png ./assets/icon.png
 COPY docker-entrypoint.sh /usr/local/bin/token-monitor-hub
 
 RUN chmod +x /usr/local/bin/token-monitor-hub
 
 EXPOSE 17321
 ENTRYPOINT ["/usr/local/bin/token-monitor-hub"]
+

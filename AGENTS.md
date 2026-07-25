@@ -23,7 +23,7 @@ To dry-run the agent without posting: `node src/agent/agent.js --once --dry-run`
 Three runtime entry points share a single `src/shared/` library:
 
 - **`src/electron/main.js`** — widget process. Owns the BrowserWindow, IPC, and chooses between *local* and *sync* mode based on whether `settings.hubUrl` is set.
-- **`src/hub/server.js`** — Node HTTP hub. Stores device records in `data/devices.json`, exposes `/api/ingest`, `/api/stats`, `/api/stats/stream` (SSE).
+- **`src/hub/server.js`** — Node HTTP hub. Stores device records (MySQL), exposes `/api/ingest`, `/api/stats`, `/api/stats/stream` (SSE), and serves the same-port web dashboard / PWA from `src/hub/web/` via `src/hub/static.js`.
 - **`src/agent/agent.js`** — headless collector for machines without a widget. Same data path as the widget's sync-mode collector.
 - **`worker/src/index.js`** — Cloudflare Worker hub that speaks the same protocol; the aggregation rules must stay portable (no Node built-ins in `usage.js`). The "Deploy to Cloudflare" button isolates `worker/` into a fresh repo, so the Worker may **not** import files above its own dir — its shared closure (`limits.js` / `usage.js` / `history.js` / `projectKey.js`) is vendored into `worker/src/shared/` by `npm run sync:worker` (`scripts/sync-worker-shared.js`). `src/shared/` stays the single source of truth; those copies are `@generated` (a CommonJS `package.json` marker scopes them back to CJS inside the ESM worker) and CI fails on drift. Edit `src/shared/`, never the copies, then re-run the sync.
 
@@ -38,7 +38,9 @@ Three runtime entry points share a single `src/shared/` library:
 
 ### AI Tool Limits collector
 
-`src/shared/limitCollector.js` runs alongside the usage collector to surface Claude Code / Codex session and weekly windows. Provider-specific probing lives in `src/shared/limits.js` (Codex limits are read via CLI RPC, including a Windows-specific path). Limits flow through the same wire shape — see "Data flow contract" below — and are merged into device records by the hub.
+Usage and limits have independent lifecycles under `src/shared/deviceRuntime.js`: `UsageRuntime` owns the tokscale collector, while `LimitsRuntime` owns its refresh timer, bounded cross-provider concurrency, per-provider latest-wins serial lanes, scoped account refreshes, finite probe deadlines, retry/backoff, and `lastGood` / `lastAttempt` retention. Credential changes refresh or clear only the affected limits lane and never restart usage; Cursor additionally forces one targeted usage sync because its tokscale cache is self-synced.
+
+`DeviceState` composes both outputs into the unchanged device wire record, buffering limits until usage exists and cold-start previews until a complete usage baseline exists; limits-only updates preserve the usage `updatedAt`. Provider dispatch starts in `src/shared/limitCollector.js`, with provider-specific implementations split between that file and `src/shared/*Limits.js`; shared normalization remains in `src/shared/limits.js`. The hub and Worker receive the composed record and never need provider credentials.
 
 ### Widget mode switching
 
@@ -46,12 +48,14 @@ Three runtime entry points share a single `src/shared/` library:
 
 When both a widget and the headless agent run on the same machine, the widget's sync-collector backs off — it checks `data/agent.pid` (`pidFilePath()`) and skips posting if that PID is alive. This is the only coordination between them.
 
-### Settings: env first, GUI overrides for widget
+### Settings and credentials: env first, GUI overrides for widget
 
-Two stores, but only one config file on disk:
+Configuration has two sources, and the widget splits its persisted GUI state by sensitivity:
 
 1. **`.env` at project root** — read by `loadDotEnv()` in `src/shared/config.js` at the top of every entry file. Only assigns keys that aren't already in `process.env`, so real env vars (systemd / launchd / Docker) still win. `.env.example` documents the operator-facing settings intended for direct configuration, including connection/device settings, feature toggles, and provider credentials. Lower-level runtime knobs may still be accepted without being listed there; treat additions or removals from the documented env surface as compatibility changes and keep `.env.example` aligned with the code.
-2. **Widget GUI** — Electron `userData/settings.json`. `readSettings()` merges `{ ...defaults, ...saved }`; `defaultSettings()` pulls initial values from `process.env` (i.e. from `.env`), so a fresh widget install picks up `.env`, but any GUI change is final.
+2. **Widget GUI** — Electron `userData/settings.json` stores preferences and account metadata; plaintext `userData/credentials.json` stores GUI-managed raw credentials with restrictive filesystem permissions (POSIX `0600`; Windows relies on the containing `userData` ACL). `readSettings()` merges both over `defaultSettings()` (which is seeded from env), while the main process sends a default-deny redacted view to the renderer. The only explicit renderer exceptions are the two Hub secrets required by the existing sync UI. The headless agent and standalone hub never read `credentials.json`; their credential flow remains CLI/env-based.
+
+`CREDENTIAL_SETTING_PATHS` in `src/shared/credentialStore.js` maps fixed GUI credential settings. Add new fixed credentials there instead of creating provider-specific stores; dynamic account credentials such as MiMo cookies belong under a dedicated nested path in the same unified store and must remain metadata-only in the renderer. Expose any raw credential to the renderer only through an explicit allowlist. Legacy migration must write and verify the new store before stripping/deleting the old source; corrupt, unknown-version, or symlinked stores must never be replaced with an empty document. This store is deliberately local plaintext protected by filesystem permissions, not OS-backed encryption: it avoids Keychain/credential-manager prompts but does not protect against processes already running as the same OS user.
 
 Per-setting precedence for the agent and hub: `CLI flag → env var (real or .env) → built-in default`. There is no JSON config file anymore — `config.local.json` was removed.
 
@@ -69,17 +73,16 @@ The default client CSV lives in **one** place: `DEFAULT_CLIENTS` in `src/shared/
 | Row icon CSS | the `.row-icon-<id>` rule in `src/electron/renderer/styles.css` |
 | Icon assets | `assets/icons/<id>.svg` + `.github/assets/tools-icon/<id>.png` |
 | WSL discovery | marker(s) in `WSL_DATA_MARKERS` **and** the marker→id mapping in `MARKER_CLIENTS` (`src/shared/wslUsage.js`) — use the exact roots tokscale reads, including alternate roots. A marker without a `MARKER_CLIENTS` entry attributes to nothing, so a WSL home holding only that client's data would be skipped |
-| Docs & env examples | the supported-tools table in `README.md` and its translations (`README.*.md`) + the client CSV in `.env.example` |
+| Docs & env examples | the supported-tools table in `README.md` and its translations (`README.*.md`) + the client CSV in `.env.example`. Every locale's prose tool/provider counts must match its own table — `tests/docs/readmeConsistency.test.js` fails on a stale count or a table that drifts between locales |
 | Guard tests | the expected-client lists in `tests/shared/clientTracking.test.js` |
 
-Two caveats on top of the table:
+One caveat on top of the table:
 
-- If the client's tokscale `--home` scan can fall back to a HOST-native DB that ignores `--home` (currently only `zed`), also add it to `WSL_HOST_FALLBACK_GATES` keyed to the WSL-home file whose presence suppresses that fallback, so it is dropped from a home's scan when absent and never double-counts the host DB.
 - Self-synced clients (cursor/antigravity) additionally go in `SELF_SYNCED_CLIENTS`; parse-local clients must NOT.
 
 ### Data flow contract
 
-The hub stores normalized device records (`normalizeDeviceRecord` in `usage.js`) and aggregates on read (`aggregateDevices`). The wire shape between agent/widget and hub is whatever `collectUsageOnce()` returns — that function is the source of truth, and `docs/API.md` documents the full contract. The core is `{deviceId, hostname, platform, updatedAt, agentVersion, today, month, allTime}` (each period has `{totalTokens, costUsd, clients, clientCosts, models, modelCosts}`), plus attribution fields (`trackedClients`, `clientStatus`, `wslStatus`, `periodWindows`, `projectsEnabled`) and optional `agentRuntime` / `history` / `limits`. The Worker hub uses the exact same shapes.
+The hub stores normalized device records (`normalizeDeviceRecord` in `usage.js`) and aggregates on read (`aggregateDevices`). The wire shape between agent/widget and hub is whatever `collectUsageOnce()` returns — that function is the source of truth, and `docs/API.md` documents the full contract. The core is `{deviceId, hostname, platform, updatedAt, agentVersion, today, month, allTime}` (each period has `{totalTokens, costUsd, clients, clientCosts, models, modelCosts}`), plus attribution fields (`trackedClients`, `clientStatus`, `wslStatus`, `periodWindows`, `projectsEnabled`) and optional `osName` / `osVersion` / `agentRuntime` / `history` / `limits`. The Worker hub uses the exact same shapes.
 
 ### Stale devices
 
@@ -122,3 +125,4 @@ Never add an AI `Co-Authored-By` trailer. **Do** keep the genuine human `Co-auth
 ### Authoring GitHub content via `gh`
 
 Write PR/issue bodies and comments to a file and pass it, rather than inline heredocs: `gh issue comment --body-file <path>`, `gh api -X PATCH … -F body=@<path>`. Inline `--body "$(cat <<EOF … EOF)"` mangles backtick escaping and renders as a literal `` \` `` in GitHub markdown. Same spirit for prose: write paragraphs as continuous lines and let GitHub wrap them — don't hard-wrap at 80 columns.
+

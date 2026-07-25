@@ -55,6 +55,7 @@ Token Monitor 對「Token 用量」「帳戶額度」與「session 明細」分�
 | <img src=".github/assets/tools-icon/codebuddy.png" width="28" alt="CodeBuddy" /> | CodeBuddy | `~/.codebuddy/projects/` 與 IDE / VS Code 擴充套件日誌 | ✅ | — | — |
 | <img src=".github/assets/tools-icon/workbuddy.png" width="28" alt="WorkBuddy" /> | WorkBuddy | `~/.workbuddy/projects/`、`~/.workbuddy/workbuddy.db` | ✅ | — | — |
 | <img src=".github/assets/tools-icon/proma.png" width="28" alt="Proma" /> | Proma | `~/.proma/agent-sessions/*.jsonl` | ✅ | — | — |
+| <img src=".github/assets/tools-icon/openrouter.png" width="28" alt="OpenRouter" /> | OpenRouter | OpenRouter API 金鑰（查詢用量／金鑰上限；獲授權存取 credits 時顯示餘額，官方文件指定 Management 金鑰） | — | ✅ | — |
 | <img src=".github/assets/tools-icon/deepseek.png" width="28" alt="DeepSeek" /> | DeepSeek | DeepSeek API 金鑰（透過 DeepSeek API 查詢餘額） | — | ✅ | — |
 | <img src=".github/assets/tools-icon/minimax.png" width="28" alt="Minimax" /> | Minimax | Minimax API 金鑰（透過 Minimax API 查詢 Token Plan 額度） | — | ✅ | — |
 | <img src=".github/assets/tools-icon/volcengine.png" width="28" alt="Volcengine" /> | Volcengine | Ark API key 或火山引擎 AK/SK（透過火山引擎 API 查詢火山方舟 Coding Plan 額度） | — | ✅ | — |
@@ -86,6 +87,7 @@ Token Monitor 對「Token 用量」「帳戶額度」與「session 明細」分�
 - **可錄製全域快捷鍵**：可從任何地方快速顯示或隱藏視窗
 - **本地優先**：單裝置使用完全不需伺服器
 - **自架同步後端**：小工具內 hub、Node CLI hub 或 Cloudflare Worker
+- **Hub 網頁 / PWA**：與 Hub API 同埠提供儀表板；iOS / 鴻蒙等無官方用戶端的裝置可「加入主畫面」後查看已同步資料
 - **iOS 小工具支援**：透過 Worker hub 搭配 Widgy、Scriptable
 - **Discord Rich Presence**：將今日 Token、花費與主要工具廣播到你的 Discord 個人檔案（需手動開啟）
 - **隱私優先**：只有摘要數字會離開你的機器

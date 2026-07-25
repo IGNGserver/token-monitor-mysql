@@ -3,10 +3,13 @@
 const clientLabels = { claude: 'Claude Code', codex: 'Codex', hermes: 'Hermes', gemini: 'Gemini', cursor: 'Cursor', opencode: 'OpenCode', openclaw: 'OpenClaw', antigravity: 'Antigravity', cline: 'Cline', kimi: 'Kimi', qwen: 'Qwen', grok: 'Grok Build', copilot: 'GitHub Copilot', pi: 'Pi', zed: 'Zed', kilocode: 'Kilo Code', micode: 'MiMo Code', zcode: 'ZCode', kiro: 'Kiro', codebuddy: 'CodeBuddy', workbuddy: 'WorkBuddy', proma: 'Proma' };
 const { clientColors, fallbackModelColors, modelVendorFor, modelColor } = window.TokenMonitorUsageCharts;
 const motionPreferenceApi = window.TokenMonitorMotionPreference;
+const windowsGlassApi = window.TokenMonitorWindowsGlass;
+const glassRenderingApi = window.TokenMonitorGlassRendering;
+const wslStatusPresentationApi = window.TokenMonitorWslStatusPresentation;
 const reducedMotionMedia = window.matchMedia?.('(prefers-reduced-motion: reduce)');
 const clientsWithIcon = new Set([
   'claude', 'codex', 'gemini', 'cursor', 'opencode', 'openclaw', 'hermes', 'antigravity', 'cline', 'kimi', 'qwen', 'grok', 'copilot', 'pi', 'zed', 'kilocode', 'micode', 'zcode', 'kiro', 'codebuddy', 'workbuddy', 'proma',
-  'xai', 'deepseek', 'meta', 'mistral', 'qwen', 'moonshot', 'zai', 'zaiteam', 'cohere', 'xiaomi', 'mimo', 'minimax', 'doubao', 'volcengine', 'qoder', 'ollama'
+  'xai', 'openrouter', 'deepseek', 'meta', 'mistral', 'qwen', 'moonshot', 'zai', 'zaiteam', 'cohere', 'xiaomi', 'mimo', 'minimax', 'doubao', 'volcengine', 'qoder', 'ollama'
 ]);
 
 function osIconFor(platform) {
@@ -18,7 +21,7 @@ function osIconFor(platform) {
 }
 
 function iconKindFor(rowData, breakdown) {
-  if (!state.settings?.showToolIcons) return { kind: 'dot' };
+  if (!toolIconsEnabled(state.settings?.showToolIcons)) return { kind: 'dot' };
   if (breakdown === 'device') {
     const os = osIconFor(rowData.platform);
     return os ? { kind: 'icon', iconClass: `row-icon-os-${os}` } : { kind: 'dot' };
@@ -69,6 +72,7 @@ const LIMIT_PROVIDERS = [
   { id: 'cursor', label: 'Cursor' },
   { id: 'antigravity', label: 'Antigravity' },
   { id: 'opencode', label: 'OpenCode' },
+  { id: 'openrouter', label: 'OpenRouter' },
   { id: 'deepseek', label: 'DeepSeek' },
   { id: 'minimax', label: 'Minimax' },
   { id: 'mimo', label: 'MiMo' },
@@ -82,9 +86,29 @@ const LIMIT_PROVIDERS = [
   { id: 'kimi', label: 'Kimi' },
   { id: 'ollama', label: 'Ollama' }
 ];
+const TRAY_ICON_VARIANTS = [
+  { id: 'claude-brand', label: 'Claude', after: 'claude' },
+  { id: 'chatgpt', label: 'ChatGPT', after: 'codex' }
+];
+const trayIconProviderIds = new Set([
+  ...clientsWithIcon,
+  ...TRAY_ICON_VARIANTS.map((provider) => provider.id)
+]);
+const TRAY_ICON_PROVIDERS = [
+  ...KNOWN_CLIENTS.flatMap((provider) => [
+    provider,
+    ...TRAY_ICON_VARIANTS.filter((variant) => variant.after === provider.id)
+  ]),
+  ...LIMIT_PROVIDERS
+]
+  .filter((provider, index, providers) => (
+    trayIconProviderIds.has(provider.id)
+    && providers.findIndex((entry) => entry.id === provider.id) === index
+  ));
 const DEFAULT_LIMIT_PROVIDER_ORDER = LIMIT_PROVIDERS.map((provider) => provider.id).join(',');
 const limitProviderOrderApi = window.TokenMonitorLimitProviderOrder;
 const limitProviderPresentationApi = window.TokenMonitorLimitProviderPresentation;
+const appUpdatePresentationApi = window.TokenMonitorAppUpdatePresentation;
 const accountIdentityApi = window.TokenMonitorAccountIdentity;
 const clientStatusPresentationApi = window.TokenMonitorClientStatusPresentation;
 const serviceStatusPresentationApi = window.TokenMonitorServiceStatusPresentation;
@@ -97,7 +121,17 @@ const homeModulePreferencesApi = window.TokenMonitorHomeModulePreferences;
 const { limitFillPercent, limitModeSuffix } = window.TokenMonitorLimitDisplayMode;
 const i18n = window.TokenMonitorI18n;
 const currencyApi = window.TokenMonitorCurrency;
+const trayLayoutApi = window.TokenMonitorTrayLayout;
 const sessionRowsApi = window.TokenMonitorSessionRows;
+const breakdownRenderPolicyApi = window.TokenMonitorBreakdownRenderPolicy;
+const {
+  createAfterLayoutScheduler,
+  isLargeSessionBreakdown,
+  rowRenderFingerprint,
+  shouldAnimateBreakdownRows,
+  toolIconsEnabled
+} = breakdownRenderPolicyApi;
+const deviceBreakdownApi = window.TokenMonitorDeviceBreakdown;
 const projectRowsApi = window.TokenMonitorProjectRows;
 const sessionDetailApi = window.TokenMonitorSessionDetail;
 const windowShortcutApi = window.TokenMonitorWindowShortcut;
@@ -113,6 +147,7 @@ const LIMIT_CAPABILITY_TAG_KEYS = {
   'App/CLI RPC': 'settings.limits.capability.appCliRpc',
   'Manual login': 'settings.limits.capability.manualLogin',
   Web: 'settings.limits.capability.web',
+  'Web/API': 'settings.limits.capability.webApi',
   'App/CLI must be open': 'settings.limits.capability.appMustBeOpen',
   RPC: 'settings.limits.capability.rpc',
   'Local/Zen': 'settings.limits.capability.localZen',
@@ -120,12 +155,15 @@ const LIMIT_CAPABILITY_TAG_KEYS = {
   Subscription: 'settings.limits.capability.subscription',
   'Token Plan': 'settings.limits.capability.tokenPlan',
   'Coding Plan': 'settings.limits.capability.codingPlan',
+  'Membership/Coding Plan': 'settings.limits.capability.membershipCodingPlan',
   'API key': 'settings.limits.capability.apiKey',
   'AK/SK': 'settings.limits.capability.akSk',
   'GitHub OAuth': 'settings.limits.capability.githubOAuth',
   API: 'settings.limits.capability.api',
   'Add API key': 'settings.limits.status.addApiKey',
   'Update API key': 'settings.limits.status.updateApiKey',
+  'Add credential': 'settings.limits.status.addCredential',
+  'Update credential': 'settings.limits.status.updateCredential',
   Live: 'settings.limits.status.live',
   Linked: 'settings.limits.status.linked',
   'Sign in': 'settings.limits.status.signIn',
@@ -157,7 +195,6 @@ const VIEW_DISPLAY_OPTIONS = [
   { id: 'limits', labelKey: 'views.limits' },
   { id: 'trends', labelKey: 'views.trends' }
 ];
-const presetPeriodValues = new Set(['today', 'month', 'allTime']);
 const viewPeriodValues = new Set(['today', 'month', 'allTime', 'custom']);
 const customRangePickerApi = window.TokenMonitorCustomRangePicker;
 const viewBreakdownValues = new Set(['home', ...baseBreakdownOrder, 'status', 'limits', 'trends']);
@@ -190,6 +227,7 @@ const SERVICE_STATUS_PLACEHOLDERS = [
 const SERVICE_PROVIDER_OPTIONS = SERVICE_STATUS_PLACEHOLDERS.map((entry) => ({ id: entry.id, label: entry.label }));
 const TOKEN_MONITOR_REPOSITORY_URL = 'https://github.com/IGNGserver/token-monitor-mysql';
 const TOKEN_MONITOR_ISSUES_URL = `${TOKEN_MONITOR_REPOSITORY_URL}/issues/new/choose`;
+const TOKEN_MONITOR_WSL_SQLITE_GUIDE_URL = `${TOKEN_MONITOR_REPOSITORY_URL}/blob/main/docs/wsl-sqlite-setup.md`;
 const serviceStatusProviderPreferencesApi = window.TokenMonitorServiceStatusProviderPreferences;
 const SETTINGS_SECTION_IDS = ['general', 'main', 'window', 'appearance', 'tools', 'limits', 'accounts', 'sync'];
 const REFRESH_BUTTON_FEEDBACK_MS = 700;
@@ -203,9 +241,10 @@ function normalizeInitialViewValue(value, allowed, fallback) {
   return allowed.has(raw) ? raw : fallback;
 }
 
-const state = { period: normalizeInitialViewValue(initialViewState.period, presetPeriodValues, 'today'), appUpdate: null, breakdown: normalizeInitialViewValue(initialViewState.breakdown, viewBreakdownValues, 'home'), viewSwitcherOpen: false, viewSwitcherHasOpened: false, resetCreditsTooltipHasOpened: false, resetCreditsTooltipActive: false, resetCreditsTooltipRenderPending: false, settings: null, stats: null, homeHistory: null, homeHistoryBusy: false, homeHistoryRequested: false, homeHistorySignature: '', homeHistoryRetries: 0, homeHistoryRetryTimer: null, homeActivityScrollLeft: null, homeActivityFollowEnd: true, homeActivityResizeObserver: null, serviceStatus: null, serviceStatusBusy: false, serviceProvidersExpanded: false, trendSettingsExpanded: false, trendsActivating: false, homeSettingsExpanded: false, homeLimitSettingsExpanded: false, serviceStatusTicker: null, refreshTimer: null, refreshBusy: false, refreshFeedbackTimer: null, currentTotal: 0, rowSignature: '', streamConnected: false, streamFailure: null, mode: 'idle', appInfo: null, tokscaleStatus: null, tokscaleCheck: null, tokscaleBusy: false, hubInfo: null, cursorAccount: { status: null, error: '' }, cursorAccountExpanded: false, codexAccountExpanded: false, codexAccountError: '', codexSignInBusy: false, codexSignInFlowId: '', codexLoginUrl: '', codexLoginStatus: '', codexLoginOutput: '', codexActiveAccount: null, codexPendingActiveAccount: null, codexPendingActiveAccountUntil: 0, codexPendingActiveAccountTimer: null, codexSystemSwitchingAccountId: '', codexSystemSwitchErrorAccountId: '', codexSystemSwitchError: '', codexSwitchPopoverHasOpened: false, codexSwitchPopoverActive: false, codexSwitchPopoverRenderPending: false, customPricingExpanded: false, opencodeProfileCount: 0, opencodeCookieExpanded: false, deepseekAccountExpanded: false, deepseekPendingCheckSince: 0, minimaxAccountExpanded: false, minimaxPendingCheckSince: 0, zaiAccountExpanded: false, zaiPendingCheckSince: 0, zaiteamAccountExpanded: false, zaiteamPendingCheckSince: 0, volcengineAccountExpanded: false, volcenginePendingCheckSince: 0, qoderAccountExpanded: false, qoderPendingCheckSince: 0, kimiAccountExpanded: false, kimiPendingCheckSince: 0, ollamaAccountExpanded: false, ollamaPendingCheckSince: 0, mimoAccountExpanded: false, mimoAccountError: '', copilotAccountExpanded: false, copilotManualExpanded: false, copilotPendingCheckSince: 0, copilotSignInBusy: false, copilotSignInCancelable: false, copilotSignInFlowId: '', copilotAuthorizeMessage: '', copilotLoginStatus: '', copilotErrorMessage: '', floatingBubble: initialFloatingBubble, suppressInitialNumberAnimation: window.__TOKEN_MONITOR_SUPPRESS_INITIAL_NUMBER_ANIMATION__ === true, openSession: null, detailSort: 'time', recordingWindowShortcut: false, windowShortcutInvalid: false };
+const state = { period: normalizeInitialViewValue(initialViewState.period, viewPeriodValues, 'today'), appUpdate: null, breakdown: normalizeInitialViewValue(initialViewState.breakdown, viewBreakdownValues, 'home'), viewSwitcherOpen: false, viewSwitcherHasOpened: false, limitDetailTooltipHasOpened: false, limitDetailTooltipActive: false, limitDetailTooltipRenderPending: false, settings: null, stats: null, homeHistory: null, homeHistoryBusy: false, homeHistoryRequested: false, homeHistorySignature: '', homeHistoryRetries: 0, homeHistoryRetryTimer: null, homeActivityScrollLeft: null, homeActivityFollowEnd: true, homeActivityResizeObserver: null, serviceStatus: null, serviceStatusBusy: false, serviceProvidersExpanded: false, trendSettingsExpanded: false, trendsActivating: false, homeSettingsExpanded: false, homeLimitSettingsExpanded: false, serviceStatusTicker: null, refreshTimer: null, refreshBusy: false, refreshFeedbackTimer: null, currentTotal: 0, rowSignature: '', streamConnected: false, streamFailure: null, mode: 'idle', appInfo: null, tokscaleStatus: null, tokscaleCheck: null, tokscaleBusy: false, hubInfo: null, cursorAccount: { status: null, error: '' }, cursorAccountExpanded: false, codexAccountExpanded: false, codexAccountError: '', codexSignInBusy: false, codexSignInFlowId: '', codexLoginUrl: '', codexLoginStatus: '', codexLoginOutput: '', codexWorkspaceChoices: [], codexWorkspaceId: '', codexActiveAccount: null, codexPendingActiveAccount: null, codexPendingActiveAccountUntil: 0, codexPendingActiveAccountTimer: null, codexSystemSwitchingAccountId: '', codexSystemSwitchErrorAccountId: '', codexSystemSwitchError: '', codexSwitchPopoverHasOpened: false, codexSwitchPopoverActive: false, codexSwitchPopoverRenderPending: false, customPricingExpanded: false, opencodeProfileCount: 0, opencodeCookieExpanded: false, openrouterProfileCount: 0, openrouterAccountExpanded: false, deepseekAccountExpanded: false, deepseekPendingCheckSince: 0, minimaxAccountExpanded: false, minimaxPendingCheckSince: 0, zaiAccountExpanded: false, zaiPendingCheckSince: 0, zaiteamAccountExpanded: false, zaiteamPendingCheckSince: 0, volcengineAccountExpanded: false, volcenginePendingCheckSince: 0, qoderAccountExpanded: false, qoderPendingCheckSince: 0, kimiAccountExpanded: false, kimiPendingCheckSince: 0, ollamaAccountExpanded: false, ollamaPendingCheckSince: 0, mimoAccountExpanded: false, mimoAccountError: '', copilotAccountExpanded: false, copilotManualExpanded: false, copilotPendingCheckSince: 0, copilotSignInBusy: false, copilotSignInCancelable: false, copilotSignInFlowId: '', copilotAuthorizeMessage: '', copilotLoginStatus: '', copilotErrorMessage: '', floatingBubble: initialFloatingBubble, suppressInitialNumberAnimation: window.__TOKEN_MONITOR_SUPPRESS_INITIAL_NUMBER_ANIMATION__ === true, openSession: null, detailSort: 'time', recordingWindowShortcut: false, windowShortcutInvalid: false };
 state.homeHistoryLoadedSignature = '';
 state.homeHistoryRetrySignature = '';
+state.homeReturnVisible = false;
 state.appUpdateNotesPresentedVersion = '';
 state.periodMotionActive = false;
 state.customRange = null;
@@ -218,16 +257,20 @@ state.animateBarsFromZero = false;
 state.animateChartsOnRender = true;
 let directBreakdownOverride = null;
 state.projectSettingsExpanded = false;
+state.homeActivitySettingsExpanded = false;
 state.settingsSections = Object.fromEntries(SETTINGS_SECTION_IDS.map((id) => [id, false]));
-const defaultAppearance = { glassOpacity: 68, glassBlur: 32, zoomFactor: 1, systemGlass: true, reduceMotion: 'system', showLiveDot: true, showToolIcons: true, titleIconOnly: true, showCompactTotalTokens: false, settingsInTitlebar: false };
+const defaultAppearance = { glassOpacity: 68, glassBlur: 32, zoomFactor: 1, systemGlass: true, windowsBackdrop: 'acrylic', reduceMotion: 'system', showLiveDot: true, showToolIcons: true, titleIconOnly: true, showCompactTotalTokens: false, settingsInTitlebar: false };
 let preferenceDrag = null;
 let viewSwitcherLongPressTimer = null;
 let viewSwitcherLongPressTriggered = false;
 let viewSwitcherHoverCloseTimer = null;
 const els = {
-  shell: document.querySelector('.shell'), status: document.getElementById('status'), liveDot: document.getElementById('liveDot'), totalTokens: document.getElementById('totalTokens'), totalTokensCompact: document.getElementById('totalTokensCompact'), cost: document.getElementById('cost'), homePanel: document.getElementById('homePanel'), breakdown: document.getElementById('breakdown'), serviceStatusPanel: document.getElementById('serviceStatusPanel'), limitsPanel: document.getElementById('limitsPanel'), trendsPanel: document.getElementById('trendsPanel'), viewSwitcher: document.getElementById('viewSwitcher'), pinButton: document.getElementById('pinButton'), settingsButton: document.getElementById('settingsButton'), settingsPanel: document.getElementById('settingsPanel'), languageInput: document.getElementById('languageInput'), currencyInput: document.getElementById('currencyInput'), currencyRateRow: document.getElementById('currencyRateRow'), currencyRateModeAuto: document.getElementById('currencyRateModeAuto'), currencyRateModeManual: document.getElementById('currencyRateModeManual'), currencyRateManualField: document.getElementById('currencyRateManualField'), currencyRateOverrideInput: document.getElementById('currencyRateOverrideInput'), currencyRateStatus: document.getElementById('currencyRateStatus'), hubUrlInput: document.getElementById('hubUrlInput'), secretInput: document.getElementById('secretInput'), deviceIdInput: document.getElementById('deviceIdInput'), limitProviderCheckboxes: document.getElementById('limitProviderCheckboxes'), limitsRefreshInput: document.getElementById('limitsRefreshInput'), showLimitSourceInput: document.getElementById('showLimitSourceInput'), maskLimitAccountEmailsInput: document.getElementById('maskLimitAccountEmailsInput'), showLimitUsedInput: document.getElementById('showLimitUsedInput'), systemGlassInput: document.getElementById('systemGlassInput'), liveDotInput: document.getElementById('liveDotInput'), toolIconsInput: document.getElementById('toolIconsInput'), floatingBubbleInput: document.getElementById('floatingBubbleInput'), floatingBubbleTriggerInput: document.getElementById('floatingBubbleTriggerInput'), floatingBubbleTriggerRow: document.getElementById('floatingBubbleTriggerRow'), floatingBubbleContentInput: document.getElementById('floatingBubbleContentInput'), floatingBubbleContentRow: document.getElementById('floatingBubbleContentRow'), floatingBubbleContent: document.getElementById('floatingBubbleContent'), discordRpcInput: document.getElementById('discordRpcInput'), windowBehaviorInput: document.getElementById('windowBehaviorInput'), showTrayIconInput: document.getElementById('showTrayIconInput'), showTrayProviderBadgeInput: document.getElementById('showTrayProviderBadgeInput'), trayModeInput: document.getElementById('trayModeInput'), trayContentInput: document.getElementById('trayContentInput'), windowToggleShortcutValue: document.getElementById('windowToggleShortcutValue'), windowToggleShortcutClearButton: document.getElementById('windowToggleShortcutClearButton'), windowToggleShortcutNote: document.getElementById('windowToggleShortcutNote'), glassInput: document.getElementById('glassInput'), blurInput: document.getElementById('blurInput'), zoomInput: document.getElementById('zoomInput'), resetGlassButton: document.getElementById('resetGlassButton'), resetDepthButton: document.getElementById('resetDepthButton'), resetZoomButton: document.getElementById('resetZoomButton'), saveSettingsButton: document.getElementById('saveSettingsButton'), clientDisplayList: document.getElementById('clientDisplayList'), wslScanInput: document.getElementById('wslScanInput'), wslScanRow: document.getElementById('wslScanRow'), wslPanel: document.getElementById('wslPanel'), openConfigButton: document.getElementById('openConfigButton'), exportAutoInput: document.getElementById('exportAutoInput'), exportAutoDetails: document.getElementById('exportAutoDetails'), exportAutoStatus: document.getElementById('exportAutoStatus'), exportDirLabel: document.getElementById('exportDirLabel'), exportPickDirButton: document.getElementById('exportPickDirButton'), exportIntervalInput: document.getElementById('exportIntervalInput'), exportNowButton: document.getElementById('exportNowButton'), refreshButton: document.getElementById('refreshButton'), minButton: document.getElementById('minButton'), closeButton: document.getElementById('closeButton'), floatingBubbleTab: document.getElementById('floatingBubbleTab')
+  shell: document.querySelector('.shell'), status: document.getElementById('status'), liveDot: document.getElementById('liveDot'), totalTokens: document.getElementById('totalTokens'), totalTokensCompact: document.getElementById('totalTokensCompact'), cost: document.getElementById('cost'), homePanel: document.getElementById('homePanel'), breakdown: document.getElementById('breakdown'), serviceStatusPanel: document.getElementById('serviceStatusPanel'), limitsPanel: document.getElementById('limitsPanel'), trendsPanel: document.getElementById('trendsPanel'), viewSwitcher: document.getElementById('viewSwitcher'), pinButton: document.getElementById('pinButton'), utilityActions: document.getElementById('utilityActions'), settingsButton: document.getElementById('settingsButton'), settingsPanel: document.getElementById('settingsPanel'), languageInput: document.getElementById('languageInput'), currencyInput: document.getElementById('currencyInput'), currencyRateRow: document.getElementById('currencyRateRow'), currencyRateModeAuto: document.getElementById('currencyRateModeAuto'), currencyRateModeManual: document.getElementById('currencyRateModeManual'), currencyRateManualField: document.getElementById('currencyRateManualField'), currencyRateOverrideInput: document.getElementById('currencyRateOverrideInput'), currencyRateStatus: document.getElementById('currencyRateStatus'), hubUrlInput: document.getElementById('hubUrlInput'), secretInput: document.getElementById('secretInput'), deviceIdInput: document.getElementById('deviceIdInput'), limitProviderCheckboxes: document.getElementById('limitProviderCheckboxes'), limitsRefreshInput: document.getElementById('limitsRefreshInput'), showLimitSourceInput: document.getElementById('showLimitSourceInput'), maskLimitAccountEmailsInput: document.getElementById('maskLimitAccountEmailsInput'), showLimitUsedInput: document.getElementById('showLimitUsedInput'), liveDotInput: document.getElementById('liveDotInput'), toolIconsInput: document.getElementById('toolIconsInput'), floatingBubbleInput: document.getElementById('floatingBubbleInput'), floatingBubbleTriggerInput: document.getElementById('floatingBubbleTriggerInput'), floatingBubbleTriggerRow: document.getElementById('floatingBubbleTriggerRow'), floatingBubbleContentInput: document.getElementById('floatingBubbleContentInput'), floatingBubbleContentRow: document.getElementById('floatingBubbleContentRow'), floatingBubbleComposer: document.getElementById('floatingBubbleComposer'), floatingBubbleContent: document.getElementById('floatingBubbleContent'), discordRpcInput: document.getElementById('discordRpcInput'), windowBehaviorInput: document.getElementById('windowBehaviorInput'), showTrayIconInput: document.getElementById('showTrayIconInput'), showTrayProviderBadgeInput: document.getElementById('showTrayProviderBadgeInput'), trayModeInput: document.getElementById('trayModeInput'), trayContentInput: document.getElementById('trayContentInput'), trayComposer: document.getElementById('trayComposer'), windowToggleShortcutValue: document.getElementById('windowToggleShortcutValue'), windowToggleShortcutClearButton: document.getElementById('windowToggleShortcutClearButton'), windowToggleShortcutNote: document.getElementById('windowToggleShortcutNote'), glassInput: document.getElementById('glassInput'), blurInput: document.getElementById('blurInput'), zoomInput: document.getElementById('zoomInput'), resetGlassButton: document.getElementById('resetGlassButton'), resetDepthButton: document.getElementById('resetDepthButton'), resetZoomButton: document.getElementById('resetZoomButton'), saveSettingsButton: document.getElementById('saveSettingsButton'), clientDisplayList: document.getElementById('clientDisplayList'), wslScanInput: document.getElementById('wslScanInput'), wslScanRow: document.getElementById('wslScanRow'), wslPanel: document.getElementById('wslPanel'), openConfigButton: document.getElementById('openConfigButton'), exportAutoInput: document.getElementById('exportAutoInput'), exportAutoDetails: document.getElementById('exportAutoDetails'), exportAutoStatus: document.getElementById('exportAutoStatus'), exportDirLabel: document.getElementById('exportDirLabel'), exportPickDirButton: document.getElementById('exportPickDirButton'), exportIntervalInput: document.getElementById('exportIntervalInput'), exportNowButton: document.getElementById('exportNowButton'), refreshButton: document.getElementById('refreshButton'), minButton: document.getElementById('minButton'), closeButton: document.getElementById('closeButton'), floatingBubbleTab: document.getElementById('floatingBubbleTab')
 };
 Object.assign(els, {
+  viewBackRow: document.getElementById('viewBackRow'),
+  backHomeButton: document.getElementById('backHomeButton'),
+  systemGlassInputs: Array.from(document.querySelectorAll('input[name="systemGlassOption"]')),
   floatingBubbleOptions: document.getElementById('floatingBubbleOptions'),
   trayIconOptions: document.getElementById('trayIconOptions'),
   trayOptions: document.getElementById('trayOptions'),
@@ -248,6 +291,9 @@ Object.assign(els, {
   sessionUsageArchiveInput: document.getElementById('sessionUsageArchiveInput'),
   sessionUsageArchiveStatus: document.getElementById('sessionUsageArchiveStatus'),
   reduceMotionInputs: Array.from(document.querySelectorAll('input[name="reduceMotionOption"]')),
+  windowsBackdropRow: document.getElementById('windowsBackdropRow'),
+  windowsBackdropInput: document.getElementById('windowsBackdropInput'),
+  windowsBackdropNote: document.getElementById('windowsBackdropNote'),
   clearSessionUsageArchiveButton: document.getElementById('clearSessionUsageArchiveButton'),
   startupGroup: document.getElementById('startupGroup'),
   startAtLoginInput: document.getElementById('startAtLoginInput'),
@@ -270,6 +316,8 @@ Object.assign(els, {
   appUpdatePill: document.getElementById('appUpdatePill'),
   appUpdatePillAction: document.getElementById('appUpdatePillAction'),
   appUpdatePillLabel: document.getElementById('appUpdatePillLabel'),
+  appUpdatePillRestart: document.getElementById('appUpdatePillRestart'),
+  appUpdatePillRestartLabel: document.getElementById('appUpdatePillRestartLabel'),
   appUpdatePillDismiss: document.getElementById('appUpdatePillDismiss'),
   appUpdatePopover: document.getElementById('appUpdatePopover'),
   appUpdatePopoverTitle: document.getElementById('appUpdatePopoverTitle'),
@@ -294,6 +342,9 @@ Object.assign(els, {
   customRangeApply: document.getElementById('customRangeApply'),
   customRangeTitle: document.getElementById('customRangeTitle'),
   appUpdateInstalled: document.getElementById('appUpdateInstalled'),
+  automaticAppUpdatesRow: document.getElementById('automaticAppUpdatesRow'),
+  automaticAppUpdatesInput: document.getElementById('automaticAppUpdatesInput'),
+  automaticAppUpdatesNote: document.getElementById('automaticAppUpdatesNote'),
   appUpdateLatest: document.getElementById('appUpdateLatest'),
   appUpdateCheckButton: document.getElementById('appUpdateCheckButton'),
   appUpdateViewReleaseButton: document.getElementById('appUpdateViewReleaseButton'),
@@ -304,7 +355,7 @@ Object.assign(els, {
   appUpdateMessage: document.getElementById('appUpdateMessage'),
   titleIconInput: document.getElementById('titleIconInput'),
   showCompactTotalTokensInput: document.getElementById('showCompactTotalTokensInput'),
-  settingsInTitlebarInput: document.getElementById('settingsInTitlebarInput'),
+  swapSettingsRefreshInput: document.getElementById('swapSettingsRefreshInput'),
   resetClientDisplayOrderButton: document.getElementById('resetClientDisplayOrderButton'),
   showAllClientsButton: document.getElementById('showAllClientsButton'),
   resetViewDisplayOrderButton: document.getElementById('resetViewDisplayOrderButton'),
@@ -533,6 +584,7 @@ function settingsSectionSummary(section) {
   if (section === 'accounts') {
     const cursorLinked = Boolean(state.cursorAccount.status?.loggedIn) && !state.cursorAccount.status?.expired;
     const opencodeCount = state.opencodeProfileCount || 0;
+    const openrouterCount = state.openrouterProfileCount || 0;
     const deepseekLinked = deepseekAccountLinked();
     const minimaxLinked = minimaxAccountLinked();
     const zaiLinked = externalProviderAccountLinked('zai');
@@ -545,8 +597,8 @@ function settingsSectionSummary(section) {
     const copilotLinked = copilotAccountLinked();
     const codexLinked = (state.settings?.codexManagedAccounts || []).length > 0;
     return t('settings.summary.accounts', {
-      linked: (codexLinked ? 1 : 0) + (cursorLinked ? 1 : 0) + (opencodeCount > 0 ? 1 : 0) + (deepseekLinked ? 1 : 0) + (minimaxLinked ? 1 : 0) + (zaiLinked ? 1 : 0) + (zaiteamLinked ? 1 : 0) + (volcengineLinked ? 1 : 0) + (qoderLinked ? 1 : 0) + (kimiLinked ? 1 : 0) + (ollamaLinked ? 1 : 0) + (mimoLinked ? 1 : 0) + (copilotLinked ? 1 : 0),
-      total: 13
+      linked: (codexLinked ? 1 : 0) + (cursorLinked ? 1 : 0) + (opencodeCount > 0 ? 1 : 0) + (openrouterCount > 0 ? 1 : 0) + (deepseekLinked ? 1 : 0) + (minimaxLinked ? 1 : 0) + (zaiLinked ? 1 : 0) + (zaiteamLinked ? 1 : 0) + (volcengineLinked ? 1 : 0) + (qoderLinked ? 1 : 0) + (kimiLinked ? 1 : 0) + (ollamaLinked ? 1 : 0) + (mimoLinked ? 1 : 0) + (copilotLinked ? 1 : 0),
+      total: 14
     });
   }
   if (section === 'limits') {
@@ -691,10 +743,9 @@ function syncCurrencyRateControls() {
 function formatTime(value) { const date = value ? new Date(value) : new Date(); return Number.isNaN(date.getTime()) ? '--:--:--' : date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }); }
 function formatPercent(value) { return Number.isFinite(Number(value)) ? `${Math.round(Number(value))}%` : '--'; }
 function formatReset(value) {
-  const date = value ? new Date(value) : null;
-  if (!date || Number.isNaN(date.getTime())) return '';
-  const diffMs = date.getTime() - Date.now();
-  if (diffMs <= 0) return 'Reset now';
+  const diffMs = limitProviderPresentationApi.limitResetRemainingMs(value);
+  if (diffMs === null) return '';
+  if (diffMs === 0) return 'Reset now';
   return `Reset ${formatDuration(diffMs)}`;
 }
 function formatDuration(ms) {
@@ -756,21 +807,44 @@ function renderAppUpdatePill() {
   const version = s?.latest?.version || s?.installVersion || '';
   if (!s || !mode || !version || !s.showUpdateNotice) {
     pill.classList.add('hidden');
+    pill.classList.remove('is-ready');
     pill.setAttribute('title', '');
     els.appUpdatePillLabel.textContent = '';
+    els.appUpdatePillAction.removeAttribute('title');
+    els.appUpdatePillAction.removeAttribute('aria-label');
+    els.appUpdatePillAction.disabled = false;
+    els.appUpdatePillRestart.classList.add('hidden');
+    els.appUpdatePillRestartLabel.textContent = '';
+    els.appUpdatePillRestart.disabled = false;
+    els.appUpdatePillRestart.removeAttribute('title');
+    els.appUpdatePillRestart.removeAttribute('aria-label');
     setAppUpdatePillDisclosure(false);
     return;
   }
-  const hasReleaseNotes = mode !== 'install' && releaseNoteGroupsForCurrentLocale(s.latest).length > 0;
+  const hasReleaseNotes = releaseNoteGroupsForCurrentLocale(s.latest).length > 0;
   setAppUpdatePillDisclosure(hasReleaseNotes);
   pill.classList.remove('hidden');
+  pill.classList.toggle('is-ready', mode === 'install');
   els.appUpdatePillDismiss.classList.toggle('hidden', mode === 'install' || s.installBusy);
-  pill.setAttribute('title', mode === 'install' ? t('settings.appUpdate.ready') : (s.latest?.name || `v${version}`));
+  pill.setAttribute('title', '');
+  const releaseLabel = hasReleaseNotes
+    ? t('settings.appUpdate.whatsNew', { version })
+    : (s.latest?.name || `v${version}`);
+  els.appUpdatePillAction.setAttribute('title', releaseLabel);
+  els.appUpdatePillAction.setAttribute('aria-label', releaseLabel);
+  els.appUpdatePillAction.disabled = mode === 'install' && !hasReleaseNotes && !s.latest?.htmlUrl;
+  els.appUpdatePillRestart.classList.toggle('hidden', mode !== 'install');
+  els.appUpdatePillRestart.disabled = Boolean(s.installBusy);
+  els.appUpdatePillRestartLabel.textContent = mode === 'install'
+    ? t('settings.appUpdate.restartShort')
+    : '';
+  els.appUpdatePillRestart.setAttribute('title', t('settings.appUpdate.ready'));
+  els.appUpdatePillRestart.setAttribute('aria-label', t('settings.appUpdate.restart'));
   if (s.installPhase === 'downloading' && Number.isFinite(s.installProgress)) {
     els.appUpdatePillLabel.textContent = `${Math.round(s.installProgress)}%`;
   } else {
     els.appUpdatePillLabel.textContent = mode === 'install'
-      ? `↻ ${t('settings.appUpdate.restart')}`
+      ? `v${version}`
       : `↑ v${version}`;
   }
 }
@@ -900,6 +974,20 @@ function renderSettingsAppUpdateRow() {
   } else {
     els.appUpdateMessage.textContent = '';
     els.appUpdateMessage.classList.remove('error');
+  }
+}
+
+function renderAutomaticAppUpdateControl() {
+  if (!els.automaticAppUpdatesInput) return;
+  const control = appUpdatePresentationApi.automaticAppUpdateControlState({
+    preferenceEnabled: state.settings?.automaticAppUpdates,
+    updateState: state.appUpdate
+  });
+  els.automaticAppUpdatesInput.checked = control.checked;
+  els.automaticAppUpdatesInput.disabled = control.disabled;
+  els.automaticAppUpdatesRow?.classList.toggle('is-disabled', control.unavailable);
+  if (els.automaticAppUpdatesNote) {
+    els.automaticAppUpdatesNote.textContent = t(control.descriptionKey);
   }
 }
 
@@ -1056,33 +1144,75 @@ function easeOutQuart(t) { return 1 - Math.pow(1 - t, 4); }
 // frame and overwrites a later static update (e.g. switching to a zero period
 // mid-animation).
 let numberAnimHandle = 0;
+let numberAnimTarget = null;
+let numberAnimValue = 0;
 function cancelNumberAnimation() {
-  if (numberAnimHandle) { cancelAnimationFrame(numberAnimHandle); numberAnimHandle = 0; }
+  if (numberAnimHandle) cancelAnimationFrame(numberAnimHandle);
+  numberAnimHandle = 0;
+  numberAnimTarget = null;
+}
+
+function headlineNumberIsAnimatingTo(value) {
+  return Boolean(numberAnimHandle) && numberAnimTarget === value;
 }
 
 function animateNumber(el, from, to, duration = 1000, onDone = null) {
   cancelNumberAnimation();
   if (prefersReducedMotion()) {
     el.textContent = formatNumber(to);
+    numberAnimValue = to;
     if (typeof onDone === 'function') onDone();
     return;
   }
   const start = performance.now();
   const delta = to - from;
+  numberAnimTarget = to;
+  numberAnimValue = from;
   function frame(now) {
     const progress = Math.min(1, (now - start) / duration);
-    el.textContent = formatNumber(from + delta * easeOutQuart(progress));
+    numberAnimValue = from + delta * easeOutQuart(progress);
+    el.textContent = formatNumber(numberAnimValue);
     if (progress < 1) {
       numberAnimHandle = requestAnimationFrame(frame);
     } else {
       numberAnimHandle = 0;
+      numberAnimTarget = null;
+      numberAnimValue = to;
       if (typeof onDone === 'function') onDone();
     }
   }
   numberAnimHandle = requestAnimationFrame(frame);
 }
 
-const rowNumberAnimationHandles = new Map();
+const rowNumberAnimations = new Map();
+const rowBarAnimations = new Map();
+const rowRenderFingerprints = new WeakMap();
+const largeSessionContainmentScheduler = createAfterLayoutScheduler(
+  typeof requestAnimationFrame === 'function' ? requestAnimationFrame : null,
+  typeof cancelAnimationFrame === 'function' ? cancelAnimationFrame : null
+);
+
+function updateLargeSessionContainment(enabled, { remeasure = false } = {}) {
+  els.breakdown.classList.toggle('large-session-list', enabled);
+  if (!enabled) {
+    largeSessionContainmentScheduler.cancel();
+    els.breakdown.classList.remove('large-session-list-ready');
+    return;
+  }
+  if (remeasure) {
+    largeSessionContainmentScheduler.cancel();
+    els.breakdown.classList.remove('large-session-list-ready');
+  }
+  if (largeSessionContainmentScheduler.pending() || els.breakdown.classList.contains('large-session-list-ready')) return;
+  // Let Chromium lay out every new row without size containment first. The
+  // `auto` intrinsic size can then retain each row's real block size before
+  // off-screen rendering is enabled, avoiding scroll-geometry corrections.
+  largeSessionContainmentScheduler.schedule(() => {
+    if (els.breakdown.classList.contains('large-session-list')) {
+      els.breakdown.classList.add('large-session-list-ready');
+    }
+  });
+}
 
 function prefersReducedMotion() {
   return motionPreferenceApi.shouldReduceMotion(state.settings?.reduceMotion, reducedMotionMedia?.matches);
@@ -1090,19 +1220,21 @@ function prefersReducedMotion() {
 
 function settleMotionAnimations() {
   cancelNumberAnimation();
+  numberAnimValue = state.currentTotal;
   els.totalTokens.textContent = formatNumber(state.currentTotal);
   updateTotalCompact(state.currentTotal);
-  for (const [el, handle] of rowNumberAnimationHandles) {
-    cancelAnimationFrame(handle);
-    const target = Number(el.dataset.motionTarget || el.dataset.motionValue || 0);
+  for (const [el, motion] of rowNumberAnimations) {
+    cancelAnimationFrame(motion.handle);
+    const target = Number(motion.target ?? el.dataset.motionTarget ?? el.dataset.motionValue ?? 0);
     el.textContent = formatNumber(target);
     el.dataset.motionValue = String(target);
     delete el.dataset.motionTarget;
   }
-  rowNumberAnimationHandles.clear();
+  rowNumberAnimations.clear();
   for (const animation of document.getAnimations?.() || []) {
     try { animation.finish(); } catch (_) { animation.cancel(); }
   }
+  rowBarAnimations.clear();
 }
 
 function applyReduceMotionPreference(value) {
@@ -1113,8 +1245,10 @@ function applyReduceMotionPreference(value) {
 }
 
 function captureBreakdownMotion() {
+  const rows = Array.from(els.breakdown?.querySelectorAll('.row[data-key]') || []);
+  if (!shouldAnimateBreakdownRows(rows.length, { reducedMotion: prefersReducedMotion() })) return null;
   const snapshot = new Map();
-  for (const row of els.breakdown?.querySelectorAll('.row[data-key]') || []) {
+  for (const row of rows) {
     const rect = row.getBoundingClientRect();
     const fill = row.querySelector('.bar-fill');
     const trackWidth = fill?.parentElement?.getBoundingClientRect().width || 0;
@@ -1129,46 +1263,52 @@ function captureBreakdownMotion() {
 }
 
 function animateRowNumber(el, from, to, duration = 420) {
-  const previousHandle = rowNumberAnimationHandles.get(el);
-  if (previousHandle) cancelAnimationFrame(previousHandle);
-  if (!Number.isFinite(from) || !Number.isFinite(to) || from === to || prefersReducedMotion()) {
+  const previous = rowNumberAnimations.get(el);
+  if (previous?.target === to) return;
+  if (previous) cancelAnimationFrame(previous.handle);
+  const startValue = Number.isFinite(previous?.value) ? previous.value : from;
+  if (!Number.isFinite(startValue) || !Number.isFinite(to) || startValue === to || prefersReducedMotion()) {
     el.textContent = formatNumber(to);
     el.dataset.motionValue = String(Number(to) || 0);
     delete el.dataset.motionTarget;
-    rowNumberAnimationHandles.delete(el);
+    rowNumberAnimations.delete(el);
     return;
   }
   const startedAt = performance.now();
-  const delta = to - from;
-  el.textContent = formatNumber(from);
-  el.dataset.motionValue = String(from);
+  const delta = to - startValue;
+  const motion = { handle: 0, target: to, value: startValue };
+  el.textContent = formatNumber(startValue);
+  el.dataset.motionValue = String(startValue);
   el.dataset.motionTarget = String(to);
   function frame(now) {
     if (prefersReducedMotion()) {
       el.textContent = formatNumber(to);
       el.dataset.motionValue = String(Number(to) || 0);
       delete el.dataset.motionTarget;
-      rowNumberAnimationHandles.delete(el);
+      if (rowNumberAnimations.get(el) === motion) rowNumberAnimations.delete(el);
       return;
     }
     const progress = Math.min(1, (now - startedAt) / duration);
-    const current = from + delta * easeOutQuart(progress);
-    el.textContent = formatNumber(current);
-    el.dataset.motionValue = String(current);
+    motion.value = startValue + delta * easeOutQuart(progress);
+    el.textContent = formatNumber(motion.value);
+    el.dataset.motionValue = String(motion.value);
     if (progress < 1) {
-      rowNumberAnimationHandles.set(el, requestAnimationFrame(frame));
+      motion.handle = requestAnimationFrame(frame);
     } else {
       delete el.dataset.motionTarget;
-      rowNumberAnimationHandles.delete(el);
+      if (rowNumberAnimations.get(el) === motion) rowNumberAnimations.delete(el);
     }
   }
-  rowNumberAnimationHandles.set(el, requestAnimationFrame(frame));
+  motion.handle = requestAnimationFrame(frame);
+  rowNumberAnimations.set(el, motion);
 }
 
 function animateBreakdownFrom(snapshot, { duration = 420 } = {}) {
-  if (prefersReducedMotion()) return;
+  if (!snapshot) return;
+  const rows = Array.from(els.breakdown?.querySelectorAll('.row[data-key]') || []);
+  if (!shouldAnimateBreakdownRows(rows.length, { reducedMotion: prefersReducedMotion() })) return;
   let enteringIndex = 0;
-  for (const row of els.breakdown?.querySelectorAll('.row[data-key]') || []) {
+  for (const row of rows) {
     const previous = snapshot.get(row.dataset.key);
     const value = Number(row.dataset.motionValue || 0);
     const fill = row.querySelector('.bar-fill');
@@ -1202,9 +1342,14 @@ function animateBreakdownFrom(snapshot, { duration = 420 } = {}) {
 }
 
 function animateBarBetween(fill, fromScale, toScale, delay = 0, duration = 420) {
-  if (!fill?.animate || Math.abs(toScale - fromScale) < 0.001) return;
+  if (!fill?.animate) return;
+  const previous = rowBarAnimations.get(fill);
+  const previousIsActive = previous?.animation.pending || previous?.animation.playState === 'running';
+  if (previousIsActive && Math.abs(previous.target - toScale) < 0.001) return;
   for (const animation of fill.getAnimations()) animation.cancel();
-  fill.animate([
+  rowBarAnimations.delete(fill);
+  if (Math.abs(toScale - fromScale) < 0.001) return;
+  const animation = fill.animate([
     { transform: `scaleX(${fromScale})` },
     { transform: `scaleX(${toScale})` }
   ], {
@@ -1213,6 +1358,13 @@ function animateBarBetween(fill, fromScale, toScale, delay = 0, duration = 420) 
     easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
     fill: 'backwards'
   });
+  const motion = { animation, target: toScale };
+  const forget = () => {
+    if (rowBarAnimations.get(fill) === motion) rowBarAnimations.delete(fill);
+  };
+  animation.onfinish = forget;
+  animation.oncancel = forget;
+  rowBarAnimations.set(fill, motion);
 }
 
 function captureTrendBarMotion() {
@@ -1297,14 +1449,11 @@ function applyBarScale(fill, scale) {
   const safeScale = Math.max(0, Math.min(1, Number(scale) || 0));
   fill.style.setProperty('--bar-scale', String(safeScale));
   if (!state.animateBarsFromZero || prefersReducedMotion() || !fill.animate) return;
-  for (const animation of fill.getAnimations()) animation.cancel();
-  fill.animate([
-    { transform: 'scaleX(0)' },
-    { transform: `scaleX(${safeScale})` }
-  ], { duration: 420, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' });
+  animateBarBetween(fill, 0, safeScale, 0, 420);
 }
 
 function rowWidth(value, max) {
+  if (Number(value) <= 0) return 0;
   return max > 0 ? Math.max(2, Math.min(100, (value / max) * 100)) : 0;
 }
 
@@ -1322,11 +1471,91 @@ function rowTemplate(rowData) {
   return row;
 }
 
-function updateRow(row, { name, subtitle, detail, value, cost, max, color, barBackground, accordionRows, stale, platform, local, client, kind, cacheReadTokens, outputTokens }) {
+function renderDeviceAccordion(accordionInner, deviceDetail) {
+  const signature = JSON.stringify([
+    toolIconsEnabled(state.settings?.showToolIcons),
+    deviceDetail.emptyText,
+    deviceDetail.metaParts,
+    deviceDetail.tools.map((tool) => [
+      tool.key,
+      tool.value,
+      Math.round(tool.percent),
+      tool.color,
+      tool.models.map((model) => [model.key, model.value])
+    ])
+  ]);
+  if (accordionInner.dataset.signature === signature) return;
+
+  const content = document.createElement('div');
+  content.className = 'accordion-content device-breakdown';
+  if (deviceDetail.tools.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'device-breakdown-empty';
+    empty.textContent = deviceDetail.emptyText;
+    content.append(empty);
+  } else {
+    for (const tool of deviceDetail.tools) {
+      const toolGroup = document.createElement('div');
+      toolGroup.className = 'device-tool';
+      const head = document.createElement('div');
+      head.className = 'device-tool-head';
+      const label = document.createElement('div');
+      label.className = 'device-tool-label';
+      const mark = document.createElement('span');
+      if (toolIconsEnabled(state.settings?.showToolIcons) && clientsWithIcon.has(tool.client)) {
+        mark.className = `device-tool-mark row-icon row-icon-${tool.client}`;
+      } else {
+        mark.className = 'device-tool-mark dot';
+        mark.style.background = tool.color;
+      }
+      const name = document.createElement('span');
+      name.className = 'device-tool-name';
+      name.textContent = tool.name;
+      const percent = document.createElement('span');
+      percent.className = 'accordion-pct';
+      percent.textContent = `${Math.round(tool.percent)}%`;
+      label.append(mark, name, percent);
+      const metrics = document.createElement('span');
+      metrics.className = 'device-tool-metrics';
+      metrics.textContent = formatNumber(tool.value);
+      head.append(label, metrics);
+      toolGroup.append(head);
+
+      if (tool.models.length > 0) {
+        const modelList = document.createElement('div');
+        modelList.className = 'device-model-list';
+        for (const model of tool.models) {
+          const modelRow = document.createElement('div');
+          modelRow.className = 'device-model-row';
+          const modelName = document.createElement('span');
+          modelName.className = 'device-model-name';
+          modelName.textContent = model.name;
+          const modelValue = document.createElement('span');
+          modelValue.className = 'device-model-value';
+          modelValue.textContent = formatCompact(model.value);
+          modelRow.append(modelName, modelValue);
+          modelList.append(modelRow);
+        }
+        toolGroup.append(modelList);
+      }
+      content.append(toolGroup);
+    }
+  }
+  if (deviceDetail.metaParts.length > 0) {
+    const meta = document.createElement('div');
+    meta.className = 'device-meta';
+    meta.textContent = deviceDetail.metaParts.join(' · ');
+    content.append(meta);
+  }
+  accordionInner.replaceChildren(content);
+  accordionInner.dataset.signature = signature;
+}
+
+function updateRow(row, { name, subtitle, detail, value, cost, max, color, barBackground, accordionRows, deviceDetail, stale, platform, local, client, kind, cacheReadTokens, outputTokens }) {
   const width = rowWidth(value, max);
   const isExpanded = row.classList.contains('expanded');
   row.className = `row${kind ? ` ${kind}-row` : ''}${stale ? ' stale' : ''}${local ? ' local' : ''}`;
-  if (local) row.title = 'This device';
+  row.title = local ? 'This device' : '';
   
   if (cacheReadTokens !== undefined || outputTokens !== undefined) {
     row.dataset.cacheRead = cacheReadTokens || 0;
@@ -1363,7 +1592,11 @@ function updateRow(row, { name, subtitle, detail, value, cost, max, color, barBa
   applyBarScale(fill, width / 100);
 
   const accordionInner = row.querySelector('.row-accordion-inner');
-  if (Array.isArray(accordionRows) && accordionRows.length > 0) {
+  if (deviceDetail) {
+    renderDeviceAccordion(accordionInner, deviceDetail);
+    row.classList.add('has-accordion');
+    if (isExpanded) row.classList.add('expanded');
+  } else if (Array.isArray(accordionRows) && accordionRows.length > 0) {
     const accordionSignature = JSON.stringify(accordionRows.map((tool) => [tool.name, tool.value, Math.round(tool.percent), tool.color]));
     if (accordionInner.dataset.signature !== accordionSignature) {
       const content = document.createElement('div');
@@ -1450,8 +1683,10 @@ function applyHomeListMark(mark, iconKind, color) {
   mark.style.background = color;
 }
 
-function renderRows(rows, { showProjectIncompleteHint = false } = {}) {
-  if (rows.length === 0 && !showProjectIncompleteHint) {
+function renderRows(rows, { incompleteHint = '' } = {}) {
+  const largeSessionList = isLargeSessionBreakdown(state.breakdown, rows.length);
+  if (rows.length === 0 && !incompleteHint) {
+    updateLargeSessionContainment(false);
     els.breakdown.replaceChildren();
     state.rowSignature = '';
     return;
@@ -1460,16 +1695,17 @@ function renderRows(rows, { showProjectIncompleteHint = false } = {}) {
   const liveMotionSnapshot = !state.periodMotionActive && !state.animateBarsFromZero
     ? captureBreakdownMotion()
     : null;
-  const hintText = showProjectIncompleteHint ? t('projects.incomplete') : '';
+  const hintText = incompleteHint ? t(incompleteHint) : '';
   const signature = JSON.stringify([state.breakdown, hintText, rows.map((row) => row.key)]);
   const children = Array.from(els.breakdown.children);
-  const existingHint = children.find((child) => child.classList.contains('project-incomplete-hint'));
+  const existingHint = children.find((child) => child.classList.contains('breakdown-incomplete-hint'));
   const existing = new Map(children.filter((child) => child !== existingHint).map((child) => [child.dataset.key, child]));
-  if (signature !== state.rowSignature) {
+  const structureChanged = signature !== state.rowSignature;
+  if (structureChanged) {
     const nodes = rows.map((row) => existing.get(row.key) || rowTemplate(row));
-    if (showProjectIncompleteHint) {
+    if (incompleteHint) {
       const hint = existingHint || document.createElement('p');
-      hint.className = 'project-incomplete-hint';
+      hint.className = 'breakdown-incomplete-hint';
       hint.setAttribute('role', 'status');
       hint.textContent = hintText;
       nodes.unshift(hint);
@@ -1477,12 +1713,24 @@ function renderRows(rows, { showProjectIncompleteHint = false } = {}) {
     els.breakdown.replaceChildren(...nodes);
     state.rowSignature = signature;
   }
+  updateLargeSessionContainment(largeSessionList, { remeasure: structureChanged });
   const current = new Map(Array.from(els.breakdown.children)
-    .filter((child) => !child.classList.contains('project-incomplete-hint'))
+    .filter((child) => !child.classList.contains('breakdown-incomplete-hint'))
     .map((child) => [child.dataset.key, child]));
+  const renderContext = {
+    breakdown: state.breakdown,
+    currency: currentCurrency(),
+    currencyRatesEffective: state.settings?.currencyRatesEffective || null,
+    locale: currentLocale(),
+    showToolIcons: toolIconsEnabled(state.settings?.showToolIcons)
+  };
   for (const rowData of rows) {
     const row = current.get(rowData.key);
-    if (row) updateRow(row, { ...rowData, max });
+    if (!row) continue;
+    const fingerprint = rowRenderFingerprint(rowData, max, renderContext);
+    if (rowRenderFingerprints.get(row) === fingerprint) continue;
+    updateRow(row, { ...rowData, max });
+    rowRenderFingerprints.set(row, fingerprint);
   }
   if (liveMotionSnapshot) animateBreakdownFrom(liveMotionSnapshot, { duration: 600 });
 }
@@ -1495,6 +1743,31 @@ function deviceColor(stale) {
   return stale ? deviceStaleColor : deviceAccent;
 }
 
+function deviceRuntimeLabel(value) {
+  if (value === 'electron-widget') return t('devices.runtime.widget');
+  if (value === 'headless-agent') return t('devices.runtime.agent');
+  return String(value || '');
+}
+
+function deviceSyncedLabel(value) {
+  const date = value ? new Date(value) : null;
+  if (!date || Number.isNaN(date.getTime())) return '';
+  const diffMs = Math.max(0, Date.now() - date.getTime());
+  let age;
+  if (diffMs < 45_000) age = t('settings.age.justNow');
+  else {
+    const minutes = Math.round(diffMs / 60000);
+    if (minutes < 60) age = t('settings.age.minutesAgo', { minutes });
+    else {
+      const hours = Math.round(minutes / 60);
+      age = hours < 24
+        ? t('settings.age.hoursAgo', { hours })
+        : t('settings.age.daysAgo', { days: Math.round(hours / 24) });
+    }
+  }
+  return t('devices.synced', { age });
+}
+
 function stableColor(value, colors) {
   let hash = 0;
   for (const char of String(value || '')) hash = ((hash << 5) - hash + char.charCodeAt(0)) | 0;
@@ -1503,16 +1776,32 @@ function stableColor(value, colors) {
 
 function deviceRowsForPeriod() {
   const localId = state.settings?.deviceId || '';
-  return (state.stats?.devices || []).map((device) => ({
-    key: device.deviceId,
-    name: deviceLabel(device),
-    value: Number(device.periods?.[state.period]?.totalTokens || 0),
-    cost: Number(device.periods?.[state.period]?.costUsd || 0),
-    color: deviceColor(Boolean(device.stale)),
-    stale: Boolean(device.stale),
-    platform: device.platform || '',
-    local: Boolean(localId) && device.deviceId === localId
-  })).sort((a, b) => b.value - a.value);
+  return (state.stats?.devices || []).map((device) => {
+    const breakdown = deviceBreakdownApi.deviceBreakdownForPeriod(device, state.period, {
+      clientLabels,
+      clientColors,
+      fallbackColor: clientColors.default
+    });
+    const period = device.periods?.[state.period] || {};
+    const runtime = deviceRuntimeLabel(device.agentRuntime);
+    const version = device.agentVersion ? `${runtime ? `${runtime} ` : ''}v${device.agentVersion}` : runtime;
+    const metaParts = [deviceBreakdownApi.devicePlatformLabel(device.platform, device.osName, device.osVersion), version, deviceSyncedLabel(device.updatedAt)].filter(Boolean);
+    return {
+      key: device.deviceId,
+      name: deviceLabel(device),
+      value: breakdown.totalTokens,
+      cost: Number(period.costUsd || 0),
+      color: deviceColor(Boolean(device.stale)),
+      stale: Boolean(device.stale),
+      platform: device.platform || '',
+      local: Boolean(localId) && device.deviceId === localId,
+      deviceDetail: {
+        ...breakdown,
+        emptyText: breakdown.totalTokens > 0 ? t('devices.detailsUnavailable') : t('home.noTools'),
+        metaParts
+      }
+    };
+  }).sort((a, b) => b.value - a.value);
 }
 
 function toolRowsForPeriod(period) {
@@ -1664,7 +1953,7 @@ function limitProviderMeta(provider, provenance = null) {
 
 function limitProviderPlan(provider) {
   if (provider?.status && provider.status !== 'ok' && !provider.stale) return limitStatusLabel(provider.status, false);
-  const label = String(provider?.accountLabel || '').trim();
+  const label = String(provider?.planLabel || provider?.accountLabel || '').trim();
   if (label) return limitProviderPresentationApi.limitProviderDisplayLabel(label);
   return provider?.status && provider.status !== 'ok' ? limitStatusLabel(provider.status, false) : '';
 }
@@ -1687,6 +1976,10 @@ function enabledLimitProviderSet() {
   return new Set(configuredLimitProviderSelection());
 }
 
+function limitProviderEnabled(providerName) {
+  return enabledLimitProviderSet().has(providerName);
+}
+
 function limitProviderSelectionIncluding(providerName) {
   const selected = new Set(configuredLimitProviderSelection());
   selected.add(providerName);
@@ -1706,6 +1999,24 @@ function windowForKind(provider, kind) {
 
 function windowsForKind(provider, kind) {
   return (provider?.windows || []).filter((window) => window.kind === kind);
+}
+
+function antigravityQuotaGroups(provider) {
+  const entries = (provider?.windows || [])
+    .filter((window) => window.kind === 'session' || window.kind === 'weekly')
+    .map((window) => {
+      const presentation = limitProviderPresentationApi.antigravityQuotaWindow(window);
+      return presentation ? { ...presentation, window } : null;
+    });
+  // Legacy GetUserStatus pools have model names rather than group + period
+  // labels. Keep their existing flat layout instead of guessing a hierarchy.
+  if (entries.length === 0 || entries.some((entry) => entry === null)) return [];
+  const groups = new Map();
+  for (const entry of entries) {
+    if (!groups.has(entry.groupLabel)) groups.set(entry.groupLabel, []);
+    groups.get(entry.groupLabel).push(entry);
+  }
+  return [...groups].map(([label, windows]) => ({ label, windows }));
 }
 
 function formatLimitAmount(value) {
@@ -1769,14 +2080,14 @@ function codexResetCreditExpiryDateLabel(date) {
   return new Intl.DateTimeFormat(currentLocale(), { month: 'numeric', day: 'numeric' }).format(date);
 }
 
-function resetCreditsTooltipShouldHoldRender() {
-  if (!state.resetCreditsTooltipActive || !els.limitsPanel) return false;
-  return Boolean(els.limitsPanel.querySelector('.limit-reset-credits-info-wrap:hover, .limit-reset-credits-info-wrap:focus-within'));
+function limitDetailTooltipShouldHoldRender() {
+  if (!state.limitDetailTooltipActive || !els.limitsPanel) return false;
+  return Boolean(els.limitsPanel.querySelector('.limit-detail-tooltip-wrap:hover, .limit-detail-tooltip-wrap:focus-within'));
 }
 
-function flushPendingResetCreditsTooltipRender() {
-  if (!state.resetCreditsTooltipRenderPending || state.breakdown !== 'limits') return;
-  state.resetCreditsTooltipRenderPending = false;
+function flushPendingLimitDetailTooltipRender() {
+  if (!state.limitDetailTooltipRenderPending || state.breakdown !== 'limits') return;
+  state.limitDetailTooltipRenderPending = false;
   renderLimits();
 }
 
@@ -1829,19 +2140,19 @@ function codexResetCreditsNode(resetCredits) {
     expiryGroup.append(timeline);
     if (expirationDates.length > 1) {
       const infoWrap = document.createElement('span');
-      infoWrap.className = 'limit-reset-credits-info-wrap';
-      infoWrap.classList.toggle('has-opened', state.resetCreditsTooltipHasOpened);
+      infoWrap.className = 'limit-detail-tooltip-wrap';
+      infoWrap.classList.toggle('has-opened', state.limitDetailTooltipHasOpened);
       const info = document.createElement('span');
-      info.className = 'limit-reset-credits-info';
+      info.className = 'limit-detail-tooltip-trigger';
       info.textContent = 'i';
       info.tabIndex = 0;
       info.setAttribute('aria-label', expirationDates.map((date, index) => `Reset ${index + 1}: ${codexResetCreditExpiryDetailLabel(date)}`).join(', '));
       const tooltip = document.createElement('span');
-      tooltip.className = 'limit-reset-credits-tooltip';
+      tooltip.className = 'limit-detail-tooltip';
       tooltip.setAttribute('role', 'tooltip');
       expirationDates.forEach((date) => {
         const row = document.createElement('span');
-        row.className = 'limit-reset-credit-detail';
+        row.className = 'limit-detail-tooltip-row';
         const label = document.createElement('span');
         label.textContent = codexResetCreditExpiryDateLabel(date);
         const tooltipExpiry = document.createElement('span');
@@ -1850,15 +2161,15 @@ function codexResetCreditsNode(resetCredits) {
         tooltip.append(row);
       });
       const markResetCreditsTooltipOpened = () => {
-        state.resetCreditsTooltipHasOpened = true;
-        state.resetCreditsTooltipActive = true;
+        state.limitDetailTooltipHasOpened = true;
+        state.limitDetailTooltipActive = true;
         infoWrap.classList.add('has-opened');
       };
       const releaseResetCreditsTooltip = () => {
         requestAnimationFrame(() => {
-          if (infoWrap.matches(':hover, :focus-within')) return;
-          state.resetCreditsTooltipActive = false;
-          flushPendingResetCreditsTooltipRender();
+          if (limitDetailTooltipShouldHoldRender()) return;
+          state.limitDetailTooltipActive = false;
+          flushPendingLimitDetailTooltipRender();
         });
       };
       infoWrap.addEventListener('pointerenter', markResetCreditsTooltipOpened);
@@ -1875,6 +2186,92 @@ function codexResetCreditsNode(resetCredits) {
   return item;
 }
 
+function openrouterSpendEntries(balance) {
+  return [
+    ['Today', optionalFiniteNumber(balance?.todaySpend)],
+    ['Week', optionalFiniteNumber(balance?.weekSpend)],
+    ['Month', optionalFiniteNumber(balance?.monthSpend)],
+    ['All time', optionalFiniteNumber(balance?.allTimeSpend)]
+  ].filter(([, value]) => value !== null);
+}
+
+function openrouterSpendNode(balance) {
+  const entries = openrouterSpendEntries(balance);
+  if (entries.length === 0) return null;
+  const currency = balance?.currency || 'USD';
+  const preferredSummary = entries.filter(([label]) => label === 'Today' || label === 'Month');
+  const summaryEntries = preferredSummary.length > 0 ? preferredSummary : entries.slice(0, 2);
+  const summaryText = summaryEntries
+    .map(([label, value]) => `${label} ${formatMoney(value, currency)}`)
+    .join(' · ');
+
+  const item = document.createElement('div');
+  item.className = 'limit-window limit-window-wide limit-window-note limit-spend';
+  const line = document.createElement('div');
+  line.className = 'limit-window-text limit-spend-line';
+  const label = document.createElement('span');
+  label.textContent = 'Spend';
+  const right = document.createElement('span');
+  right.className = 'limit-spend-right';
+  const summary = document.createElement('span');
+  summary.className = 'limit-spend-summary';
+  summary.textContent = summaryText;
+  right.append(summary);
+
+  if (entries.length > summaryEntries.length) {
+    const infoWrap = document.createElement('span');
+    infoWrap.className = 'limit-detail-tooltip-wrap limit-spend-info-wrap';
+    infoWrap.classList.toggle('has-opened', state.limitDetailTooltipHasOpened);
+    const info = document.createElement('span');
+    info.className = 'limit-detail-tooltip-trigger';
+    info.textContent = 'i';
+    info.tabIndex = 0;
+    info.setAttribute(
+      'aria-label',
+      entries.map(([entryLabel, value]) => `${entryLabel}: ${formatMoney(value, currency)}`).join(', ')
+    );
+    const tooltip = document.createElement('span');
+    tooltip.className = 'limit-detail-tooltip';
+    tooltip.setAttribute('role', 'tooltip');
+    entries.forEach(([entryLabel, value]) => {
+      const row = document.createElement('span');
+      row.className = 'limit-detail-tooltip-row';
+      const tooltipLabel = document.createElement('span');
+      tooltipLabel.textContent = entryLabel;
+      const tooltipValue = document.createElement('span');
+      tooltipValue.textContent = formatMoney(value, currency);
+      row.append(tooltipLabel, tooltipValue);
+      tooltip.append(row);
+    });
+    const markSpendTooltipOpened = () => {
+      state.limitDetailTooltipHasOpened = true;
+      state.limitDetailTooltipActive = true;
+      infoWrap.classList.add('has-opened');
+    };
+    const releaseSpendTooltip = () => {
+      requestAnimationFrame(() => {
+        if (limitDetailTooltipShouldHoldRender()) return;
+        state.limitDetailTooltipActive = false;
+        flushPendingLimitDetailTooltipRender();
+      });
+    };
+    infoWrap.addEventListener('pointerenter', markSpendTooltipOpened);
+    infoWrap.addEventListener('focusin', markSpendTooltipOpened);
+    infoWrap.addEventListener('pointerleave', releaseSpendTooltip);
+    infoWrap.addEventListener('focusout', releaseSpendTooltip);
+    infoWrap.append(info, tooltip);
+    right.append(infoWrap);
+  }
+
+  line.append(label, right);
+  item.append(line);
+  item.setAttribute(
+    'aria-label',
+    ['Spend', ...entries.map(([entryLabel, value]) => `${entryLabel} ${formatMoney(value, currency)}`)].join(', ')
+  );
+  return item;
+}
+
 const CURRENCY_SYMBOLS = { CNY: '¥', USD: '$' };
 
 function formatMoney(value, currency) {
@@ -1888,6 +2285,15 @@ function optionalFiniteNumber(value) {
   if (value === null || value === undefined || value === '') return null;
   const number = Number(value);
   return Number.isFinite(number) ? number : null;
+}
+
+function openrouterCreditsWindow(provider) {
+  const windows = Array.isArray(provider?.windows) ? provider.windows : [];
+  // Older hubs normalized windows before `metric` existed. Keep the label
+  // fallback only for those mixed-version payloads.
+  return windows.find((window) => window?.metric === 'credits')
+    || windows.find((window) => !window?.metric && window?.label === 'Credits')
+    || null;
 }
 
 function formatLimitWindowValue(window, fillPercent, hasPercent, showUsed) {
@@ -1980,7 +2386,9 @@ function limitWindowNode(label, window, color, tone = 1, valueOverride = null, d
   const meter = limitMeterNode(color, fillPercent, tone);
   const reset = document.createElement('div');
   reset.className = 'limit-reset';
-  const resetText = formatReset(window?.resetsAt) || window?.resetDescription || '';
+  const resetText = window?.resetsAt
+    ? formatReset(window.resetsAt)
+    : window?.resetDescription || '';
   if (detailText) {
     // Keep the reset text left-aligned (consistent with every other provider)
     // and add the absolute count on the right, under the top-line percentage.
@@ -2345,12 +2753,39 @@ function renderProviderWindows(provider, color) {
     }
   } else if (provider.provider === 'antigravity') {
     windows.classList.add('limit-windows-antigravity');
-    const weeklyWindows = windowsForKind(provider, 'weekly');
-    const visibleWindows = weeklyWindows.length > 0 ? weeklyWindows : [null];
-    for (const weekly of visibleWindows) {
-      const node = limitWindowNode(weekly?.label || 'Weekly', weekly, color, 0.78);
-      node.classList.add('limit-window-wide');
-      windows.append(node);
+    const quotaGroups = antigravityQuotaGroups(provider);
+    if (quotaGroups.length > 0) {
+      windows.classList.add('limit-windows-antigravity-grouped');
+      for (const group of quotaGroups) {
+        const groupNode = document.createElement('div');
+        groupNode.className = 'limit-window-group';
+        groupNode.setAttribute('role', 'group');
+        groupNode.setAttribute('aria-label', group.label);
+        const title = document.createElement('div');
+        title.className = 'limit-window-group-title';
+        title.textContent = group.label;
+        const groupWindows = document.createElement('div');
+        groupWindows.className = 'limit-window-group-items';
+        for (const entry of group.windows) {
+          const opacity = entry.window.kind === 'session' ? 0.95 : 0.78;
+          groupWindows.append(limitWindowNode(
+            entry.windowLabel,
+            { ...entry.window, label: entry.windowLabel },
+            color,
+            opacity
+          ));
+        }
+        groupNode.append(title, groupWindows);
+        windows.append(groupNode);
+      }
+    } else {
+      const weeklyWindows = windowsForKind(provider, 'weekly');
+      const visibleWindows = weeklyWindows.length > 0 ? weeklyWindows : [null];
+      for (const quotaWindow of visibleWindows) {
+        const node = limitWindowNode(quotaWindow?.label || 'Weekly', quotaWindow, color, 0.78);
+        node.classList.add('limit-window-wide');
+        windows.append(node);
+      }
     }
   } else if (provider.provider === 'opencode') {
     // Go reports session/weekly/monthly windows ($12/$30/$60); Zen reports a prepaid balance (and,
@@ -2378,9 +2813,52 @@ function renderProviderWindows(provider, color) {
       node.classList.add('limit-window-wide');
       windows.append(node);
     }
+  } else if (provider.provider === 'openrouter') {
+    windows.classList.add('limit-windows-openrouter');
+    const balance = provider.balance || null;
+    const currency = balance?.currency || 'USD';
+    const balanceAmount = optionalFiniteNumber(balance?.amount);
+    const creditsWindow = openrouterCreditsWindow(provider);
+    if (balanceAmount !== null) {
+      const balanceWindow = creditsWindow || (balanceAmount === 0
+        ? { usedPercent: 100, remainingPercent: 0, showMeter: true }
+        : { showMeter: false });
+      const balanceNode = limitWindowNode(
+        'Balance',
+        { ...balanceWindow, label: 'Balance' },
+        color,
+        0.95,
+        `${formatMoney(balanceAmount, currency)} left`
+      );
+      balanceNode.classList.add('limit-window-wide', 'limit-window-no-reset');
+      windows.append(balanceNode);
+    }
+    for (const quotaWindow of (provider.windows || []).filter((window) => window !== creditsWindow)) {
+      const hasMeter = quotaWindow?.showMeter !== false;
+      const remaining = optionalFiniteNumber(quotaWindow?.remaining);
+      const limit = optionalFiniteNumber(quotaWindow?.limit);
+      const absoluteDetail = hasMeter && remaining !== null && limit !== null
+        ? `${formatMoney(remaining, 'USD')} left · ${formatMoney(limit, 'USD')} total`
+        : '';
+      const valueOverride = hasMeter ? null : (quotaWindow?.detail || '—');
+      const node = limitWindowNode(
+        quotaWindow?.label || 'Usage',
+        quotaWindow,
+        color,
+        hasMeter ? 0.85 : 0.6,
+        valueOverride,
+        absoluteDetail
+      );
+      node.classList.add('limit-window-wide');
+      if (!hasMeter) node.classList.add('limit-window-no-reset');
+      windows.append(node);
+    }
+    const spendNode = openrouterSpendNode(balance);
+    if (spendNode) windows.append(spendNode);
   } else if (provider.provider === 'deepseek') {
-    // DeepSeek is pay-as-you-go: render the prepaid balance as a meter so the
-    // provider uses the same visual language as fixed quota windows.
+    // DeepSeek does not expose a fixed quota denominator. This intentionally
+    // visualizes the balance relative to this month's inferred starting funds:
+    // current / (current + observed month spend).
     windows.classList.add('limit-windows-deepseek');
     const balance = provider.balance || null;
     if (balance) {
@@ -2522,6 +3000,32 @@ function renderProviderWindows(provider, color) {
       node.classList.add('limit-window-wide');
       windows.append(node);
     }
+  } else if (provider.provider === 'kimi') {
+    const fiveHour = windowForKind(provider, 'session');
+    const weekly = windowForKind(provider, 'weekly');
+    const monthly = windowForKind(provider, 'billing');
+    if (fiveHour) {
+      const node = limitWindowNode(fiveHour.label || '5-hour', fiveHour, color, 0.95);
+      if (!weekly) node.classList.add('limit-window-wide');
+      windows.append(node);
+    }
+    if (weekly) {
+      const node = limitWindowNode(weekly.label || 'Weekly', weekly, color, 0.68);
+      if (!fiveHour) node.classList.add('limit-window-wide');
+      windows.append(node);
+    }
+    if (monthly) {
+      const node = limitWindowNode(
+        monthly.label || 'Monthly',
+        monthly,
+        color,
+        0.5,
+        null,
+        monthly.detail || ''
+      );
+      node.classList.add('limit-window-wide');
+      windows.append(node);
+    }
   } else if (provider.provider === 'ollama') {
     const session = windowForKind(provider, 'session');
     const weekly = windowForKind(provider, 'weekly');
@@ -2572,9 +3076,14 @@ function renderLimitProviderRow(id, label, provider, color, options = {}) {
   return row;
 }
 
-function codexAccountTitle(provider, index) {
-  const email = String(provider?.accountEmail || '').trim();
-  if (email) return state.settings?.maskLimitAccountEmails ? accountIdentityApi.maskEmailAddress(email) : email;
+function codexAccountTitle(provider, index, providers = [provider]) {
+  const label = accountIdentityApi.codexAccountDisplayLabel(provider, providers, {
+    maskEmail: state.settings?.maskLimitAccountEmails,
+    // Limits presents raw account data such as email and Plus/Pro labels, so
+    // keep the provider's canonical English workspace name on this surface.
+    personalWorkspaceLabel: 'Personal'
+  });
+  if (label) return label;
   // Never fall back to the plan label here — "Plus" as a title reads like an
   // account name. The plan still shows on the right via limitProviderPlan().
   return `Account ${index + 1}`;
@@ -2591,7 +3100,7 @@ function renderCodexAccountGroup(label, providers, color) {
   const accountList = document.createElement('div');
   accountList.className = 'limit-account-list';
   providers.forEach((provider, index) => {
-    accountList.append(renderLimitProviderRow('codex', codexAccountTitle(provider, index), provider, color, {
+    accountList.append(renderLimitProviderRow('codex', codexAccountTitle(provider, index, providers), provider, color, {
       accountRow: true,
       accountTitle: true,
       allowSystemSwitch: true,
@@ -2634,6 +3143,18 @@ function renderMimoAccountGroup(label, providers, color) {
   return row;
 }
 
+function opencodeAccountTitle(provider, index) {
+  const name = String(provider?.accountName || '').trim();
+  if (name) return name;
+  // Older synced clients put the user-defined profile name in accountLabel.
+  // Keep those rows identifiable while new clients carry profile and plan in
+  // separate fields. Go/Zen are plan labels, never account identities.
+  const legacyName = String(provider?.accountLabel || '').trim();
+  return legacyName && legacyName !== 'Go' && legacyName !== 'Zen'
+    ? legacyName
+    : `Account ${index + 1}`;
+}
+
 function renderOpenCodeAccountGroup(label, providers, color) {
   const row = document.createElement('div');
   row.className = 'limit-row limit-row-group';
@@ -2644,8 +3165,39 @@ function renderOpenCodeAccountGroup(label, providers, color) {
   });
   const accountList = document.createElement('div');
   accountList.className = 'limit-account-list';
-  providers.forEach((provider) => {
-    accountList.append(renderLimitProviderRow('opencode', provider.accountLabel || 'OpenCode', provider, color, {
+  providers.forEach((provider, index) => {
+    const legacyProfileLabel = !provider?.accountName
+      && provider?.accountLabel
+      && provider.accountLabel !== 'Go'
+      && provider.accountLabel !== 'Zen';
+    accountList.append(renderLimitProviderRow('opencode', opencodeAccountTitle(provider, index), provider, color, {
+      accountRow: true,
+      showIcon: false,
+      ...(legacyProfileLabel ? { planText: '' } : {})
+    }));
+  });
+  row.append(head, accountList);
+  return row;
+}
+
+function openrouterAccountTitle(provider, index) {
+  const accountName = String(provider?.accountName || provider?.accountLabel || '').trim();
+  if (accountName.toLowerCase() === 'environment') return t('settings.openrouter.environment');
+  return accountName || `Account ${index + 1}`;
+}
+
+function renderOpenRouterAccountGroup(label, providers, color) {
+  const row = document.createElement('div');
+  row.className = `limit-row limit-row-group${providers.some((provider) => provider.stale) ? ' stale' : ''}`;
+  const groupProvider = { provider: 'openrouter', status: 'ok', windows: [] };
+  const head = renderLimitProviderHead('openrouter', label, groupProvider, color, {
+    planText: t('settings.openrouter.nAccounts', { count: providers.length }),
+    hideMeta: true
+  });
+  const accountList = document.createElement('div');
+  accountList.className = 'limit-account-list';
+  providers.forEach((provider, index) => {
+    accountList.append(renderLimitProviderRow('openrouter', openrouterAccountTitle(provider, index), provider, color, {
       accountRow: true,
       showIcon: false
     }));
@@ -2656,14 +3208,14 @@ function renderOpenCodeAccountGroup(label, providers, color) {
 
 function renderLimits() {
   if (!els.limitsPanel) return;
-  const holdResetCreditsTooltipRender = resetCreditsTooltipShouldHoldRender();
+  const holdLimitDetailTooltipRender = limitDetailTooltipShouldHoldRender();
   const holdCodexSwitchPopoverRender = codexSwitchPopoverShouldHoldRender();
-  if (holdResetCreditsTooltipRender || holdCodexSwitchPopoverRender) {
-    if (holdResetCreditsTooltipRender) state.resetCreditsTooltipRenderPending = true;
+  if (holdLimitDetailTooltipRender || holdCodexSwitchPopoverRender) {
+    if (holdLimitDetailTooltipRender) state.limitDetailTooltipRenderPending = true;
     if (holdCodexSwitchPopoverRender) state.codexSwitchPopoverRenderPending = true;
     return;
   }
-  state.resetCreditsTooltipRenderPending = false;
+  state.limitDetailTooltipRenderPending = false;
   state.codexSwitchPopoverRenderPending = false;
   const limitsEnabled = state.settings?.limitsEnabled !== false;
   const enabled = enabledLimitProviderSet();
@@ -2691,6 +3243,10 @@ function renderLimits() {
     }
     if (id === 'opencode' && Array.isArray(visibleProviders) && visibleProviders.length > 1) {
       nodes.push(renderOpenCodeAccountGroup(label, visibleProviders, color));
+      continue;
+    }
+    if (id === 'openrouter' && Array.isArray(visibleProviders) && visibleProviders.length > 1) {
+      nodes.push(renderOpenRouterAccountGroup(label, visibleProviders, color));
       continue;
     }
     if (id === 'mimo' && Array.isArray(visibleProviders) && visibleProviders.length > 1) {
@@ -3382,13 +3938,13 @@ function homeModuleShell(kind, title, viewId, meta = '') {
   module.setAttribute('aria-label', title);
   module.addEventListener('click', (event) => {
     if (event.target.closest('.home-activity-scroll')) return;
-    renderBreakdownChange(viewId);
+    renderBreakdownChange(viewId, { fromHome: true });
   });
   module.addEventListener('keydown', (event) => {
     if (event.target !== module) return;
     if (event.key !== 'Enter' && event.key !== ' ') return;
     event.preventDefault();
-    renderBreakdownChange(viewId);
+    renderBreakdownChange(viewId, { fromHome: true });
   });
   const head = document.createElement('div');
   head.className = 'home-module-head';
@@ -3417,13 +3973,23 @@ function homeModuleShell(kind, title, viewId, meta = '') {
   return { module, body };
 }
 
+function homeLimitAccountTitle(id, provider, index, providerEntries = [provider]) {
+  if (id === 'codex') return codexAccountTitle(provider, index, providerEntries);
+  if (id === 'mimo') return mimoAccountTitle(provider, index);
+  if (id === 'opencode') return opencodeAccountTitle(provider, index);
+  return String(provider?.accountEmail || provider?.accountName || '').trim() || `Account ${index + 1}`;
+}
+
 function homeLimitRows() {
   const enabled = enabledLimitProviderSet();
   const providerOrder = state.settings?.homeLimitProviderOrder || state.settings?.limitProviderOrder;
   const providerOptions = limitProviderOrderApi.orderedLimitProviders(LIMIT_PROVIDERS, providerOrder);
   const hasConfiguredOrder = Boolean(state.settings?.homeLimitProviderOrder);
   return homeOverviewApi.homeLimitAccountsForProviders({
-    providers: state.stats?.limits?.providers || [],
+    providers: (state.stats?.limits?.providers || []).map((provider) => ({
+      ...provider,
+      windows: limitProviderPresentationApi.limitProviderCompactWindows(provider, provider.windows)
+    })),
     providerOptions,
     enabledProviderIds: Array.from(enabled),
     hiddenProviderIds: Array.from(hiddenHomeLimitProviderSet()),
@@ -3433,12 +3999,21 @@ function homeLimitRows() {
     accountName: (provider, index, providerEntries) => {
       const id = String(provider?.provider || '').trim().toLowerCase();
       const option = providerOptions.find((entry) => entry.id === id);
-      return id === 'codex' && providerEntries.length > 1 ? codexAccountTitle(provider, index) : option?.label || id;
+      const providerTitle = option?.label || id;
+      if (providerEntries.length > 1) {
+        const accountTitle = homeLimitAccountTitle(id, provider, index, providerEntries);
+        return state.settings?.showHomeLimitProviderNames === true || state.settings?.showToolIcons === false
+          ? `${providerTitle} · ${accountTitle}`
+          : accountTitle;
+      }
+      return providerTitle;
     }
   });
 }
 
-function homeLimitWindowLabel(window) {
+function homeLimitWindowLabel(window, providerId = '', visibleWindows = []) {
+  const compactLabel = limitProviderPresentationApi.limitProviderCompactWindowLabel(providerId, window, visibleWindows);
+  if (compactLabel) return compactLabel;
   if (window?.kind === 'billing') {
     const label = String(window?.label || '').trim();
     if (label) return label;
@@ -3484,7 +4059,7 @@ function renderHomeLimitModule() {
       line.className = 'home-limit-window-line';
       const label = document.createElement('span');
       label.className = 'home-limit-window-label';
-      label.textContent = homeLimitWindowLabel(window);
+      label.textContent = homeLimitWindowLabel(window, row.providerId, row.windows);
       const value = document.createElement('span');
       value.className = 'home-list-value';
       const showUsed = Boolean(state.settings?.showLimitUsed);
@@ -3503,9 +4078,13 @@ function renderHomeLimitModule() {
       const resetAt = formatReset(window.resetsAt);
       const resetText = document.createElement('span');
       resetText.className = 'home-limit-reset';
-      resetText.textContent = resetAt || (window.resetDescription
+      const resetLabel = window.resetsAt
+        ? resetAt || '\u00a0'
+        : window.resetDescription
         ? t('home.reset', { value: window.resetDescription })
-        : '\u00a0');
+        : '\u00a0';
+      const periodLabel = limitProviderPresentationApi.limitProviderCompactWindowPeriodLabel(row.providerId, window, row.windows);
+      resetText.textContent = periodLabel && resetLabel !== '\u00a0' ? `${periodLabel} · ${resetLabel}` : resetLabel;
       metric.append(resetText);
       windows.append(metric);
     }
@@ -3629,15 +4208,7 @@ function renderHomeDeviceModule() {
 }
 
 function dailyWithHeatIntensity(daily) {
-  const points = Array.isArray(daily) ? daily : [];
-  if (points.some((point) => Number.isFinite(Number(point?.intensity)))) return points;
-  const metric = points.some((point) => Number(point?.cost || 0) > 0) ? 'cost' : 'tokens';
-  const max = Math.max(1, ...points.map((point) => Number(point?.[metric] || 0)));
-  return points.map((point) => {
-    const ratio = Number(point?.[metric] || 0) / max;
-    const intensity = ratio >= 0.75 ? 4 : ratio >= 0.5 ? 3 : ratio >= 0.25 ? 2 : ratio > 0 ? 1 : 0;
-    return { ...point, intensity };
-  });
+  return window.TokenMonitorUsageCharts.computeHeatmapIntensities(daily);
 }
 
 function applyHomeActivityScroll(scroller) {
@@ -3724,6 +4295,7 @@ function homeActivityTooltipEl() {
 
   const label = document.createElement('span');
   label.className = 'home-activity-tooltip-label';
+  label.dataset.homeActivityTooltipLabel = 'true';
   label.textContent = 'tokens';
 
   const date = document.createElement('span');
@@ -3836,6 +4408,7 @@ function setupHomeActivityHover(scroller) {
       activeCell = cell;
       activeCell.setAttribute('data-active', 'true');
       tooltip.querySelector('[data-home-activity-tooltip-count]').textContent = formatCompact(Number(cell.dataset.t || 0));
+      tooltip.querySelector('[data-home-activity-tooltip-label]').textContent = 'tokens';
       tooltip.querySelector('[data-home-activity-tooltip-date]').textContent = cell.dataset.d || '';
     }
     tooltip.dataset.visible = 'true';
@@ -3896,13 +4469,28 @@ function renderHomeTrendsModule() {
   const todayPeriod = state.stats?.periods?.today;
   const points = homeOverviewApi.patchDailyToday(rawDaily, today, Number(todayPeriod?.totalTokens || 0), Number(todayPeriod?.costUsd || 0));
   const activityLayout = homeOverviewApi.homeActivityHeatmapLayout();
-  const activity = charts.rollingYearHeatmap(dailyWithHeatIntensity(points), {
+  const heatMetric = state.settings?.heatmapMetric || 'cost';
+  const intensityField = heatMetric === 'cost' ? 'costIntensity' : 'tokenIntensity';
+  const intensityPoints = dailyWithHeatIntensity(points).map((p) => ({
+    ...p,
+    intensity: Number(p[intensityField] ?? p.intensity ?? 0)
+  }));
+  const activity = charts.rollingYearHeatmap(intensityPoints, {
     endDate: today,
     cell: activityLayout.cell,
     gap: activityLayout.gap
   });
-  const activeDays = activity.cells.filter((cell) => cell.intensity > 0).length;
-  const { module, body } = homeModuleShell('trends', t('home.activity'), 'trends', t('home.activeDays', { count: activeDays }));
+  const summaryActiveDays = state.stats?.historyPreview?.summary?.activeDays;
+  const activeDaysWindow = state.settings?.homeActiveDaysWindow || 'all';
+  const displayActiveDays = activeDaysWindow === 'year'
+    ? activity.cells.filter((cell) => cell.tokens > 0).length
+    : (Number.isFinite(summaryActiveDays)
+        ? summaryActiveDays
+        : activity.cells.filter((cell) => cell.tokens > 0).length);
+  const activeDaysLabel = activeDaysWindow === 'year'
+    ? t('home.activeDaysYear', { count: displayActiveDays })
+    : t('home.activeDays', { count: displayActiveDays });
+  const { module, body } = homeModuleShell('trends', t('home.activity'), 'trends', activeDaysLabel);
   const activityScroll = document.createElement('div');
   activityScroll.className = 'home-activity-scroll';
   activityScroll.tabIndex = 0;
@@ -4002,6 +4590,7 @@ function render() {
   const totalChanged = nextTotal !== state.currentTotal;
   if (state.suppressInitialNumberAnimation) {
     cancelNumberAnimation();
+    numberAnimValue = nextTotal;
     els.totalTokens.textContent = formatNumber(nextTotal);
     updateTotalCompact(nextTotal);
     state.suppressInitialNumberAnimation = false;
@@ -4010,13 +4599,15 @@ function render() {
     // widest endpoint first (a downward roll starts wider than it settles), so the
     // number never vanishes, clips, or resizes mid-roll. Re-fit on completion so a
     // window resize during the animation, or a downward settle, still ends correct.
-    const widest = formatNumber(nextTotal).length >= formatNumber(state.currentTotal).length ? nextTotal : state.currentTotal;
+    const animationFrom = numberAnimHandle ? numberAnimValue : state.currentTotal;
+    const widest = formatNumber(nextTotal).length >= formatNumber(animationFrom).length ? nextTotal : animationFrom;
     els.totalTokens.textContent = formatNumber(widest);
     updateTotalCompact(nextTotal);
-    animateNumber(els.totalTokens, state.currentTotal, nextTotal, state.periodMotionActive ? 800 : 1000, fitTotalNumber);
+    animateNumber(els.totalTokens, animationFrom, nextTotal, state.periodMotionActive ? 800 : 1000, fitTotalNumber);
     pulseLiveDot();
-  } else {
+  } else if (!headlineNumberIsAnimatingTo(nextTotal)) {
     cancelNumberAnimation();
+    numberAnimValue = nextTotal;
     els.totalTokens.textContent = formatNumber(nextTotal);
     updateTotalCompact(nextTotal);
   }
@@ -4025,6 +4616,7 @@ function render() {
   if (!state.refreshBusy && !state.refreshFeedbackTimer) setRefreshButtonState('idle');
   els.shell.classList.toggle('session-mode', state.breakdown === 'session');
   els.shell.classList.toggle('home-mode', state.breakdown === 'home');
+  els.viewBackRow?.classList.toggle('hidden', state.breakdown === 'home' || !state.homeReturnVisible);
   // Leaving Home only CSS-hides the panel, so its heatmap scroller never sees a
   // pointerleave — dismiss the body-level tooltip here (renderHome covers rerenders).
   if (state.breakdown !== 'home') hideHomeActivityTooltip();
@@ -4072,10 +4664,13 @@ function render() {
     els.trendsPanel.classList.add('hidden');
     els.breakdown.classList.remove('hidden');
     const rows = rowsForPeriod(period);
-    renderRows(rows, {
-      showProjectIncompleteHint: state.breakdown === 'project'
-        && projectRowsApi.projectBreakdownIncomplete(state.stats, state.period)
-    });
+    let incompleteHint = '';
+    if (state.breakdown === 'project' && projectRowsApi.projectBreakdownIncomplete(state.stats, state.period)) {
+      incompleteHint = 'projects.incomplete';
+    } else if (state.breakdown === 'session' && sessionRowsApi.sessionBreakdownIncomplete(state.stats, state.period)) {
+      incompleteHint = 'sessions.incomplete';
+    }
+    renderRows(rows, { incompleteHint });
   }
   
   renderFloatingBubbleContent();
@@ -4243,6 +4838,7 @@ async function refreshStats(options = {}) {
     renderLimitProviderCheckboxes();
     renderToolPreferences();
     renderWslPanel();
+    updateOpenRouterProfilesStatus();
     renderDeepseekStatus();
     renderMinimaxStatus();
     renderExternalProviderStatus('zai');
@@ -4602,6 +5198,7 @@ function setBreakdown(breakdown, options = {}) {
     publishViewState();
     return false;
   }
+  state.homeReturnVisible = options.fromHome === true && state.breakdown === 'home' && next !== 'home';
   state.breakdown = next;
   state.rowSignature = '';
   publishViewState();
@@ -4637,29 +5234,48 @@ function clamp(value, min, max) {
   return Math.max(min, Math.min(max, Number(value)));
 }
 
-function applyControlLayout(settingsInTitlebar) {
-  const titlebarSlot = document.getElementById('titlebarActionSlot');
+function applyControlLayout(swapSettingsAndRefresh) {
   const footerSlot = document.getElementById('footerActionSlot');
-  if (!titlebarSlot || !footerSlot) return;
-  if (settingsInTitlebar) {
-    titlebarSlot.appendChild(els.settingsButton);
-    footerSlot.appendChild(els.refreshButton);
+  if (!footerSlot || !els.utilityActions) return;
+  footerSlot.appendChild(els.utilityActions);
+  els.utilityActions.classList.toggle('is-swapped', swapSettingsAndRefresh);
+  if (swapSettingsAndRefresh) {
+    els.utilityActions.append(els.settingsButton, els.refreshButton);
   } else {
-    titlebarSlot.appendChild(els.refreshButton);
-    footerSlot.appendChild(els.settingsButton);
+    els.utilityActions.append(els.refreshButton, els.settingsButton);
   }
 }
 
 function applyAppearanceSettings(settings) {
-  const opacity = clamp(settings?.glassOpacity ?? 68, 0, 100) / 100;
+  const opacity = glassRenderingApi.renderedGlassOpacity(settings, {
+    platform: state.appInfo?.platform,
+    userAgent: navigator.userAgent
+  });
   const depth = clamp(settings?.glassBlur ?? 32, 0, 100) / 100;
   const systemGlassDisabled = settings?.systemGlass === false;
+  const isWindows = navigator.userAgent.toLowerCase().includes('windows');
+  const windowsGlass = windowsGlassApi.appearanceState(settings, { isWindows });
   document.documentElement.style.setProperty('--glass-alpha', opacity.toFixed(2));
   document.documentElement.style.setProperty('--line-alpha', (0.1 + depth * 0.09).toFixed(3));
   document.documentElement.style.setProperty('--line-strong-alpha', (0.18 + depth * 0.14).toFixed(3));
   document.documentElement.style.setProperty('--control-alpha', (0.03 + depth * 0.045).toFixed(3));
-  document.documentElement.style.setProperty('--highlight-alpha', (0.045 + depth * 0.06).toFixed(3));
   document.documentElement.classList.toggle('system-glass-disabled', systemGlassDisabled);
+  els.windowsBackdropRow?.classList.toggle('hidden', !windowsGlass.showBackdropControl);
+  if (els.windowsBackdropInput) {
+    els.windowsBackdropInput.value = windowsGlass.backdropMode;
+  }
+  if (els.windowsBackdropNote) {
+    const accentFallback = windowsGlass.showAccentNote
+      && new URLSearchParams(window.location.search).get('windowsBackdropFallback') === '1';
+    const showNote = windowsGlass.showAccentNote || windowsGlass.showMicaNote;
+    els.windowsBackdropNote.textContent = t(accentFallback
+      ? 'settings.appearance.windowsBackdropFallback'
+      : windowsGlass.showMicaNote
+        ? 'settings.appearance.windowsBackdropMicaNote'
+        : 'settings.appearance.windowsBackdropNote');
+    els.windowsBackdropNote.classList.toggle('error', accentFallback);
+    els.windowsBackdropNote.classList.toggle('hidden', !showNote);
+  }
   applyReduceMotionPreference(settings?.reduceMotion);
   // Only full settings objects carry themeColors; glass/zoom preview patches
   // omit it, so we must not wipe theme overrides mid-slider-drag.
@@ -4667,9 +5283,13 @@ function applyAppearanceSettings(settings) {
   els.liveDot.style.display = (settings?.showLiveDot !== false) ? '' : 'none';
   els.shell.classList.toggle('desktop-mode', settings?.windowBehavior === 'desktop');
   els.shell.classList.toggle('title-icon-only', settings?.titleIconOnly === true);
-  if (settings && 'settingsInTitlebar' in settings) applyControlLayout(settings.settingsInTitlebar === true);
-  const isWindows = navigator.userAgent.toLowerCase().includes('windows');
-  
+  const trayMode = settings && 'trayMode' in settings
+    ? settings.trayMode === true
+    : state.settings?.trayMode === true;
+  els.shell.classList.toggle('tray-mode', trayMode);
+  if (settings && ('settingsInTitlebar' in settings || 'trayMode' in settings)) {
+    applyControlLayout(settings.settingsInTitlebar === true);
+  }
   let isMacLegacyRadius = false;
   if (!isWindows && state.appInfo?.platform === 'darwin' && state.appInfo?.osRelease) {
     // macOS Tahoe (macOS 26) is Darwin 25. Older macOS versions (like 14, 15) use a ~12px native vibrancy radius.
@@ -5078,7 +5698,7 @@ function applyFloatingBubbleState(payload = {}) {
   renderFloatingBubbleContent();
 }
 
-const BUBBLE_CONTENT_VALUES = ['icon', 'tokens', 'cost', 'both', 'tokensAll', 'costAll', 'bothAll', 'limitsAllSessions', 'bars', 'barsSession', 'barsWeekly', 'barsAllSessions'];
+const BUBBLE_CONTENT_VALUES = ['icon', 'tokens', 'cost', 'both', 'tokensAll', 'costAll', 'bothAll', 'limitsAllSessions', 'bars', 'barsSession', 'barsWeekly', 'barsAllSessions', 'custom'];
 function normalizeTrayContentValue(value) {
   return BUBBLE_CONTENT_VALUES.includes(value) ? value : 'icon';
 }
@@ -5109,7 +5729,9 @@ function renderFloatingBubbleContent() {
     const dataUrl = state.stats
       ? trayDataUrlForMode(mode, 44, floatingBubbleGeneratedColors(), {
           contentOnly: mode === 'barsAllSessions' || mode === 'limitsAllSessions',
-          providerContrastHalo: true
+          providerContrastHalo: true,
+          showProviderBadge: false,
+          layout: mode === 'custom' ? state.settings?.floatingBubbleCustomLayout : undefined
         })
       : null;
     if (dataUrl) {
@@ -5267,14 +5889,16 @@ function handleFloatingBubblePointerUp(event) {
 }
 
 function appearancePatchFromControls() {
+  const systemGlass = els.systemGlassInputs?.find((input) => input.checked)?.value !== 'off';
   return {
-    systemGlass: Boolean(els.systemGlassInput.checked),
+    systemGlass,
+    windowsBackdrop: windowsGlassApi.normalizeWindowsBackdropMode(els.windowsBackdropInput?.value),
     reduceMotion: els.reduceMotionInputs?.find((input) => input.checked)?.value || 'system',
     showLiveDot: Boolean(els.liveDotInput.checked),
     showToolIcons: Boolean(els.toolIconsInput.checked),
     titleIconOnly: Boolean(els.titleIconInput.checked),
     showCompactTotalTokens: Boolean(els.showCompactTotalTokensInput.checked),
-    settingsInTitlebar: Boolean(els.settingsInTitlebarInput.checked),
+    settingsInTitlebar: Boolean(els.swapSettingsRefreshInput.checked),
     glassOpacity: Number(els.glassInput.value === '' ? defaultAppearance.glassOpacity : els.glassInput.value),
     glassBlur: Number(els.blurInput.value === '' ? defaultAppearance.glassBlur : els.blurInput.value),
     zoomFactor: Number(els.zoomInput.value === '' ? defaultAppearance.zoomFactor * 100 : els.zoomInput.value) / 100
@@ -5494,6 +6118,7 @@ function syncSettingsForm() {
   }
   if (els.wslScanInput) els.wslScanInput.checked = state.settings.wslScanEnabled !== false;
   if (els.sessionUsageArchiveInput) els.sessionUsageArchiveInput.checked = state.settings.sessionUsageArchiveEnabled !== false;
+  renderAutomaticAppUpdateControl();
   renderSessionUsageArchiveStatus();
   const exportAutoOn = Boolean(state.settings.exportAutoEnabled);
   const exportDir = state.settings.exportDir || '';
@@ -5510,14 +6135,16 @@ function syncSettingsForm() {
       : t('settings.export.statusNeedsFolder');
   }
   renderWslPanel();
-  els.systemGlassInput.checked = state.settings.systemGlass !== false;
+  const systemGlass = state.settings.systemGlass === false ? 'off' : 'system';
+  for (const input of els.systemGlassInputs || []) input.checked = input.value === systemGlass;
+  if (els.windowsBackdropInput) els.windowsBackdropInput.value = windowsGlassApi.normalizeWindowsBackdropMode(state.settings.windowsBackdrop);
   const reduceMotion = motionPreferenceApi.normalize(state.settings.reduceMotion);
   for (const input of els.reduceMotionInputs || []) input.checked = input.value === reduceMotion;
   els.liveDotInput.checked = state.settings.showLiveDot !== false;
   els.toolIconsInput.checked = state.settings.showToolIcons !== false;
   els.titleIconInput.checked = state.settings.titleIconOnly === true;
   els.showCompactTotalTokensInput.checked = state.settings.showCompactTotalTokens === true;
-  els.settingsInTitlebarInput.checked = state.settings.settingsInTitlebar === true;
+  els.swapSettingsRefreshInput.checked = state.settings.settingsInTitlebar === true;
   els.discordRpcInput.checked = Boolean(state.settings.discordRpcEnabled);
   syncWindowBehaviorControls();
   els.floatingBubbleInput.checked = state.settings.floatingBubbleEnabled === true;
@@ -5528,12 +6155,13 @@ function syncSettingsForm() {
   if (els.showTrayIconInput) els.showTrayIconInput.checked = showTrayIcon;
   els.trayModeInput.disabled = !showTrayIcon;
   els.trayModeInput.checked = showTrayIcon && Boolean(state.settings.trayMode);
-  els.trayContentInput.value = ['tokens', 'cost', 'both', 'tokensAll', 'costAll', 'bothAll', 'limitsAllSessions', 'bars', 'barsSession', 'barsWeekly', 'barsAllSessions', 'icon'].includes(state.settings.trayContent) ? state.settings.trayContent : 'tokens';
+  els.trayContentInput.value = ['tokens', 'cost', 'both', 'tokensAll', 'costAll', 'bothAll', 'limitsAllSessions', 'bars', 'barsSession', 'barsWeekly', 'barsAllSessions', 'icon', 'custom'].includes(state.settings.trayContent) ? state.settings.trayContent : 'tokens';
   els.trayContentInput.disabled = !showTrayIcon;
   els.showTrayProviderBadgeInput.checked = state.settings.showTrayProviderBadge === true;
   els.showTrayProviderBadgeInput.disabled = !showTrayIcon;
   els.trayIconOptions?.classList.toggle('hidden', !showTrayIcon);
   els.trayOptions?.classList.toggle('hidden', !showTrayIcon || !state.settings.trayMode);
+  syncTrayComposerVisibility();
   syncWindowShortcutStatus();
   if (els.startAtLoginInput) {
     els.startAtLoginInput.disabled = !state.appInfo?.loginItemSupported;
@@ -5570,6 +6198,7 @@ function syncSettingsForm() {
   renderLimitProviderCheckboxes();
   renderSettingsSummaries();
   renderOpenCodeProfiles();
+  renderOpenRouterProfiles();
   applyVendorColorOverrides(state.settings.vendorColors);
   applyAppearanceSettings(state.settings);
   buildAppearanceColorControls();
@@ -5984,6 +6613,33 @@ function renderHomeLimitProviderList() {
   statusText.textContent = t('settings.home.showLimitBars');
   statusInput.addEventListener('change', () => void saveSettings({ showHomeLimitBars: statusInput.checked }));
   statusLabel.append(statusInput, statusText);
+  const providerNamesLabel = document.createElement('label');
+  providerNamesLabel.className = 'checkbox-label home-limit-status-setting';
+  const providerNamesInput = document.createElement('input');
+  providerNamesInput.type = 'checkbox';
+  const providerNamesRequired = state.settings?.showToolIcons === false;
+  providerNamesInput.checked = providerNamesRequired || state.settings?.showHomeLimitProviderNames === true;
+  providerNamesInput.disabled = providerNamesRequired;
+  const providerNamesText = document.createElement('span');
+  providerNamesText.textContent = t('settings.home.showLimitProviderNames');
+  const providerNamesCopy = document.createElement('span');
+  providerNamesCopy.className = 'home-limit-provider-names-copy';
+  providerNamesCopy.append(providerNamesText);
+  if (providerNamesRequired) {
+    const requiredReason = t('settings.home.providerNamesRequiredWithoutIcons');
+    const requiredReasonText = document.createElement('span');
+    requiredReasonText.id = 'homeLimitProviderNamesReason';
+    requiredReasonText.className = 'home-limit-provider-names-reason';
+    requiredReasonText.textContent = requiredReason;
+    providerNamesCopy.append(requiredReasonText);
+    providerNamesLabel.title = requiredReason;
+    providerNamesInput.setAttribute('aria-describedby', requiredReasonText.id);
+  }
+  providerNamesInput.addEventListener('change', async () => {
+    await saveSettings({ showHomeLimitProviderNames: providerNamesInput.checked });
+    renderHomeIfVisible();
+  });
+  providerNamesLabel.append(providerNamesInput, providerNamesCopy);
   const countLabel = document.createElement('label');
   countLabel.className = 'settings-item home-limit-account-count-setting';
   const countText = document.createElement('span');
@@ -6032,7 +6688,7 @@ function renderHomeLimitProviderList() {
   showAll.addEventListener('click', () => void showAllHomeLimitProviders());
   headerActions.append(reset, showAll);
   header.append(note, headerActions);
-  wrap.append(statusLabel, countLabel, header);
+  wrap.append(statusLabel, providerNamesLabel, countLabel, header);
   for (const { id, label, settingsLabel } of providers) {
     const isHidden = hidden.has(id);
     const row = document.createElement('div');
@@ -6112,23 +6768,32 @@ function renderHomeSettingsList() {
     name.textContent = label;
     const actions = document.createElement('div');
     actions.className = 'tool-preference-actions';
-    if (id === 'limits') {
+    if (id === 'limits' || id === 'trends') {
       const configure = document.createElement('button');
       configure.type = 'button';
-      configure.className = `view-subgroup-toggle${state.homeLimitSettingsExpanded ? ' is-expanded' : ''}`;
-      configure.title = t('settings.home.configureLimits');
+      const expanded = id === 'limits' ? state.homeLimitSettingsExpanded : state.homeActivitySettingsExpanded;
+      configure.className = `view-subgroup-toggle${expanded ? ' is-expanded' : ''}`;
+      configure.title = t(id === 'limits' ? 'settings.home.configureLimits' : 'settings.home.configureActivity');
       configure.setAttribute('aria-label', configure.title);
-      configure.setAttribute('aria-expanded', String(Boolean(state.homeLimitSettingsExpanded)));
+      configure.setAttribute('aria-expanded', String(Boolean(expanded)));
       const toggleIcon = document.createElement('span');
       toggleIcon.className = 'view-subgroup-icon';
       toggleIcon.setAttribute('aria-hidden', 'true');
       configure.append(toggleIcon);
       configure.addEventListener('click', () => {
-        state.homeLimitSettingsExpanded = !state.homeLimitSettingsExpanded;
-        configure.classList.toggle('is-expanded', state.homeLimitSettingsExpanded);
-        configure.setAttribute('aria-expanded', String(Boolean(state.homeLimitSettingsExpanded)));
-        const container = document.getElementById('homeLimitProviderContainer');
-        if (container) container.classList.toggle('hidden', !state.homeLimitSettingsExpanded);
+        if (id === 'limits') {
+          state.homeLimitSettingsExpanded = !state.homeLimitSettingsExpanded;
+          configure.classList.toggle('is-expanded', state.homeLimitSettingsExpanded);
+          configure.setAttribute('aria-expanded', String(Boolean(state.homeLimitSettingsExpanded)));
+          const container = document.getElementById('homeLimitProviderContainer');
+          if (container) container.classList.toggle('hidden', !state.homeLimitSettingsExpanded);
+          return;
+        }
+        state.homeActivitySettingsExpanded = !state.homeActivitySettingsExpanded;
+        configure.classList.toggle('is-expanded', state.homeActivitySettingsExpanded);
+        configure.setAttribute('aria-expanded', String(Boolean(state.homeActivitySettingsExpanded)));
+        const container = document.getElementById('homeActivitySettingsContainer');
+        if (container) container.classList.toggle('hidden', !state.homeActivitySettingsExpanded);
       });
       actions.append(configure);
     }
@@ -6154,8 +6819,80 @@ function renderHomeSettingsList() {
       listContainer.appendChild(inner);
       wrap.append(listContainer);
     }
+    if (id === 'trends') {
+      const listContainer = document.createElement('div');
+      listContainer.id = 'homeActivitySettingsContainer';
+      listContainer.className = `accordion-animated-container${state.homeActivitySettingsExpanded ? '' : ' hidden'}`;
+      const inner = document.createElement('div');
+      inner.className = 'accordion-animation-inner';
+      inner.appendChild(renderHomeActivitySettings());
+      listContainer.appendChild(inner);
+      wrap.append(listContainer);
+    }
   }
   return wrap;
+}
+
+function renderHomeActivitySettings() {
+  const frag = document.createDocumentFragment();
+
+  const heatmapRow = document.createElement('div');
+  heatmapRow.className = 'home-activity-settings';
+  const heatmapLabel = document.createElement('span');
+  heatmapLabel.textContent = t('settings.home.heatmapColor');
+  const heatmapOptions = document.createElement('div');
+  heatmapOptions.className = 'inline-options';
+  heatmapOptions.setAttribute('role', 'radiogroup');
+  heatmapOptions.setAttribute('aria-label', heatmapLabel.textContent);
+  const currentMetric = state.settings?.heatmapMetric || 'cost';
+  for (const metric of ['tokens', 'cost']) {
+    const option = document.createElement('label');
+    option.className = 'inline-option';
+    const input = document.createElement('input');
+    input.type = 'radio';
+    input.name = 'homeHeatmapMetric';
+    input.value = metric;
+    input.checked = currentMetric === metric;
+    input.addEventListener('change', () => {
+      if (input.checked) void saveSettings({ heatmapMetric: metric }).then(renderHomeIfVisible);
+    });
+    const text = document.createElement('span');
+    text.textContent = t(metric === 'tokens' ? 'dashboard.heatmap.tokens' : 'dashboard.heatmap.cost');
+    option.append(input, text);
+    heatmapOptions.append(option);
+  }
+  heatmapRow.append(heatmapLabel, heatmapOptions);
+  frag.append(heatmapRow);
+
+  const daysRow = document.createElement('div');
+  daysRow.className = 'home-activity-settings';
+  const daysLabel = document.createElement('span');
+  daysLabel.textContent = t('settings.home.activeDaysWindow');
+  const daysOptions = document.createElement('div');
+  daysOptions.className = 'inline-options';
+  daysOptions.setAttribute('role', 'radiogroup');
+  daysOptions.setAttribute('aria-label', daysLabel.textContent);
+  const currentDaysWindow = state.settings?.homeActiveDaysWindow || 'all';
+  for (const mode of ['all', 'year']) {
+    const option = document.createElement('label');
+    option.className = 'inline-option';
+    const input = document.createElement('input');
+    input.type = 'radio';
+    input.name = 'homeActiveDaysWindow';
+    input.value = mode;
+    input.checked = currentDaysWindow === mode;
+    input.addEventListener('change', () => {
+      if (input.checked) void saveSettings({ homeActiveDaysWindow: mode }).then(renderHomeIfVisible);
+    });
+    const text = document.createElement('span');
+    text.textContent = t(`settings.home.activeDaysWindow.${mode}`);
+    option.append(input, text);
+    daysOptions.append(option);
+  }
+  daysRow.append(daysLabel, daysOptions);
+  frag.append(daysRow);
+
+  return frag;
 }
 
 function renderTrendSettingsList() {
@@ -6384,6 +7121,20 @@ function renderWslPanel() {
       row.append(name, tag);
       els.wslPanel.append(row);
     }
+
+    if (wslStatusPresentationApi.sqliteHelpClients(status).length > 0) {
+      const help = document.createElement('p');
+      help.className = 'settings-note wsl-panel-help';
+      const message = document.createElement('span');
+      message.textContent = t('settings.collection.wslPanel.sqliteHelp');
+      const guide = document.createElement('button');
+      guide.type = 'button';
+      guide.className = 'inline-link';
+      guide.textContent = t('settings.collection.wslPanel.setupGuide');
+      guide.addEventListener('click', () => window.tokenMonitor.openExternal?.(TOKEN_MONITOR_WSL_SQLITE_GUIDE_URL));
+      help.append(message, ' ', guide);
+      els.wslPanel.append(help);
+    }
   }
 }
 
@@ -6563,6 +7314,7 @@ async function onLimitProviderToggle() {
     setBreakdown('tool');
   }
   await saveSettings({ limitProviders: checked.join(','), limitsEnabled: checked.length > 0 });
+  clearDisabledLimitProviderPendingChecks(new Set(checked));
   await refreshStats({ force: true });
 }
 
@@ -6815,7 +7567,17 @@ function preserveSettingsPanelScroll(callback) {
 }
 
 async function saveSettings(patch) {
-  state.settings = await window.tokenMonitor.updateSettings(patch);
+  try {
+    state.settings = await window.tokenMonitor.updateSettings(patch);
+  } catch (error) {
+    console.error('Could not persist settings:', error);
+    try { state.settings = await window.tokenMonitor.getSettings(); } catch (_) {}
+    applyEffectiveCurrencyRates();
+    preserveSettingsPanelScroll(syncSettingsForm);
+    restartTimer();
+    maybeUpdateBarsIcon();
+    throw error;
+  }
   applyEffectiveCurrencyRates();
   preserveSettingsPanelScroll(syncSettingsForm);
   restartTimer();
@@ -6823,6 +7585,7 @@ async function saveSettings(patch) {
   if (patch.showTrayProviderBadge !== undefined) {
     await deliverTrayProviderIcons(patch.showTrayProviderBadge === true);
   }
+  return true;
 }
 
 function renderHomeIfVisible() {
@@ -6850,6 +7613,13 @@ if (typeof ResizeObserver === 'function') {
 
 els.viewSwitcher?.addEventListener('pointerenter', clearViewSwitcherHoverClose);
 els.viewSwitcher?.addEventListener('pointerleave', scheduleViewSwitcherHoverClose);
+els.backHomeButton?.addEventListener('click', (event) => {
+  if (state.viewSwitcherOpen) setViewSwitcherOpen(false);
+  if (!renderBreakdownChange('home')) return;
+  if (event.detail === 0) {
+    requestAnimationFrame(() => els.viewSwitcher?.querySelector('.view-switcher-current')?.focus());
+  }
+});
 
 window.addEventListener('blur', () => {
   clearViewSwitcherLongPress();
@@ -6872,6 +7642,7 @@ async function init() {
     state.appUpdate = payload;
     renderAppUpdatePill();
     renderSettingsAppUpdateRow();
+    renderAutomaticAppUpdateControl();
     if (els.appUpdatePopover.matches(':popover-open')) renderAppUpdatePopover(payload);
   });
   if (state.appInfo?.loginItemSupported) {
@@ -6935,12 +7706,13 @@ els.breakdown.addEventListener('click', (event) => {
 els.pinButton.addEventListener('click', () => {
   saveSettings({ windowBehavior: nextWindowBehavior(currentWindowBehavior()) });
 });
-els.settingsButton.addEventListener('click', () => {
+els.settingsButton.addEventListener('click', (event) => {
   if (state.viewSwitcherOpen) setViewSwitcherOpen(false);
   els.settingsPanel.classList.toggle('hidden');
   const settingsOpen = !els.settingsPanel.classList.contains('hidden');
   if (!settingsOpen) stopWindowShortcutRecording();
   els.shell.classList.toggle('settings-open', settingsOpen);
+  if (!settingsOpen && event.detail > 0) els.settingsButton.blur();
   els.shell.style.transform = 'translateZ(0)';
   requestAnimationFrame(() => { els.shell.style.transform = ''; });
 });
@@ -7136,7 +7908,12 @@ function setupThemeAccordion(group, toggle, details) {
 
 setupThemeAccordion(els.themeAdvancedGroup, els.themeAdvancedToggle, els.themeAdvancedDetails);
 setupThemeAccordion(els.themeVendorGroup, els.themeVendorToggle, els.themeVendorDetails);
-els.systemGlassInput.addEventListener('change', saveAppearanceFromControls);
+for (const input of els.systemGlassInputs || []) {
+  input.addEventListener('change', () => {
+    if (input.checked) saveAppearanceFromControls();
+  });
+}
+els.windowsBackdropInput?.addEventListener('change', saveAppearanceFromControls);
 for (const input of els.reduceMotionInputs || []) {
   input.addEventListener('change', async () => {
     if (!input.checked) return;
@@ -7145,14 +7922,21 @@ for (const input of els.reduceMotionInputs || []) {
   });
 }
 els.liveDotInput.addEventListener('change', saveAppearanceFromControls);
-els.toolIconsInput.addEventListener('change', saveAppearanceFromControls);
+els.toolIconsInput.addEventListener('change', async () => {
+  state.settings.showToolIcons = els.toolIconsInput.checked;
+  renderHomeIfVisible();
+  await saveAppearanceFromControls();
+});
 els.titleIconInput.addEventListener('change', saveAppearanceFromControls);
 els.showCompactTotalTokensInput.addEventListener('change', async () => {
   await saveAppearanceFromControls();
   if (!numberAnimHandle) updateTotalCompact(state.currentTotal);
 });
 window.addEventListener('resize', () => { if (!numberAnimHandle) fitTotalNumber(); });
-els.settingsInTitlebarInput.addEventListener('change', saveAppearanceFromControls);
+els.swapSettingsRefreshInput.addEventListener('change', () => {
+  applyControlLayout(els.swapSettingsRefreshInput.checked);
+  void saveAppearanceFromControls();
+});
 els.discordRpcInput.addEventListener('change', saveAppearanceFromControls);
 els.windowBehaviorInput.addEventListener('change', () => saveSettings({ windowBehavior: els.windowBehaviorInput.value }));
 els.floatingBubbleInput.addEventListener('change', () => {
@@ -7161,6 +7945,8 @@ els.floatingBubbleInput.addEventListener('change', () => {
 });
 els.floatingBubbleTriggerInput?.addEventListener('change', () => saveSettings({ floatingBubbleTrigger: els.floatingBubbleTriggerInput.value }));
 els.floatingBubbleContentInput?.addEventListener('change', async () => {
+  state.settings.floatingBubbleContent = els.floatingBubbleContentInput.value;
+  syncTrayComposerVisibility();
   await saveSettings({ floatingBubbleContent: els.floatingBubbleContentInput.value });
   renderFloatingBubbleContent();
 });
@@ -7182,13 +7968,18 @@ els.trayModeInput.addEventListener('change', () => {
   els.trayOptions?.classList.toggle('hidden', !els.showTrayIconInput?.checked || !els.trayModeInput.checked);
   saveSettings({ trayMode: els.trayModeInput.checked });
 });
-els.trayContentInput.addEventListener('change', () => saveSettings({ trayContent: els.trayContentInput.value }));
+els.trayContentInput.addEventListener('change', () => {
+  state.settings.trayContent = els.trayContentInput.value;
+  syncTrayComposerVisibility();
+  saveSettings({ trayContent: els.trayContentInput.value });
+});
 els.showTrayProviderBadgeInput.addEventListener('change', () => saveSettings({ showTrayProviderBadge: els.showTrayProviderBadgeInput.checked }));
 els.windowToggleShortcutValue?.addEventListener('click', startWindowShortcutRecording);
 els.windowToggleShortcutClearButton?.addEventListener('click', () => setWindowToggleShortcut('').catch(() => {}));
 els.startAtLoginInput?.addEventListener('change', () => saveSettings({ startAtLogin: els.startAtLoginInput.checked }));
 els.startInTrayInput?.addEventListener('change', () => saveSettings({ startInTray: els.startInTrayInput.checked }));
 els.closeToTrayInput?.addEventListener('change', () => saveSettings({ closeToTray: els.closeToTrayInput.checked }));
+els.automaticAppUpdatesInput?.addEventListener('change', () => saveSettings({ automaticAppUpdates: els.automaticAppUpdatesInput.checked }));
 els.glassInput.addEventListener('change', saveAppearanceFromControls);
 els.blurInput.addEventListener('change', saveAppearanceFromControls);
 els.zoomInput.addEventListener('change', saveAppearanceFromControls);
@@ -7254,17 +8045,22 @@ async function runAppUpdateAction() {
 }
 
 els.appUpdatePillAction.addEventListener('click', async () => {
-  if (appUpdateActionMode(state.appUpdate) === 'install') {
-    await runAppUpdateAction();
-    return;
-  }
   if (!renderAppUpdatePopover(state.appUpdate) || typeof els.appUpdatePopover.showPopover !== 'function') {
+    if (appUpdateActionMode(state.appUpdate) === 'install') {
+      const url = state.appUpdate?.latest?.htmlUrl;
+      if (url) await window.tokenMonitor.openExternal(url);
+      return;
+    }
     await runAppUpdateAction();
     return;
   }
   positionAppUpdatePopover();
   els.appUpdatePopover.showPopover();
   els.appUpdatePopoverAction.focus();
+});
+
+els.appUpdatePillRestart.addEventListener('click', async () => {
+  await runAppUpdateAction();
 });
 
 els.appUpdatePillDismiss.addEventListener('click', async () => {
@@ -7323,10 +8119,14 @@ els.appUpdateReleaseNotesButton.addEventListener('click', async () => {
 
 window.tokenMonitor.onSettingsPush?.((next) => {
   if (!next) return;
+  const prevMetric = state.settings?.heatmapMetric;
   state.settings = next;
   applyEffectiveCurrencyRates();
   syncSettingsForm();
   maybeUpdateBarsIcon();
+  if ((prevMetric || 'cost') !== (next.heatmapMetric || 'cost')) {
+    render();
+  }
 });
 
 reducedMotionMedia?.addEventListener?.('change', () => {
@@ -7394,6 +8194,7 @@ window.tokenMonitor.onStatsPush?.((payload) => {
     renderLimitProviderCheckboxes();
     renderToolPreferences();
     renderWslPanel();
+    updateOpenRouterProfilesStatus();
     renderDeepseekStatus();
     renderMinimaxStatus();
     renderExternalProviderStatus('zai');
@@ -7432,18 +8233,98 @@ function roundedRectPath(ctx, x, y, w, h, r) {
 }
 
 const trayProviderImages = {};
+const trayProviderImageIds = new WeakMap();
+const trayProviderImageOpticalSamples = new WeakMap();
 const trayProviderIconDeliveryGuard = window.TokenMonitorTrayProviderIcons.createTrayProviderIconDeliveryGuard();
+const trayComposers = {};
+let customTrayClockTimer = null;
 
-function drawProviderImage(ctx, image, x, y, size, contrastHalo = false) {
+function providerImageOpticalSample(image) {
+  const cached = trayProviderImageOpticalSamples.get(image);
+  if (cached) return cached;
+
+  const sampleSize = 128;
+  const canvas = document.createElement('canvas');
+  canvas.width = sampleSize;
+  canvas.height = sampleSize;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(image, 0, 0, sampleSize, sampleSize);
+
+  let bounds = { x: 0, y: 0, width: sampleSize, height: sampleSize };
+  try {
+    const pixels = ctx.getImageData(0, 0, sampleSize, sampleSize).data;
+    let minX = sampleSize;
+    let minY = sampleSize;
+    let maxX = -1;
+    let maxY = -1;
+    for (let y = 0; y < sampleSize; y += 1) {
+      for (let x = 0; x < sampleSize; x += 1) {
+        if (pixels[(y * sampleSize + x) * 4 + 3] <= 12) continue;
+        minX = Math.min(minX, x);
+        minY = Math.min(minY, y);
+        maxX = Math.max(maxX, x);
+        maxY = Math.max(maxY, y);
+      }
+    }
+    if (maxX >= minX && maxY >= minY) {
+      bounds = {
+        x: minX,
+        y: minY,
+        width: maxX - minX + 1,
+        height: maxY - minY + 1
+      };
+    }
+  } catch (_) {
+    // Keep the original frame if a future non-local image cannot be inspected.
+  }
+
+  const sample = { canvas, bounds };
+  trayProviderImageOpticalSamples.set(image, sample);
+  return sample;
+}
+
+function paintProviderImage(ctx, image, x, y, size, templateColor = '') {
+  const {
+    trayProviderOpticalLayout,
+    trayProviderOpticalRatio
+  } = window.TokenMonitorTrayProviderIcons;
+  const sample = providerImageOpticalSample(image);
+  const opticalRatio = trayProviderOpticalRatio(trayProviderImageIds.get(image));
+  const layout = trayProviderOpticalLayout(sample.bounds, size, opticalRatio);
+  const maskSize = Math.max(1, Math.round(size));
+  const mask = document.createElement('canvas');
+  mask.width = maskSize;
+  mask.height = maskSize;
+  const maskCtx = mask.getContext('2d');
+  maskCtx.drawImage(
+    sample.canvas,
+    sample.bounds.x,
+    sample.bounds.y,
+    sample.bounds.width,
+    sample.bounds.height,
+    layout.x,
+    layout.y,
+    layout.width,
+    layout.height
+  );
+  if (templateColor) {
+    maskCtx.globalCompositeOperation = 'source-in';
+    maskCtx.fillStyle = templateColor;
+    maskCtx.fillRect(0, 0, maskSize, maskSize);
+  }
+  ctx.drawImage(mask, x, y, size, size);
+}
+
+function drawProviderImage(ctx, image, x, y, size, contrastHalo = false, templateColor = '') {
   if (contrastHalo) {
     const lightSurface = themePresetsApi.isLightHex(resolvedThemeColor('bg'));
     ctx.save();
     ctx.shadowColor = lightSurface ? 'rgba(0, 0, 0, 0.58)' : 'rgba(255, 255, 255, 0.82)';
     ctx.shadowBlur = Math.max(2, Math.round(size * 0.1));
-    ctx.drawImage(image, x, y, size, size);
+    paintProviderImage(ctx, image, x, y, size, templateColor);
     ctx.restore();
   }
-  ctx.drawImage(image, x, y, size, size);
+  paintProviderImage(ctx, image, x, y, size, templateColor);
 }
 
 function renderBarsIcon(stats, height = 44, picker = pickWorstProvider, colors = {}, options = {}) {
@@ -7603,6 +8484,413 @@ function renderLimitSessionsIcon(stats, height = 44, configOrder, colors = {}, o
   return canvas.toDataURL('image/png');
 }
 
+function trayComposerSampleStats() {
+  const resetSoon = new Date(Date.now() + 3 * 60 * 60 * 1000 + 7 * 60 * 1000).toISOString();
+  const resetLater = new Date(Date.now() + 6 * 24 * 60 * 60 * 1000 + 2 * 60 * 60 * 1000).toISOString();
+  return {
+    periods: {
+      today: { totalTokens: 1_240_000, costUsd: 12.34 },
+      month: { totalTokens: 18_600_000, costUsd: 184.2 },
+      allTime: { totalTokens: 225_437_666, costUsd: 1502.72 }
+    },
+    limits: {
+      providers: [
+        {
+          provider: 'codex',
+          status: 'ok',
+          accountKey: 'preview-codex',
+          accountEmail: 'you@example.com',
+          sourceDetail: 'app',
+          windows: [
+            { kind: 'session', label: '', remainingPercent: 64, resetsAt: resetSoon },
+            { kind: 'weekly', label: '', remainingPercent: 42, resetsAt: resetLater }
+          ]
+        },
+        {
+          provider: 'claude',
+          status: 'ok',
+          accountKey: 'preview-claude',
+          accountEmail: 'work@example.com',
+          sourceDetail: 'oauth',
+          windows: [
+            { kind: 'session', label: '', remainingPercent: 78, resetsAt: resetSoon },
+            { kind: 'weekly', label: '', remainingPercent: 57, resetsAt: resetLater }
+          ]
+        }
+      ]
+    }
+  };
+}
+
+function statsForTrayComposer() {
+  const sample = trayComposerSampleStats();
+  const liveProviders = state.stats?.limits?.providers;
+  return {
+    ...sample,
+    ...state.stats,
+    periods: {
+      ...sample.periods,
+      ...(state.stats?.periods || {})
+    },
+    limits: Array.isArray(liveProviders) && liveProviders.some((provider) => provider?.status === 'ok' && !provider?.stale)
+      ? state.stats.limits
+      : sample.limits
+  };
+}
+
+function drawTrayFallbackMark(ctx, value, x, y, size, color) {
+  ctx.save();
+  ctx.fillStyle = color;
+  ctx.font = `600 ${Math.round(size * 0.46)}px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(value === 'app' ? 'Σ' : String(value || '?').slice(0, 1).toUpperCase(), x + size / 2, y + size / 2 + 1);
+  ctx.restore();
+}
+
+function trayTextCanvasFont(item, fontSize, defaultWeight) {
+  const style = item?.fontStyle || 'normal';
+  const family = style === 'compactMono'
+    ? 'ui-monospace, ".AppleSystemUIFontMonospaced", "SFMono-Regular", "SF Mono", Menlo, monospace'
+    : '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif';
+  const weight = style === 'menubar' ? 700 : style === 'compactMono' ? 600 : defaultWeight;
+  return `${weight} ${fontSize}px ${family}`;
+}
+
+function trayTextHorizontalScale(item) {
+  if (item?.fontStyle === 'condensed') return 0.86;
+  if (item?.fontStyle === 'menubar') return 0.92;
+  return 1;
+}
+
+function trayTextSpaceScale(item) {
+  return item?.fontStyle === 'compactMono' ? 0.55 : 1;
+}
+
+function trayTextRuns(ctx, text, item) {
+  const spaceScale = trayTextSpaceScale(item);
+  return (String(text).match(/\s+|\S+/g) || ['']).map((value) => {
+    const blank = /^\s+$/.test(value);
+    return {
+      value,
+      blank,
+      width: ctx.measureText(value).width * (blank ? spaceScale : 1)
+    };
+  });
+}
+
+function measureTrayText(ctx, text, item, horizontalScale = 1) {
+  return trayTextRuns(ctx, text, item)
+    .reduce((width, run) => width + run.width, 0) * horizontalScale;
+}
+
+function drawTrayText(ctx, text, x, y, item, horizontalScale = 1) {
+  const spaceScale = trayTextSpaceScale(item);
+  if (spaceScale === 1 && horizontalScale === 1) {
+    ctx.fillText(text, x, y);
+    return;
+  }
+
+  const runs = trayTextRuns(ctx, text, item);
+  const rawWidth = runs.reduce((width, run) => width + run.width, 0);
+  const alignment = ctx.textAlign;
+  const startX = alignment === 'right' || alignment === 'end'
+    ? -rawWidth
+    : alignment === 'center'
+      ? -rawWidth / 2
+      : 0;
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(horizontalScale, 1);
+  ctx.textAlign = 'left';
+  let cursor = startX;
+  for (const run of runs) {
+    if (!run.blank) ctx.fillText(run.value, cursor, 0);
+    cursor += run.width;
+  }
+  ctx.restore();
+}
+
+function drawCustomTrayProviderBadge(ctx, x, y, size, color) {
+  const { trayProviderBadgeLayout } = window.TokenMonitorTrayProviderIcons;
+  const layout = trayProviderBadgeLayout(size);
+  const badgeX = x + layout.x;
+  const badgeY = y + layout.y;
+  const { badgeSize, radius, borderWidth } = layout;
+  ctx.save();
+  roundedRectPath(ctx, badgeX, badgeY, badgeSize, badgeSize, radius);
+  ctx.fillStyle = color;
+  ctx.fill();
+  ctx.lineWidth = borderWidth;
+  ctx.strokeStyle = color;
+  ctx.stroke();
+
+  // Custom tray images remain macOS template images. Cut the sigma out of the
+  // badge alpha so the mark survives the menu-bar tint as negative space.
+  const left = badgeX + badgeSize * 0.29;
+  const right = badgeX + badgeSize * 0.72;
+  const top = badgeY + badgeSize * 0.27;
+  const middle = badgeY + badgeSize * 0.5;
+  const bottom = badgeY + badgeSize * 0.73;
+  ctx.globalCompositeOperation = 'destination-out';
+  ctx.beginPath();
+  ctx.moveTo(right, top);
+  ctx.lineTo(left, top);
+  ctx.lineTo(badgeX + badgeSize * 0.56, middle);
+  ctx.lineTo(left, bottom);
+  ctx.lineTo(right, bottom);
+  ctx.lineWidth = Math.max(1, badgeSize * 0.13);
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.strokeStyle = '#000000';
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawCustomTrayProviderImage(ctx, img, provider, x, y, size, options = {}) {
+  const showBadge = options.showProviderBadge === true && provider && provider !== 'app';
+  const inset = showBadge ? Math.max(1, Math.round(size * 0.07)) : 0;
+  const imageSize = size - inset * 2;
+  drawProviderImage(
+    ctx,
+    img,
+    x + inset,
+    y + inset,
+    imageSize,
+    options.providerContrastHalo === true,
+    options.templateIconColor || ''
+  );
+  if (showBadge) {
+    drawCustomTrayProviderBadge(
+      ctx,
+      x,
+      y,
+      size,
+      options.templateIconColor || options.textColor || '#000000'
+    );
+  }
+}
+
+function renderCustomTrayItemCanvas(item, height = 44, colors = {}, options = {}) {
+  const trackColor = colors.track || 'rgba(0, 0, 0, 0.32)';
+  const fillColor = colors.fill || 'rgba(0, 0, 0, 1)';
+  const textColor = colors.text || fillColor;
+  const h = Math.max(16, Math.round(height));
+
+  if (item.type === 'spacer') {
+    const isDot = item.variant === 'dot';
+    const ratios = isDot
+      ? { narrow: 0.18, regular: 0.24, wide: 0.34 }
+      : { narrow: 0.07, regular: 0.14, wide: 0.27 };
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(2, Math.round(h * (ratios[item.size] || ratios.regular)));
+    canvas.height = h;
+    if (isDot) {
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = textColor;
+      ctx.beginPath();
+      ctx.arc(canvas.width / 2, h / 2, Math.max(1, h * 0.055), 0, Math.PI * 2);
+      ctx.fill();
+    } else if (options.spacerGuide) {
+      const ctx = canvas.getContext('2d');
+      ctx.strokeStyle = trackColor;
+      ctx.setLineDash([1, 2]);
+      ctx.beginPath();
+      ctx.moveTo(0.5, h * 0.2);
+      ctx.lineTo(0.5, h * 0.8);
+      ctx.moveTo(canvas.width - 0.5, h * 0.2);
+      ctx.lineTo(canvas.width - 0.5, h * 0.8);
+      ctx.stroke();
+    }
+    return canvas;
+  }
+
+  if (item.type === 'icon') {
+    const canvas = document.createElement('canvas');
+    canvas.width = h;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    const provider = item.provider || 'app';
+    const providerImage = trayProviderImages[provider];
+    if (providerImage) {
+      drawCustomTrayProviderImage(
+        ctx,
+        providerImage,
+        provider,
+        0,
+        0,
+        h,
+        { ...options, textColor }
+      );
+    } else {
+      drawTrayFallbackMark(ctx, provider, 0, 0, h, textColor);
+    }
+    return canvas;
+  }
+
+  if (item.type === 'bars') {
+    const { trayBarFillWidth, trayBarsLayout } = window.TokenMonitorTrayBars;
+    const showIcon = item.icon !== 'none';
+    const barLayout = trayBarsLayout(h, { contentOnly: !showIcon });
+    const canvas = document.createElement('canvas');
+    canvas.width = barLayout.width;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    const rows = item.rows.length > 1 ? item.rows.slice(0, 2) : item.rows.slice(0, 1);
+    const drawBar = (row, y) => {
+      roundedRectPath(ctx, barLayout.barsX, y, barLayout.barsWidth, barLayout.barHeight, barLayout.radius);
+      ctx.fillStyle = trackColor;
+      ctx.fill();
+      const fillWidth = trayBarFillWidth(row.percent, barLayout.barsWidth);
+      if (!fillWidth) return;
+      ctx.save();
+      roundedRectPath(ctx, barLayout.barsX, y, barLayout.barsWidth, barLayout.barHeight, barLayout.radius);
+      ctx.clip();
+      ctx.fillStyle = fillColor;
+      ctx.fillRect(barLayout.barsX, y, fillWidth, barLayout.barHeight);
+      ctx.restore();
+    };
+    if (showIcon) {
+      const preferredIndex = item.icon === 'second' ? 1 : 0;
+      const iconRow = rows[preferredIndex]?.selection ? rows[preferredIndex] : rows.find((row) => row.selection);
+      const provider = item.icon === 'app' ? 'app' : iconRow?.selection?.provider || '';
+      const providerImage = trayProviderImages[provider];
+      if (providerImage) {
+        drawCustomTrayProviderImage(
+          ctx,
+          providerImage,
+          provider,
+          barLayout.padX,
+          barLayout.iconY,
+          barLayout.iconSize,
+          { ...options, textColor }
+        );
+      } else {
+        drawTrayFallbackMark(ctx, provider || '?', barLayout.padX, barLayout.iconY, barLayout.iconSize, textColor);
+      }
+    }
+    const ys = rows.length > 1
+      ? [barLayout.barsStartY, barLayout.barsStartY + barLayout.barHeight + barLayout.barGap]
+      : [Math.round((h - barLayout.barHeight) / 2)];
+    rows.forEach((row, index) => {
+      drawBar(row, ys[index]);
+    });
+    return canvas;
+  }
+
+  if (item.type === 'stack') {
+    const rows = item.rows.slice(0, 2);
+    const showIcon = item.icon !== 'none';
+    const preferredIndex = item.icon === 'second' ? 1 : 0;
+    const iconRow = rows[preferredIndex]?.selection ? rows[preferredIndex] : rows.find((row) => row.selection);
+    const provider = item.icon === 'app' ? 'app' : iconRow?.selection?.provider || '';
+    const iconSize = h;
+    const iconGap = Math.max(2, Math.round(h * 0.08));
+    const fontSize = Math.max(8, Math.round(h * 0.43));
+    const font = trayTextCanvasFont(item, fontSize, 600);
+    const horizontalScale = trayTextHorizontalScale(item);
+    const measure = document.createElement('canvas').getContext('2d');
+    measure.font = font;
+    const textWidth = Math.max(
+      ...rows.map((row) => measureTrayText(measure, row.text || '--', item, horizontalScale)),
+      1
+    );
+    const padX = Math.max(1, Math.round(h * 0.04));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.ceil(textWidth) + padX * 2 + (showIcon ? iconSize + iconGap : 0);
+    canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    const alignment = item.alignment === 'left' ? 'left' : 'right';
+    let textX = alignment === 'right' ? canvas.width - padX : padX;
+    if (showIcon) {
+      const providerImage = trayProviderImages[provider];
+      if (providerImage) {
+        drawCustomTrayProviderImage(
+          ctx,
+          providerImage,
+          provider,
+          0,
+          0,
+          iconSize,
+          { ...options, textColor }
+        );
+      } else {
+        drawTrayFallbackMark(ctx, provider || '?', 0, 0, iconSize, textColor);
+      }
+      if (alignment === 'left') textX += iconSize + iconGap;
+    }
+    ctx.font = font;
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = alignment;
+    const textBaselineOffset = Math.max(1, Math.round(h * 0.025));
+    rows.forEach((row, index) => {
+      ctx.fillStyle = row.available === false ? trackColor : textColor;
+      drawTrayText(
+        ctx,
+        row.text || '--',
+        textX,
+        h * (index === 0 ? 0.28 : 0.72) + textBaselineOffset,
+        item,
+        horizontalScale
+      );
+    });
+    return canvas;
+  }
+
+  const text = item.text || '--';
+  const fontSize = Math.round(h * 0.68);
+  const font = trayTextCanvasFont(item, fontSize, 500);
+  const horizontalScale = trayTextHorizontalScale(item);
+  const measure = document.createElement('canvas').getContext('2d');
+  measure.font = font;
+  const padX = Math.max(1, Math.round(h * 0.04));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.ceil(measureTrayText(measure, text, item, horizontalScale)) + padX * 2);
+  canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  ctx.font = font;
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = item.available === false ? trackColor : textColor;
+  drawTrayText(ctx, text, padX, h / 2 + 1, item, horizontalScale);
+  return canvas;
+}
+
+function renderCustomTrayLayout(stats, layout, height = 44, colors = {}, options = {}) {
+  const activeCodex = localLiveCodexProvider();
+  const activeCodexKey = activeCodex?.accountKey
+    && (stats?.limits?.providers || []).some((provider) => (
+      provider?.provider === 'codex' && provider?.accountKey === activeCodex.accountKey
+    ))
+    ? activeCodex.accountKey
+    : '';
+  const resolved = trayLayoutApi.resolveTrayLayout(layout, stats, {
+    currency: currentCurrency(),
+    nowMs: Date.now(),
+    activeAccountKeys: activeCodexKey ? { codex: activeCodexKey } : {},
+    availableProviderIds: Object.keys(trayProviderImages)
+  });
+  const items = resolved.items.map((item) => (
+    item.type === 'text'
+      && item.metric === 'account'
+      && state.settings?.maskLimitAccountEmails
+      ? { ...item, text: accountIdentityApi.maskEmailAddress(item.text) }
+      : item
+  ));
+  const segments = items.map((item) => renderCustomTrayItemCanvas(item, height, colors, options));
+  if (!segments.length) return null;
+  const gap = Math.max(1, Math.round(height * 0.03));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, segments.reduce((width, segment) => width + segment.width, 0) + gap * Math.max(0, segments.length - 1));
+  canvas.height = Math.max(16, Math.round(height));
+  const ctx = canvas.getContext('2d');
+  let x = 0;
+  for (const segment of segments) {
+    ctx.drawImage(segment, x, 0);
+    x += segment.width + gap;
+  }
+  return canvas.toDataURL('image/png');
+}
+
 function barsDataUrlForMode(mode, size = 44, colors, options = {}) {
   if (mode === 'barsAllSessions') return renderAllSessionsIcon(state.stats, size, configuredLimitProviderOrder(), colors, options);
   const pickers = { barsSession: pickWorstSessionProvider, barsWeekly: pickWorstWeeklyProvider };
@@ -7610,16 +8898,215 @@ function barsDataUrlForMode(mode, size = 44, colors, options = {}) {
 }
 
 function trayDataUrlForMode(mode, size = 44, colors, options = {}) {
+  if (mode === 'custom') {
+    return renderCustomTrayLayout(
+      options.stats || state.stats || statsForTrayComposer(),
+      options.layout || state.settings?.trayCustomLayout,
+      size,
+      colors,
+      {
+        showProviderBadge: state.settings?.showTrayProviderBadge === true,
+        ...options
+      }
+    );
+  }
   if (mode === 'limitsAllSessions') return renderLimitSessionsIcon(state.stats, size, configuredLimitProviderOrder(), colors, options);
   return barsDataUrlForMode(mode, size, colors, options);
 }
 
-async function maybeUpdateBarsIcon() {
+async function maybeUpdateBarsIcon(options = {}) {
+  if (options.refreshComposers !== false) refreshTrayComposers();
   const mode = state.settings?.trayContent;
   if (!window.TokenMonitorTrayText.isGeneratedTrayIconMode(mode)) return;
   if (!window.tokenMonitor.setTrayIcons) return;
   const dataUrl = trayDataUrlForMode(mode, 44);
   try { await window.tokenMonitor.setTrayIcons({ [mode]: dataUrl || null }); } catch (_) {}
+}
+
+function trayComposerProviderIcon(provider) {
+  const id = provider === 'auto' ? 'app' : provider;
+  const cached = trayProviderImages[id];
+  if (cached) {
+    try {
+      return providerImageToPngDataUrl(cached, 44, false, {
+        templateColor: floatingBubbleGeneratedColors().text
+      });
+    } catch (_) {}
+  }
+  if (id === 'app') return '../../../assets/icons/tray-token-monitor.png';
+  return window.TokenMonitorTrayProviderIcons.trayProviderIconSources([id])[id] || '';
+}
+
+function trayComposerProviderChoices(currentProviders = [], options = {}) {
+  const current = new Set(
+    (Array.isArray(currentProviders) ? currentProviders : [currentProviders])
+      .map((provider) => String(provider || '').trim().toLowerCase())
+      .filter((provider) => provider && provider !== 'auto')
+  );
+  const available = new Set(
+    trayLayoutApi.providerOptions(state.stats || {}).map((entry) => entry.value)
+  );
+  const includeAll = options.includeAll === true;
+  const catalogue = includeAll ? TRAY_ICON_PROVIDERS : LIMIT_PROVIDERS;
+  return [
+    {
+      value: 'auto',
+      label: t('trayComposer.provider.auto'),
+      detail: t('trayComposer.provider.autoDetail'),
+      icon: trayComposerProviderIcon('auto')
+    },
+    ...catalogue
+      .filter((provider) => includeAll || available.has(provider.id) || current.has(provider.id))
+      .map((provider) => ({
+        value: provider.id,
+        label: provider.label,
+        detail: includeAll || available.has(provider.id) ? '' : t('trayComposer.provider.unavailable'),
+        icon: trayComposerProviderIcon(provider.id)
+      }))
+  ];
+}
+
+function trayComposerAccountChoices(provider) {
+  const stats = state.stats || {};
+  const raw = provider === 'auto'
+    ? LIMIT_PROVIDERS.flatMap((entry) => trayLayoutApi.accountOptions(stats, entry.id))
+    : trayLayoutApi.accountOptions(stats, provider);
+  return raw.map((entry) => ({
+    value: entry.value,
+    label: entry.label,
+    detail: LIMIT_PROVIDERS.find((providerEntry) => providerEntry.id === entry.provider?.provider)?.label || entry.provider?.provider || '',
+    icon: trayComposerProviderIcon(entry.provider?.provider)
+  }));
+}
+
+function trayComposerSourcePreview(source) {
+  const item = trayLayoutApi.createTrayLayoutItem('singleBar');
+  item.rows = [{ ...item.rows[0], ...source }];
+  return renderCustomTrayLayout(
+    statsForTrayComposer(),
+    { version: trayLayoutApi.VERSION, items: [item] },
+    32,
+    floatingBubbleGeneratedColors(),
+    { templateIconColor: floatingBubbleGeneratedColors().text }
+  );
+}
+
+function trayComposerWindowChoices(source) {
+  const choices = trayLayoutApi.sourceWindowOptions(
+    state.stats || {},
+    source
+  ).map((entry) => ({
+    value: entry.value,
+    label: trayComposerWindowLabel(entry),
+    preview: trayComposerSourcePreview({ ...source, window: entry.value })
+  }));
+  if (choices.length) return choices;
+  return [{
+    value: 'primary',
+    label: t('trayComposer.window.primary'),
+    preview: trayComposerSourcePreview({ ...source, window: 'primary' })
+  }];
+}
+
+function trayComposerWindowLabel(entry) {
+  const kind = String(entry.kind || 'other').toLowerCase();
+  const kindKey = `trayComposer.window.${kind}`;
+  const translatedKind = t(kindKey);
+  const kindLabel = translatedKind === kindKey ? t('trayComposer.window.primary') : translatedKind;
+  const rawLabel = String(entry.label || '').trim();
+  const normalizedLabel = rawLabel.toLowerCase();
+  const redundantLabels = new Set([kind, 'session', 'weekly', 'billing', 'total']);
+  if (!rawLabel || redundantLabels.has(normalizedLabel)) return kindLabel;
+  return `${kindLabel} · ${rawLabel}`;
+}
+
+function previewItemForStyle(style) {
+  return trayLayoutApi.createTrayLayoutItem(style);
+}
+
+function renderTrayComposerItem(item, options = {}) {
+  return renderCustomTrayLayout(
+    statsForTrayComposer(),
+    { version: trayLayoutApi.VERSION, items: [item] },
+    36,
+    floatingBubbleGeneratedColors(),
+    { templateIconColor: floatingBubbleGeneratedColors().text, ...options }
+  );
+}
+
+function renderTrayComposerFontPreview(item, fontStyle, options = {}) {
+  return renderTrayComposerItem({ ...item, fontStyle }, options);
+}
+
+function createTrayComposer(surface) {
+  const isTray = surface === 'tray';
+  const root = isTray ? els.trayComposer : els.floatingBubbleComposer;
+  const layoutKey = isTray ? 'trayCustomLayout' : 'floatingBubbleCustomLayout';
+  return window.TokenMonitorTrayComposer.createTrayComposer({
+    root,
+    surface,
+    layoutApi: trayLayoutApi,
+    getLayout: () => state.settings?.[layoutKey],
+    getStylePreview: (style) => renderTrayComposerItem(
+      previewItemForStyle(style),
+      {
+        showProviderBadge: isTray && state.settings?.showTrayProviderBadge === true,
+        spacerGuide: style === 'spacer'
+      }
+    ),
+    getFontStylePreview: (item, fontStyle) => renderTrayComposerFontPreview(item, fontStyle, {
+      showProviderBadge: isTray && state.settings?.showTrayProviderBadge === true
+    }),
+    renderItem: (item) => renderTrayComposerItem(item, {
+      showProviderBadge: isTray && state.settings?.showTrayProviderBadge === true
+    }),
+    providerChoices: trayComposerProviderChoices,
+    accountChoices: trayComposerAccountChoices,
+    windowChoices: trayComposerWindowChoices,
+    label: t,
+    onLayoutChange: (nextLayout, { commit }) => {
+      state.settings[layoutKey] = trayLayoutApi.normalizeTrayLayout(nextLayout);
+      if (isTray) void maybeUpdateBarsIcon({ refreshComposers: commit });
+      else {
+        renderFloatingBubbleContent();
+        if (commit) syncTrayComposerVisibility();
+      }
+      if (commit) void saveSettings({ [layoutKey]: state.settings[layoutKey] });
+    }
+  });
+}
+
+function syncTrayComposerVisibility() {
+  const surfaces = [
+    { id: 'tray', root: els.trayComposer, visible: state.settings?.trayContent === 'custom' },
+    { id: 'floatingBubble', root: els.floatingBubbleComposer, visible: state.settings?.floatingBubbleContent === 'custom' }
+  ];
+  window.TokenMonitorTrayComposer.syncTrayComposerSurfaces(
+    surfaces,
+    trayComposers,
+    createTrayComposer
+  );
+  const clockNeeded = (
+    state.settings?.trayContent === 'custom'
+      && trayLayoutApi.trayLayoutNeedsClock(state.settings?.trayCustomLayout)
+  ) || (
+    state.settings?.floatingBubbleContent === 'custom'
+      && trayLayoutApi.trayLayoutNeedsClock(state.settings?.floatingBubbleCustomLayout)
+  );
+  if (clockNeeded && !customTrayClockTimer) {
+    customTrayClockTimer = setInterval(() => {
+      void maybeUpdateBarsIcon({ refreshComposers: false });
+      renderFloatingBubbleContent();
+    }, 30 * 1000);
+  } else if (!clockNeeded && customTrayClockTimer) {
+    clearInterval(customTrayClockTimer);
+    customTrayClockTimer = null;
+  }
+}
+
+function refreshTrayComposers() {
+  syncTrayComposerVisibility();
+  Object.values(trayComposers).forEach((composer) => composer?.refresh());
 }
 
 function loadImage(src) {
@@ -7631,7 +9118,7 @@ function loadImage(src) {
   });
 }
 
-function providerImageToPngDataUrl(img, size, showBadge = false) {
+function providerImageToPngDataUrl(img, size, showBadge = false, options = {}) {
   const { trayProviderBadgeLayout } = window.TokenMonitorTrayProviderIcons;
   const layout = trayProviderBadgeLayout(size);
   const canvas = document.createElement('canvas');
@@ -7644,10 +9131,18 @@ function providerImageToPngDataUrl(img, size, showBadge = false) {
     ctx.save();
     ctx.shadowColor = 'rgba(255, 255, 255, 0.95)';
     ctx.shadowBlur = Math.max(2, Math.round(layout.iconSize * 0.1));
-    ctx.drawImage(img, imageInset, imageInset, imageSize, imageSize);
+    paintProviderImage(ctx, img, imageInset, imageInset, imageSize);
     ctx.restore();
   }
-  ctx.drawImage(img, imageInset, imageInset, imageSize, imageSize);
+  drawProviderImage(
+    ctx,
+    img,
+    imageInset,
+    imageInset,
+    imageSize,
+    false,
+    showBadge ? '' : options.templateColor || ''
+  );
 
   if (!showBadge) return canvas.toDataURL('image/png');
 
@@ -7682,12 +9177,14 @@ function providerImageToPngDataUrl(img, size, showBadge = false) {
 async function deliverTrayProviderIcons(showBadge = state.settings?.showTrayProviderBadge === true) {
   if (!window.tokenMonitor.setTrayIcons) return;
   const deliveryId = trayProviderIconDeliveryGuard.begin();
-  const sources = window.TokenMonitorTrayProviderIcons.trayProviderIconSources(clientsWithIcon);
+  const sources = window.TokenMonitorTrayProviderIcons.trayProviderIconSources(trayIconProviderIds);
+  sources.app = '../../../assets/icons/tray-token-monitor.png';
   const icons = {};
   for (const [id, path] of Object.entries(sources)) {
     try {
       const img = await loadImage(path);
       trayProviderImages[id] = img;
+      trayProviderImageIds.set(img, id);
       icons[id] = providerImageToPngDataUrl(img, 44, showBadge);
     } catch (_) { /* skip missing */ }
   }
@@ -7722,6 +9219,10 @@ function setOpencodeCookieExpanded(expanded) {
   setAccountGroupExpanded('opencode', expanded, 'opencodeCookieExpanded');
 }
 
+function setOpenrouterAccountExpanded(expanded) {
+  setAccountGroupExpanded('openrouter', expanded, 'openrouterAccountExpanded');
+}
+
 function setDeepseekAccountExpanded(expanded) {
   setAccountGroupExpanded('deepseek', expanded, 'deepseekAccountExpanded');
 }
@@ -7754,16 +9255,28 @@ function renderCodexLoginStatus() {
   const openButton = document.getElementById('codexOpenLoginUrlButton');
   const copyButton = document.getElementById('codexCopyLoginUrlButton');
   const statusEl = document.getElementById('codexLoginStatus');
+  const workspaceSelection = document.getElementById('codexWorkspaceSelection');
+  const workspaceSelect = document.getElementById('codexWorkspaceSelect');
   const urlActions = document.getElementById('codexLoginUrlActions');
   const details = document.getElementById('codexLoginDetails');
   const output = document.getElementById('codexLoginOutput');
-  if (!addButton || !cancelButton || !refreshButton || !openButton || !copyButton || !statusEl || !urlActions || !details || !output) return;
+  if (!addButton || !cancelButton || !refreshButton || !openButton || !copyButton || !statusEl || !workspaceSelection || !workspaceSelect || !urlActions || !details || !output) return;
 
   addButton.classList.toggle('hidden', state.codexSignInBusy);
   cancelButton.classList.toggle('hidden', !state.codexSignInBusy);
   refreshButton.classList.toggle('hidden', state.codexSignInBusy);
   statusEl.textContent = state.codexLoginStatus;
   statusEl.classList.toggle('hidden', !state.codexLoginStatus);
+  workspaceSelection.classList.toggle('hidden', state.codexWorkspaceChoices.length === 0);
+  workspaceSelect.replaceChildren(...state.codexWorkspaceChoices.map((workspace) => {
+    const option = document.createElement('option');
+    option.value = workspace.id;
+    option.textContent = workspace.workspaceKind === 'personal'
+      ? t('settings.codex.personalWorkspace')
+      : workspace.label || workspace.id;
+    option.selected = workspace.id === state.codexWorkspaceId;
+    return option;
+  }));
   urlActions.classList.toggle('hidden', !state.codexSignInBusy);
   openButton.classList.toggle('hidden', !state.codexLoginUrl);
   copyButton.classList.toggle('hidden', !state.codexLoginUrl);
@@ -7826,7 +9339,15 @@ function renderCodexAccounts() {
       right.className = 'managed-account-right';
       const info = document.createElement('span');
       info.className = 'managed-account-info';
-      info.textContent = enabled ? limitProviderPresentationApi.limitProviderDisplayLabel(account.accountLabel) : t('settings.codex.disabled');
+      const workspaceLabel = account.workspaceKind === 'personal'
+        ? t('settings.codex.personalWorkspace')
+        : account.workspaceLabel;
+      const accountMetadata = [
+        workspaceLabel,
+        enabled ? limitProviderPresentationApi.limitProviderDisplayLabel(account.accountLabel) : t('settings.codex.disabled')
+      ].filter((value, index, values) => value && values.indexOf(value) === index);
+      info.textContent = accountMetadata.join(' · ');
+      info.title = accountMetadata.join(' · ');
       const remove = document.createElement('button');
       remove.type = 'button';
       remove.className = 'managed-account-remove';
@@ -7897,6 +9418,14 @@ function localProviderStatus(name) {
     return localProviders.find((provider) => provider.provider === name) || null;
   }
   return (state.stats?.limits?.providers || []).find((provider) => provider.provider === name) || null;
+}
+
+function localProviderStatuses(name) {
+  const localProviders = localDeviceLimitsProviders();
+  const providers = localProviders !== null
+    ? localProviders
+    : (state.stats?.limits?.providers || []);
+  return providers.filter((provider) => provider.provider === name);
 }
 
 function deepseekAccountLinked() {
@@ -8120,8 +9649,8 @@ const externalLimitAccountConfig = {
     pendingKey: 'qoderPendingCheckSince'
   },
   kimi: {
-    configuredKey: 'kimiApiKeyConfigured',
-    sourceKey: 'kimiApiKeySource',
+    configuredKey: 'kimiCredentialConfigured',
+    sourceKey: 'kimiCredentialSource',
     pendingKey: 'kimiPendingCheckSince'
   },
   ollama: {
@@ -8130,6 +9659,15 @@ const externalLimitAccountConfig = {
     pendingKey: 'ollamaPendingCheckSince'
   }
 };
+
+function clearDisabledLimitProviderPendingChecks(enabledProviders) {
+  if (!enabledProviders.has('deepseek')) clearDeepseekPendingCheck();
+  if (!enabledProviders.has('minimax')) clearMinimaxPendingCheck();
+  if (!enabledProviders.has('copilot')) clearCopilotPendingCheck();
+  for (const providerName of Object.keys(externalLimitAccountConfig)) {
+    if (!enabledProviders.has(providerName)) clearExternalProviderCheckPending(providerName);
+  }
+}
 
 function externalProviderForAccount(providerName) {
   const provider = localProviderStatus(providerName);
@@ -8185,8 +9723,8 @@ function isCurrentCopilotSignInFlow(flowId) {
   return current && incoming === current;
 }
 
-function copilotAccountStatusText(provider, configured, source) {
-  const accountStatus = limitProviderPresentationApi.apiKeyAccountStatus(provider, configured);
+function copilotAccountStatusText(provider, configured, source, enabled = true) {
+  const accountStatus = limitProviderPresentationApi.apiKeyAccountStatus(provider, configured, enabled);
   if (accountStatus === 'linked') {
     const accountName = String(provider?.accountName || '').trim();
     return accountName || t(source === 'env' ? 'settings.copilot.statusEnv' : 'settings.copilot.statusSet');
@@ -8195,6 +9733,7 @@ function copilotAccountStatusText(provider, configured, source) {
   if (accountStatus === 'notConfigured') return t('settings.copilot.statusNotSet');
   const statusKeys = {
     checking: 'settings.common.checking',
+    disabled: 'settings.limits.status.disabled',
     limited: 'settings.common.limited',
     unavailable: 'settings.common.unavailable',
     notChecked: 'settings.common.notChecked',
@@ -8203,8 +9742,8 @@ function copilotAccountStatusText(provider, configured, source) {
   return t(statusKeys[accountStatus] || 'settings.common.error');
 }
 
-function apiKeyAccountStatusText(providerName, provider, configured, source) {
-  const accountStatus = limitProviderPresentationApi.apiKeyAccountStatus(provider, configured);
+function apiKeyAccountStatusText(providerName, provider, configured, source, enabled = true) {
+  const accountStatus = limitProviderPresentationApi.apiKeyAccountStatus(provider, configured, enabled);
   if (accountStatus === 'linked') {
     return t(source === 'env' ? `settings.${providerName}.statusEnv` : `settings.${providerName}.statusSet`);
   }
@@ -8212,6 +9751,7 @@ function apiKeyAccountStatusText(providerName, provider, configured, source) {
   if (accountStatus === 'notConfigured') return t(`settings.${providerName}.statusNotSet`);
   const statusKeys = {
     checking: 'settings.common.checking',
+    disabled: 'settings.limits.status.disabled',
     limited: 'settings.common.limited',
     unavailable: 'settings.common.unavailable',
     notChecked: 'settings.common.notChecked',
@@ -8307,7 +9847,8 @@ function renderExternalProviderStatus(providerName) {
   const wasPending = Number(state[config.pendingKey] || 0) > 0;
   const provider = externalProviderForAccount(providerName);
   const configured = Boolean(state.settings?.[config.configuredKey]);
-  const pending = Number(state[config.pendingKey] || 0) > 0;
+  const enabled = limitProviderEnabled(providerName);
+  const pending = enabled && Number(state[config.pendingKey] || 0) > 0;
   const linked = externalProviderAccountLinked(providerName);
   if (providerName === 'ollama' && wasPending && !pending && linked) {
     setExternalAccountExpanded('ollama', false);
@@ -8323,7 +9864,7 @@ function renderExternalProviderStatus(providerName) {
   }
   setCursorStatusText(
     statusEl,
-    pending ? t('settings.common.checking') : apiKeyAccountStatusText(providerName, provider, configured, source)
+    pending ? t('settings.common.checking') : apiKeyAccountStatusText(providerName, provider, configured, source, enabled)
   );
   manualPanel.classList.toggle('hidden', linked);
   openBtn.classList.toggle('hidden', linked);
@@ -8356,8 +9897,9 @@ function renderMinimaxStatus() {
   const source = state.settings?.minimaxApiKeySource || '';
   const provider = minimaxProviderForAccount();
   const configured = Boolean(state.settings?.minimaxApiKeyConfigured);
+  const enabled = limitProviderEnabled('minimax');
   const linked = minimaxAccountLinked();
-  setCursorStatusText(statusEl, apiKeyAccountStatusText('minimax', provider, configured, source));
+  setCursorStatusText(statusEl, apiKeyAccountStatusText('minimax', provider, configured, source, enabled));
   manualPanel.classList.toggle('hidden', linked);
   openBtn.classList.toggle('hidden', linked);
   logoutBtn.classList.toggle('hidden', !linked || source !== 'settings');
@@ -8379,10 +9921,11 @@ function renderCopilotStatus() {
   const source = state.settings?.copilotApiTokenSource || '';
   const provider = copilotProviderForAccount();
   const configured = Boolean(state.settings?.copilotApiTokenConfigured);
+  const enabled = limitProviderEnabled('copilot');
   const linked = copilotAccountLinked();
   errorEl.textContent = state.copilotErrorMessage || '';
   errorEl.classList.toggle('hidden', !state.copilotErrorMessage);
-  setCursorStatusText(statusEl, copilotAccountStatusText(provider, configured, source));
+  setCursorStatusText(statusEl, copilotAccountStatusText(provider, configured, source, enabled));
   manualPanel.classList.toggle('hidden', linked);
   if (linked && state.copilotManualExpanded) setCopilotManualExpanded(false);
   signInBtn.classList.toggle('hidden', linked || state.copilotSignInBusy);
@@ -8409,8 +9952,9 @@ function renderDeepseekStatus() {
   const source = state.settings?.deepseekApiKeySource || '';
   const provider = deepseekProviderForAccount();
   const configured = Boolean(state.settings?.deepseekApiKeyConfigured);
+  const enabled = limitProviderEnabled('deepseek');
   const linked = deepseekAccountLinked();
-  setCursorStatusText(statusEl, apiKeyAccountStatusText('deepseek', provider, configured, source));
+  setCursorStatusText(statusEl, apiKeyAccountStatusText('deepseek', provider, configured, source, enabled));
   manualPanel.classList.toggle('hidden', linked);
   openBtn.classList.toggle('hidden', linked);
   logoutBtn.classList.toggle('hidden', !linked || source !== 'settings');
@@ -8580,6 +10124,185 @@ async function updateOpenCodeProfilesStatus() {
   }
 }
 
+function openrouterProfileStatusText(provider, enabled = true) {
+  if (!enabled) return t('settings.opencode.disabled');
+  if (!provider) return t('settings.openrouter.checking');
+  if (provider.status === 'unauthorized') return t('settings.openrouter.invalidKey');
+  if (provider.status !== 'ok') return t('settings.openrouter.unavailable');
+  const balance = optionalFiniteNumber(provider.balance?.amount);
+  if (balance !== null) return `✓ ${formatMoney(balance, 'USD')}`;
+  const quota = (provider.windows || []).find((window) => window?.showMeter !== false);
+  const remaining = optionalFiniteNumber(quota?.remaining);
+  if (remaining !== null) return `✓ ${formatMoney(remaining, 'USD')} left`;
+  return '✓';
+}
+
+function updateOpenRouterProfilesStatus() {
+  const providers = localProviderStatuses('openrouter');
+  const byName = new Map(providers.map((provider) => [String(provider.accountName || provider.accountLabel || ''), provider]));
+  for (const infoEl of document.querySelectorAll('[data-openrouter-profile-name]')) {
+    const name = infoEl.dataset.openrouterProfileName || '';
+    const profile = state.settings?.openrouterProfiles?.[name];
+    infoEl.textContent = openrouterProfileStatusText(byName.get(name), profile?.enabled !== false);
+  }
+  const envInfo = document.querySelector('[data-openrouter-environment]');
+  if (envInfo) envInfo.textContent = openrouterProfileStatusText(byName.get('environment'));
+
+  const statusEl = document.getElementById('openrouterStatus');
+  if (!statusEl) return;
+  const total = state.openrouterProfileCount || 0;
+  const linked = providers.filter((provider) => provider.status === 'ok').length;
+  statusEl.textContent = total > 0
+    ? t('settings.openrouter.connected', { linked, total })
+    : t('settings.openrouter.statusNotSet');
+}
+
+function openrouterProfileErrorText(result) {
+  if (result?.errorCode === 'invalidName') return t('settings.openrouter.invalidName');
+  if (result?.errorCode === 'missingApiKey') return t('settings.openrouter.statusNotSet');
+  return result?.error || t('settings.openrouter.saveFailedShort');
+}
+
+function renderOpenRouterProfiles() {
+  const listEl = document.getElementById('openrouterProfileList');
+  if (!listEl || !window.tokenMonitor.openrouter) return;
+  const api = window.tokenMonitor.openrouter;
+  api.getProfiles().then(({ profiles, hasEnvVar }) => {
+    listEl.replaceChildren();
+    state.settings.openrouterProfiles = profiles;
+    state.settings.openrouterEnvConfigured = Boolean(hasEnvVar);
+    const entries = Object.entries(profiles);
+    state.openrouterProfileCount = entries.length + (hasEnvVar ? 1 : 0);
+    if (state.openrouterProfileCount === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'opencode-empty';
+      empty.textContent = t('settings.openrouter.emptyList');
+      listEl.append(empty);
+      updateOpenRouterProfilesStatus();
+      renderSettingsSummaries();
+      return;
+    }
+
+    const appendRow = ({ name = '', profile = { enabled: true }, env = false } = {}) => {
+      const item = document.createElement('div');
+      item.className = 'opencode-profile-item';
+      if (!env) {
+        const toggle = document.createElement('input');
+        toggle.className = 'profile-toggle';
+        toggle.type = 'checkbox';
+        toggle.checked = profile.enabled !== false;
+        toggle.setAttribute('aria-label', name);
+        toggle.addEventListener('change', async () => {
+          const result = await api.setProfileEnabled(name, toggle.checked);
+          if (!result?.ok) toggle.checked = !toggle.checked;
+          updateOpenRouterProfilesStatus();
+          renderSettingsSummaries();
+        });
+        item.append(toggle);
+      } else {
+        const spacer = document.createElement('span');
+        spacer.className = 'profile-toggle';
+        spacer.setAttribute('aria-hidden', 'true');
+        item.append(spacer);
+      }
+
+      const nameBox = document.createElement('span');
+      nameBox.className = 'profile-name-box';
+      const nameSpan = document.createElement('span');
+      nameSpan.className = 'profile-name';
+      nameSpan.textContent = env ? t('settings.openrouter.environment') : name;
+      nameBox.append(nameSpan);
+
+      if (!env) {
+        const nameInput = document.createElement('input');
+        nameInput.className = 'profile-name-input hidden';
+        nameInput.type = 'text';
+        nameInput.value = name;
+        const renameBtn = document.createElement('button');
+        renameBtn.className = 'profile-rename-btn';
+        renameBtn.textContent = '✎';
+        renameBtn.title = t('settings.opencode.rename');
+        let editing = false;
+        const finishRename = async (save) => {
+          if (!editing) return;
+          editing = false;
+          nameInput.classList.add('hidden');
+          nameSpan.classList.remove('hidden');
+          const nextName = nameInput.value.trim();
+          if (save && nextName && nextName !== name) {
+            const result = await api.renameProfile(name, nextName);
+            if (result?.ok) {
+              renderOpenRouterProfiles();
+            } else {
+              nameInput.value = name;
+              const errorEl = document.getElementById('openrouterErrorMessage');
+              if (errorEl) {
+                errorEl.textContent = openrouterProfileErrorText(result);
+                errorEl.classList.remove('hidden');
+              }
+            }
+          }
+        };
+        renameBtn.addEventListener('click', () => {
+          editing = true;
+          nameSpan.classList.add('hidden');
+          nameInput.classList.remove('hidden');
+          nameInput.focus();
+          nameInput.select();
+        });
+        nameInput.addEventListener('keydown', (event) => {
+          if (event.key === 'Enter') void finishRename(true);
+          if (event.key === 'Escape') void finishRename(false);
+        });
+        nameInput.addEventListener('blur', () => void finishRename(true));
+        nameBox.append(nameInput, renameBtn);
+      }
+
+      const rightBox = document.createElement('span');
+      rightBox.className = 'profile-right';
+      const info = document.createElement('span');
+      info.className = 'profile-info';
+      if (env) {
+        info.dataset.openrouterEnvironment = 'true';
+      } else {
+        info.dataset.openrouterProfileName = name;
+      }
+      info.textContent = t('settings.openrouter.checking');
+      rightBox.append(info);
+
+      if (!env) {
+        const deleteBtn = document.createElement('button');
+        deleteBtn.className = 'profile-delete';
+        deleteBtn.textContent = '✕';
+        deleteBtn.title = t('settings.opencode.delete');
+        let confirming = false;
+        deleteBtn.addEventListener('click', async () => {
+          if (!confirming) {
+            confirming = true;
+            deleteBtn.classList.add('confirming');
+            deleteBtn.textContent = '✓';
+            deleteBtn.title = t('settings.opencode.deleteConfirm', { name });
+            return;
+          }
+          const result = await api.deleteProfile(name);
+          if (result?.ok) renderOpenRouterProfiles();
+        });
+        rightBox.append(deleteBtn);
+      }
+      item.append(nameBox, rightBox);
+      listEl.append(item);
+    };
+
+    for (const [name, profile] of entries) appendRow({ name, profile });
+    if (hasEnvVar) appendRow({ env: true });
+    updateOpenRouterProfilesStatus();
+    renderSettingsSummaries();
+  }).catch(() => {
+    const statusEl = document.getElementById('openrouterStatus');
+    if (statusEl) statusEl.textContent = t('settings.openrouter.unavailable');
+  });
+}
+
 function renderCursorStatus() {
   const statusEl = document.getElementById('cursorAccountStatus');
   const loginBtn = document.getElementById('cursorLoginButton');
@@ -8698,8 +10421,9 @@ function renderCustomPricing() {
   }
   for (const ov of overrides) {
     const row = document.createElement('div');
-    row.className = 'managed-account-row';
-    const main = document.createElement('div');
+    row.className = 'managed-account-row custom-pricing-row';
+    const main = document.createElement('button');
+    main.type = 'button';
     main.className = 'managed-account-main custom-pricing-edit';
     main.title = t('settings.customPricing.edit');
     main.addEventListener('click', () => { if (openCustomPricingForm) openCustomPricingForm(ov); });
@@ -8712,7 +10436,7 @@ function renderCustomPricing() {
     main.append(name, meta);
     const remove = document.createElement('button');
     remove.type = 'button';
-    remove.className = 'managed-account-remove';
+    remove.className = 'managed-account-remove custom-pricing-remove';
     remove.textContent = t('settings.customPricing.remove');
     remove.addEventListener('click', async () => {
       const next = customPricingFormApi.removeOverride(state.settings?.customModelPricing || [], ov.modelId);
@@ -8870,9 +10594,21 @@ function setupCursorAccountUI() {
     const codexCancelButton = document.getElementById('codexCancelLoginButton');
     const codexOpenUrlButton = document.getElementById('codexOpenLoginUrlButton');
     const codexCopyUrlButton = document.getElementById('codexCopyLoginUrlButton');
+    const codexWorkspaceSelect = document.getElementById('codexWorkspaceSelect');
+    const codexConfirmWorkspaceButton = document.getElementById('codexConfirmWorkspaceButton');
     const codexLoginDetails = document.getElementById('codexLoginDetails');
     window.tokenMonitor.codex.onLoginStatus((status) => {
-      if (!status || !isCurrentCodexSignInFlow(status.flowId) || status.phase !== 'output') return;
+      if (!status || !isCurrentCodexSignInFlow(status.flowId)) return;
+      if (status.phase === 'workspaceSelection') {
+        state.codexWorkspaceChoices = Array.isArray(status.workspaces) ? status.workspaces : [];
+        state.codexWorkspaceId = state.codexWorkspaceChoices.some((workspace) => workspace.id === status.currentWorkspaceId)
+          ? status.currentWorkspaceId
+          : state.codexWorkspaceChoices[0]?.id || '';
+        state.codexLoginStatus = t('settings.codex.chooseWorkspace');
+        renderCodexLoginStatus();
+        return;
+      }
+      if (status.phase !== 'output') return;
       state.codexLoginOutput = (state.codexLoginOutput + String(status.text || '')).slice(-3000);
       if (status.loginUrl) state.codexLoginUrl = status.loginUrl;
       state.codexLoginStatus = t(state.codexLoginUrl ? 'settings.codex.loginWaiting' : 'settings.codex.loginStarting');
@@ -8885,6 +10621,8 @@ function setupCursorAccountUI() {
       state.codexSignInBusy = true;
       state.codexLoginUrl = '';
       state.codexLoginOutput = '';
+      state.codexWorkspaceChoices = [];
+      state.codexWorkspaceId = '';
       state.codexLoginStatus = t('settings.codex.loginStarting');
       state.codexAccountError = '';
       if (codexLoginDetails) codexLoginDetails.open = false;
@@ -8907,6 +10645,8 @@ function setupCursorAccountUI() {
           await refreshStats({ force: true });
           state.codexLoginStatus = '';
           state.codexLoginOutput = '';
+          state.codexWorkspaceChoices = [];
+          state.codexWorkspaceId = '';
         }
       } catch (err) {
         if (!isCurrentCodexSignInFlow(flowId)) return;
@@ -8918,6 +10658,8 @@ function setupCursorAccountUI() {
           state.codexSignInBusy = false;
           state.codexSignInFlowId = '';
           state.codexLoginUrl = '';
+          state.codexWorkspaceChoices = [];
+          state.codexWorkspaceId = '';
           renderCodexLoginStatus();
           renderCodexAccounts();
         }
@@ -8934,10 +10676,33 @@ function setupCursorAccountUI() {
       state.codexLoginUrl = '';
       state.codexLoginStatus = '';
       state.codexLoginOutput = '';
+      state.codexWorkspaceChoices = [];
+      state.codexWorkspaceId = '';
       state.codexAccountError = '';
       if (codexLoginDetails) codexLoginDetails.open = false;
       renderCodexLoginStatus();
       renderCodexAccounts();
+    });
+
+    codexWorkspaceSelect.addEventListener('change', () => {
+      state.codexWorkspaceId = codexWorkspaceSelect.value;
+    });
+
+    codexConfirmWorkspaceButton.addEventListener('click', async () => {
+      const flowId = state.codexSignInFlowId;
+      const workspaceId = state.codexWorkspaceId;
+      if (!isCurrentCodexSignInFlow(flowId) || !workspaceId) return;
+      codexConfirmWorkspaceButton.disabled = true;
+      try {
+        const result = await window.tokenMonitor.codex.selectWorkspace({ flowId, workspaceId });
+        if (!result?.ok || !isCurrentCodexSignInFlow(flowId)) return;
+        state.codexWorkspaceChoices = [];
+        state.codexWorkspaceId = '';
+        state.codexLoginStatus = t('settings.codex.loginLoadingAccount');
+        renderCodexLoginStatus();
+      } finally {
+        codexConfirmWorkspaceButton.disabled = false;
+      }
     });
 
     codexOpenUrlButton.addEventListener('click', async () => {
@@ -9037,6 +10802,53 @@ function setupCursorAccountUI() {
         renderSettingsSummaries();
       } else {
         errorEl.textContent = result.error || t('settings.opencode.saveFailedShort');
+        errorEl.classList.remove('hidden');
+      }
+    });
+  }
+
+  const openrouterToggle = document.getElementById('openrouterSettingsToggle');
+  if (openrouterToggle) {
+    openrouterToggle.addEventListener('click', () => {
+      const expanding = !state.openrouterAccountExpanded;
+      setOpenrouterAccountExpanded(expanding);
+      if (expanding) renderOpenRouterProfiles();
+    });
+    setOpenrouterAccountExpanded(false);
+
+    const addToggle = document.getElementById('openrouterAddToggle');
+    const addDetails = document.getElementById('openrouterAddDetails');
+    addToggle?.addEventListener('click', () => {
+      const expanded = addDetails?.classList.contains('hidden');
+      addToggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+      addDetails?.classList.toggle('hidden', !expanded);
+      document.getElementById('openrouterAddForm')?.classList.toggle('expanded', expanded);
+    });
+    document.getElementById('openrouterOpenBrowser')?.addEventListener('click', () => {
+      window.tokenMonitor.openExternal('https://openrouter.ai/settings/keys');
+    });
+    document.getElementById('openrouterProfileSubmit')?.addEventListener('click', async () => {
+      const nameInput = document.getElementById('openrouterProfileName');
+      const keyInput = document.getElementById('openrouterApiKeyInput');
+      const errorEl = document.getElementById('openrouterErrorMessage');
+      const name = String(nameInput?.value || '').trim() || 'default';
+      const apiKey = String(keyInput?.value || '').trim();
+      errorEl?.classList.add('hidden');
+      if (!apiKey) {
+        if (errorEl) {
+          errorEl.textContent = t('settings.openrouter.statusNotSet');
+          errorEl.classList.remove('hidden');
+        }
+        return;
+      }
+      const result = await window.tokenMonitor.openrouter.saveProfile(name, apiKey);
+      if (result?.ok) {
+        nameInput.value = '';
+        keyInput.value = '';
+        renderOpenRouterProfiles();
+        await refreshStats({ force: true });
+      } else if (errorEl) {
+        errorEl.textContent = openrouterProfileErrorText(result);
         errorEl.classList.remove('hidden');
       }
     });
@@ -9427,7 +11239,7 @@ function setupCursorAccountUI() {
     });
 
     document.getElementById('kimiLogoutButton').addEventListener('click', async () => {
-      await saveSettings({ kimiApiKey: '' });
+      await saveSettings({ kimiApiKey: '', kimiWebAccessToken: '' });
       clearExternalProviderCheckPending('kimi');
       clearExternalProviderPendingStatus('kimi');
       renderExternalProviderStatus('kimi');
@@ -9436,6 +11248,30 @@ function setupCursorAccountUI() {
 
     document.getElementById('kimiRefreshButton').addEventListener('click', async () => {
       await refreshStats({ force: true });
+    });
+
+    document.getElementById('kimiWebAccessTokenSubmit').addEventListener('click', async () => {
+      const input = document.getElementById('kimiWebAccessTokenInput');
+      const errorEl = document.getElementById('kimiErrorMessage');
+      errorEl.classList.add('hidden');
+      if (!String(input.value || '').trim()) {
+        errorEl.textContent = t('settings.kimi.statusNotSet');
+        errorEl.classList.remove('hidden');
+        return;
+      }
+      try {
+        markExternalProviderCheckPending('kimi');
+        await saveSettings({ kimiWebAccessToken: input.value });
+        input.value = '';
+        renderExternalProviderStatus('kimi');
+        await refreshStats({ force: true });
+        setExternalAccountExpanded('kimi', !externalProviderAccountLinked('kimi'));
+        renderExternalProviderStatus('kimi');
+      } catch (err) {
+        clearExternalProviderCheckPending('kimi');
+        errorEl.textContent = t('settings.kimi.saveFailed', { message: err.message });
+        errorEl.classList.remove('hidden');
+      }
     });
 
     document.getElementById('kimiApiKeySubmit').addEventListener('click', async () => {
@@ -9718,3 +11554,4 @@ setupCursorAccountUI();
 setupCustomPricingUI();
 setupCustomRangeUI();
 init();
+

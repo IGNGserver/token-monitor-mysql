@@ -7,6 +7,7 @@ const test = require('node:test');
 
 const rootDir = path.join(__dirname, '..', '..');
 const read = (...p) => fs.readFileSync(path.join(rootDir, ...p), 'utf8');
+const { usageConfigFromSettings } = require('../../src/electron/runtimeConfig');
 
 test('preload exposes the dashboard IPC surface', () => {
   const preload = read('src', 'electron', 'preload.js');
@@ -62,16 +63,18 @@ test('dashboard history is gated by the historyEnabled setting', () => {
   assert.match(main, /historyEnabled:\s*true/);
   assert.match(main, /historyEnabled:\s*parseBoolean\(patch\.historyEnabled[\s\S]*?,\s*false\)/);
   assert.match(main, /if \(settings\?\.historyEnabled === false\) return aggregateHistory\(\[\]\)/);
-  assert.match(main, /historyEnabled:\s*settings\.historyEnabled !== false/);
+  assert.equal(usageConfigFromSettings({ historyEnabled: true }).historyEnabled, true);
+  assert.equal(usageConfigFromSettings({ historyEnabled: false }).historyEnabled, false);
+  assert.match(main, /usageConfigFromSettings\(settings, \{/);
 });
 
 test('agent history collection defaults to enabled, matching the widget', () => {
   const agent = read('src', 'agent', 'agent.js');
   const envExample = read('.env.example');
-  const readme = read('README.md');
+  const configDoc = read('docs', 'configuration.md');
   assert.match(agent, /TOKEN_MONITOR_HISTORY_ENABLED,\s*true\)/);
   assert.doesNotMatch(envExample, /TOKEN_MONITOR_HISTORY_ENABLED=0/);
-  assert.match(readme, /TOKEN_MONITOR_HISTORY_ENABLED=/);
+  assert.match(configDoc, /TOKEN_MONITOR_HISTORY_ENABLED=/);
 });
 
 test('dashboard.html wires the shared modules and the two panels', () => {
@@ -113,6 +116,31 @@ test('dashboard.js fetches history over IPC and renders both tabs', () => {
   assert.match(js, /dashboard\.minimize\(\)/);
   assert.match(js, /dashboard\.ready\(\)/);
   assert.match(js, /onDashboardHistoryChanged\?\.\(\(\) => \{ void refresh\(\); \}\)/);
+});
+
+test('heatmap metric preserves the legacy cost default and normalizes settings', () => {
+  const main = read('src', 'electron', 'main.js');
+  const js = read('src', 'electron', 'renderer', 'dashboard.js');
+  const html = read('src', 'electron', 'renderer', 'dashboard.html');
+  assert.match(main, /heatmapMetric:\s*'cost'/);
+  assert.match(main, /merged\.heatmapMetric = normalizeHeatmapMetric\(merged\.heatmapMetric\)/);
+  assert.match(main, /normalizedPatch\.heatmapMetric = normalizeHeatmapMetric\(patch\.heatmapMetric, settings\.heatmapMetric\)/);
+  assert.match(js, /computeHeatmapIntensities\(state\.history\?\.daily \|\| \[\]\)/);
+  assert.match(js, /heatmapMetric:\s*'cost'/);
+  assert.match(html, /class="seg-btn active" data-val="cost" aria-pressed="true"/);
+});
+
+test('Home configures heatmap color in Settings while keeping token tooltips', () => {
+  const app = read('src', 'electron', 'renderer', 'app.js');
+  const css = read('src', 'electron', 'renderer', 'styles.css');
+  assert.match(app, /settings\.home\.configureActivity/);
+  assert.match(app, /function renderHomeActivitySettings/);
+  assert.match(app, /saveSettings\(\{ heatmapMetric: metric \}\)/);
+  assert.match(app, /data-home-activity-tooltip-count[^\n]*formatCompact\(Number\(cell\.dataset\.t/);
+  assert.match(app, /data-home-activity-tooltip-label[^\n]*textContent = 'tokens'/);
+  assert.doesNotMatch(app, /home-heatmap-metric/);
+  assert.match(css, /\.home-activity-settings/);
+  assert.doesNotMatch(css, /\.home-heatmap-metric/);
 });
 
 test('dashboard motion is data-scoped and respects reduced-motion preferences', () => {

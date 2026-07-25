@@ -1,8 +1,14 @@
 'use strict';
 
 const path = require('node:path');
-const { formatTrayText, isBarsTrayIconMode, isGeneratedTrayIconMode, pickWorstLimit } = require('../shared/trayText');
-const { maskEmailAddress } = require('./renderer/accountIdentity');
+const {
+  formatTrayText,
+  isBarsTrayIconMode,
+  isGeneratedTrayIconMode,
+  pickUsageProviderId,
+  pickWorstLimit
+} = require('../shared/trayText');
+const { codexAccountDisplayLabel } = require('./renderer/accountIdentity');
 const { translate: translateMessage } = require('./renderer/i18n');
 
 const ICON_PATH = path.join(__dirname, '..', '..', 'assets', 'icon.png');
@@ -25,30 +31,11 @@ function trayUsagePeriod(contentMode) {
   return null;
 }
 
-function topClientFromMetric(values) {
-  let top = null;
-  let topValue = 0;
-  for (const [client, rawValue] of Object.entries(values || {})) {
-    const value = Number(rawValue);
-    if (!Number.isFinite(value) || value <= 0) continue;
-    if (!top || value > topValue) {
-      top = client;
-      topValue = value;
-    }
-  }
-  return top;
-}
-
 function pickUsageTrayIconId(stats, contentMode = 'tokens', availableIconIds = []) {
   const periodKey = trayUsagePeriod(contentMode);
   if (!periodKey) return null;
-  const period = stats?.periods?.[periodKey] || {};
-  const costMode = contentMode === 'cost' || contentMode === 'costAll';
-  const costClient = costMode ? topClientFromMetric(period.clientCosts) : null;
-  const client = costClient || topClientFromMetric(period.clients);
-  if (!client) return null;
-  const available = new Set(availableIconIds);
-  return available.has(client) ? client : null;
+  const metric = contentMode === 'cost' || contentMode === 'costAll' ? 'cost' : 'tokens';
+  return pickUsageProviderId(stats, metric, periodKey, availableIconIds);
 }
 
 function shouldUseTemplateTrayIcon(id, platform = process.platform, showProviderBadge = false) {
@@ -90,7 +77,8 @@ const TRAY_CONTENT_MENU_ITEMS = [
   ['barsWeekly', 'trayMenu.content.weeklyLimitBar'],
   ['barsAllSessions', 'trayMenu.content.allToolsLimitBars'],
   ['bars', 'trayMenu.content.lowestRemainingLimitBar'],
-  ['icon', 'trayMenu.content.appIconOnly']
+  ['icon', 'trayMenu.content.appIconOnly'],
+  ['custom', 'trayMenu.content.custom']
 ];
 
 const WINDOW_PRESENTATION_MENU_ITEMS = [
@@ -120,9 +108,10 @@ function buildTrayMenuTemplate(options = {}) {
   const codexAccounts = Array.isArray(state.codexAccounts) ? state.codexAccounts : [];
   const codexItem = codexAccounts.length >= 2 ? (() => {
     const labelFor = (account, index) => {
-      const email = String(account?.email || '').trim();
-      if (email) return state.maskAccountEmails ? maskEmailAddress(email) : email;
-      return t('trayMenu.codexAccountFallback', { number: index + 1 });
+      return codexAccountDisplayLabel(account, codexAccounts, {
+        maskEmail: state.maskAccountEmails,
+        personalWorkspaceLabel: t('settings.codex.personalWorkspace')
+      }) || t('trayMenu.codexAccountFallback', { number: index + 1 });
     };
     const activeIndex = codexAccounts.findIndex((account) => account.id === state.activeCodexAccountId);
     const label = activeIndex >= 0

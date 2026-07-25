@@ -20,8 +20,10 @@ interface HubApi {
   @GET("api/stats") suspend fun stats(): StatsDto
   @GET("api/devices") suspend fun devices(): DevicesResponseDto
   @GET("api/usage/range") suspend fun usageRange(
-    @Query("from") from: String,
-    @Query("to") to: String
+    @Query("startDate") startDate: String,
+    @Query("endDate") endDate: String,
+    @Query("startHour") startHour: Int = 0,
+    @Query("endHour") endHour: Int = 23
   ): UsageRangeDto
   @GET("api/pricing") suspend fun pricing(): PricingListDto
   @PUT("api/pricing/{model}") suspend fun putPricing(@Path("model") model: String, @Body request: PricingRequestDto): PricingResponseDto

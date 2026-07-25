@@ -16,7 +16,7 @@
   }
 
   function isGeneratedTrayIconMode(contentMode) {
-    return contentMode === 'limitsAllSessions' || isBarsTrayIconMode(contentMode);
+    return contentMode === 'limitsAllSessions' || contentMode === 'custom' || isBarsTrayIconMode(contentMode);
   }
 
   function formatCompactNumber(value) {
@@ -25,6 +25,29 @@
     if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
     if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
     return String(n);
+  }
+
+  function topClientFromMetric(values) {
+    let top = null;
+    let topValue = 0;
+    for (const [client, rawValue] of Object.entries(values || {})) {
+      const value = Number(rawValue);
+      if (!Number.isFinite(value) || value <= 0) continue;
+      if (!top || value > topValue) {
+        top = client;
+        topValue = value;
+      }
+    }
+    return top;
+  }
+
+  function pickUsageProviderId(stats, metric = 'tokens', period = 'today', availableIconIds) {
+    const values = stats?.periods?.[period] || {};
+    const costClient = metric === 'cost' ? topClientFromMetric(values.clientCosts) : null;
+    const client = costClient || topClientFromMetric(values.clients);
+    if (!client) return null;
+    if (!Array.isArray(availableIconIds)) return client;
+    return new Set(availableIconIds).has(client) ? client : null;
   }
 
   function csvValues(value) {
@@ -228,7 +251,7 @@
   }
 
   function formatTrayText(stats, contentMode = 'tokens', currencyCode = 'USD', options = {}) {
-    if (contentMode === 'icon') return '';
+    if (contentMode === 'icon' || contentMode === 'custom') return '';
     if (contentMode === 'limitsAllSessions') return formatConfiguredSessionLimits(stats, options);
     if (isBarsTrayIconMode(contentMode)) {
       // Icon carries all the info; only show text if we have no limit data at all.
@@ -254,6 +277,7 @@
     pickConfiguredLimitProviders,
     pickConfiguredSessionLimits,
     pickLimitProviderByKindPriority,
+    pickUsageProviderId,
     pickWorstLimit,
     pickWorstLimitProvider
   };

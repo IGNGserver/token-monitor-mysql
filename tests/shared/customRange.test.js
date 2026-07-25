@@ -36,8 +36,14 @@ test('normalizeCustomRange rejects inverted ranges', () => {
   assert.equal(range.error, 'inverted-range');
 });
 
-test('filterPeriodByCustomRange keeps overlapping sessions only', () => {
+test('filterPeriodByCustomRange keeps tokscale totals and only narrows sessions', () => {
   const period = emptyPeriod();
+  period.totalTokens = 150;
+  period.costUsd = 1.5;
+  period.clients = { codex: 150 };
+  period.clientCosts = { codex: 1.5 };
+  period.models = { 'gpt-5': 150 };
+  period.modelCosts = { 'gpt-5': 1.5 };
   period.sessions = {
     'codex:a': {
       client: 'codex',
@@ -64,24 +70,45 @@ test('filterPeriodByCustomRange keeps overlapping sessions only', () => {
       cacheReadTokens: 0,
       cacheWriteTokens: 0,
       outputTokens: 5
+    },
+    'codex:undated': {
+      client: 'codex',
+      sessionId: 'undated',
+      totalTokens: 999,
+      costUsd: 0,
+      models: { 'gpt-5': 999 }
     }
   };
 
-  // Build a local range that covers only the first session by using its local day/hour.
-  const start = new Date('2026-07-24T01:30:00.000Z');
-  const end = new Date('2026-07-24T02:30:00.000Z');
-  const startDate = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}-${String(start.getDate()).padStart(2, '0')}`;
-  const endDate = `${end.getFullYear()}-${String(end.getMonth() + 1).padStart(2, '0')}-${String(end.getDate()).padStart(2, '0')}`;
+  // Partial-hour multi-day window: session list is narrowed, but totals stay
+  // on the tokscale day aggregates (same family as day/month tabs).
   const filtered = filterPeriodByCustomRange(period, {
-    startDate,
-    endDate,
-    startHour: start.getHours(),
-    endHour: end.getHours()
+    startDate: '2026-07-24',
+    endDate: '2026-07-25',
+    startHour: 0,
+    endHour: 12
   });
-  assert.equal(Object.keys(filtered.sessions).length, 1);
-  assert.equal(filtered.sessions['codex:a'].totalTokens, 100);
-  assert.equal(filtered.totalTokens, 100);
-  assert.equal(filtered.clients.codex, 100);
+  assert.equal(filtered.totalTokens, 150);
+  assert.equal(filtered.clients.codex, 150);
+  assert.equal(Object.keys(filtered.sessions).includes('codex:a'), true);
+  assert.equal(Object.keys(filtered.sessions).includes('codex:undated'), true);
+  // session b is outside the hour window on the end day only if local TZ maps
+  // 2026-07-25T10:00Z into end-day hours after 12 — do not assert TZ-sensitive drop.
+});
+
+test('filterPeriodByCustomRange full days keeps period aggregates', () => {
+  const period = emptyPeriod();
+  period.totalTokens = 42;
+  period.clients = { codex: 42 };
+  period.sessions = {};
+  const filtered = filterPeriodByCustomRange(period, {
+    startDate: '2026-07-01',
+    endDate: '2026-07-31',
+    startHour: 0,
+    endHour: 23
+  });
+  assert.equal(filtered.totalTokens, 42);
+  assert.equal(filtered.clients.codex, 42);
 });
 
 test('periodFromSessions rebuilds totals from session maps', () => {

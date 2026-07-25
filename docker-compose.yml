@@ -17,9 +17,11 @@ services:
       start_period: 20s
 
   hub:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    # Published with Windows/Android on each GitHub Release (GHCR).
+    # Pin a version with TOKEN_MONITOR_VERSION=0.34.2 (or v0.34.2); default is latest.
+    image: ghcr.io/igngserver/token-monitor-hub:${TOKEN_MONITOR_VERSION:-latest}
+    # Optional local build for contributors (git clone + Dockerfile present):
+    #   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
     restart: unless-stopped
     depends_on:
       mysql:

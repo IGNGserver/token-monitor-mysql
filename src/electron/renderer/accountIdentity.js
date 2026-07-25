@@ -16,6 +16,77 @@
     return `${first}***${last}@${domain}`;
   }
 
+  function codexAccountEmail(account) {
+    return String(account?.email || account?.accountEmail || '').trim();
+  }
+
+  function codexAccountWorkspace(account, personalWorkspaceLabel = 'Personal') {
+    const workspace = String(account?.workspaceLabel || account?.accountName || '').trim();
+    if (workspace) return workspace;
+    return account?.workspaceKind === 'personal'
+      ? String(personalWorkspaceLabel || '').trim()
+      : '';
+  }
+
+  function codexAccountStableId(account) {
+    const raw = String(
+      account?.accountKey
+      || account?.workspaceAccountId
+      || account?.providerAccountId
+      || account?.id
+      || ''
+    ).trim().replace(/^sha256:/i, '');
+    return raw.replace(/[^a-z0-9]/gi, '').toLowerCase();
+  }
+
+  function codexAccountBaseDisplayLabel(account, peers, options) {
+    const email = codexAccountEmail(account);
+    const workspace = codexAccountWorkspace(account, options.personalWorkspaceLabel);
+    const maskEmail = options.maskEmail === true;
+    if (!email) return workspace;
+
+    const visibleEmail = maskEmail ? maskEmailAddress(email) : email;
+    const normalizedEmail = email.toLowerCase();
+    const normalizedVisibleEmail = visibleEmail.toLowerCase();
+    const duplicateEmail = peers.filter(
+      (peer) => codexAccountEmail(peer).toLowerCase() === normalizedEmail
+    ).length > 1;
+    const maskedCollision = maskEmail && peers.filter((peer) => {
+      const peerEmail = codexAccountEmail(peer);
+      return peerEmail && maskEmailAddress(peerEmail).toLowerCase() === normalizedVisibleEmail;
+    }).length > 1;
+
+    return workspace && (duplicateEmail || maskedCollision)
+      ? `${visibleEmail} · ${workspace}`
+      : visibleEmail;
+  }
+
+  function codexAccountUniqueStableSuffix(account, peers) {
+    const stableId = codexAccountStableId(account);
+    if (!stableId) return '';
+    const peerIds = peers.map(codexAccountStableId);
+    for (let length = Math.min(6, stableId.length); length <= stableId.length; length += 1) {
+      const prefix = stableId.slice(0, length);
+      if (peerIds.filter((candidate) => candidate.slice(0, length) === prefix).length === 1) {
+        return prefix;
+      }
+    }
+    return stableId;
+  }
+
+  function codexAccountDisplayLabel(account, accounts = [], options = {}) {
+    const peers = Array.isArray(accounts) && accounts.length > 0 ? accounts : [account];
+    const label = codexAccountBaseDisplayLabel(account, peers, options);
+    if (!label) return '';
+
+    const collidingPeers = peers.filter(
+      (peer) => codexAccountBaseDisplayLabel(peer, peers, options).toLowerCase() === label.toLowerCase()
+    );
+    if (collidingPeers.length <= 1) return label;
+    const stableSuffix = codexAccountUniqueStableSuffix(account, collidingPeers);
+    return stableSuffix ? `${label} · #${stableSuffix}` : label;
+  }
+
   function codexAccountMatchesProvider(account, provider) {
     if (!account || !provider || provider.provider !== 'codex') return false;
     const accountKey = String(account.accountKey || '').trim();
@@ -52,6 +123,7 @@
   }
 
   return {
+    codexAccountDisplayLabel,
     codexAccountIdForProvider,
     codexAccountMatchesProvider,
     isCodexLiveAccount,

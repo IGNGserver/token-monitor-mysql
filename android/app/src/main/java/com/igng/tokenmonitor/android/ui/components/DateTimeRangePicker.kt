@@ -54,12 +54,9 @@ import androidx.compose.ui.unit.sp
 import com.igng.tokenmonitor.android.ui.haptics.HapticEvent
 import com.igng.tokenmonitor.android.ui.haptics.rememberAppHaptics
 import java.time.DayOfWeek
-import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
-import java.time.LocalTime
 import java.time.YearMonth
-import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.format.TextStyle as DateTextStyle
 import java.util.Locale
@@ -72,25 +69,24 @@ import kotlinx.coroutines.launch
 @Composable
 fun DateTimeRangePickerDialog(
   onDismiss: () -> Unit,
-  onConfirm: (fromInclusive: Instant, toExclusive: Instant) -> Unit,
-  initialFrom: Instant? = null,
-  initialToExclusive: Instant? = null
+  onConfirm: (startDate: LocalDate, endDate: LocalDate, startHour: Int, endHour: Int) -> Unit,
+  initialStartDate: LocalDate? = null,
+  initialEndDate: LocalDate? = null,
+  initialStartHour: Int? = null,
+  initialEndHour: Int? = null
 ) {
-  val zone = ZoneId.systemDefault()
-  val now = LocalDateTime.now(zone)
-  val startLdt = initialFrom?.atZone(zone)?.toLocalDateTime()
-    ?: now.toLocalDate().atStartOfDay()
-  val endInclusiveLdt = initialToExclusive?.atZone(zone)?.toLocalDateTime()?.minusHours(1)
-    ?: now.withMinute(0).withSecond(0).withNano(0)
+  val now = LocalDateTime.now()
+  val startSeed = initialStartDate ?: now.toLocalDate()
+  val endSeed = initialEndDate ?: now.toLocalDate()
   val haptics = rememberAppHaptics()
 
-  var startDate by remember { mutableStateOf(startLdt.toLocalDate()) }
-  var endDate by remember { mutableStateOf(endInclusiveLdt.toLocalDate()) }
+  var startDate by remember { mutableStateOf(startSeed) }
+  var endDate by remember { mutableStateOf(endSeed) }
   // false = next click sets start; true = next click completes range
   var pickingEnd by remember { mutableStateOf(true) }
   var visibleMonth by remember { mutableStateOf(YearMonth.from(endDate)) }
-  var startHour by remember { mutableIntStateOf(startLdt.hour.coerceIn(0, 23)) }
-  var endHour by remember { mutableIntStateOf(endInclusiveLdt.hour.coerceIn(0, 23)) }
+  var startHour by remember { mutableIntStateOf((initialStartHour ?: 0).coerceIn(0, 23)) }
+  var endHour by remember { mutableIntStateOf((initialEndHour ?: now.hour).coerceIn(0, 23)) }
   var errorText by remember { mutableStateOf("") }
 
   val rangeLabel = remember(startDate, endDate, startHour, endHour) {
@@ -103,16 +99,15 @@ fun DateTimeRangePickerDialog(
     confirmButton = {
       TextButton(
         onClick = {
-          val from = LocalDateTime.of(startDate, LocalTime.of(startHour, 0)).atZone(zone).toInstant()
-          val endInclusive = LocalDateTime.of(endDate, LocalTime.of(endHour, 0)).atZone(zone).toInstant()
-          val toExclusive = endInclusive.plusSeconds(3600)
-          if (!from.isBefore(toExclusive)) {
+          val startOk = startDate.atTime(startHour, 0)
+          val endOk = endDate.atTime(endHour, 0)
+          if (endOk.isBefore(startOk)) {
             errorText = "结束时间必须晚于开始时间"
             haptics.perform(HapticEvent.Error)
             return@TextButton
           }
           haptics.perform(HapticEvent.Confirm)
-          onConfirm(from, toExclusive)
+          onConfirm(startDate, endDate, startHour, endHour)
         }
       ) { Text("确定") }
     },
@@ -502,3 +497,4 @@ private fun ComposeHourWheel(
     }
   }
 }
+

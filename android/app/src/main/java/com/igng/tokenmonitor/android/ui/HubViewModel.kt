@@ -12,9 +12,6 @@ import com.igng.tokenmonitor.android.data.model.UsageRangeDto
 import com.igng.tokenmonitor.android.data.repository.HubRepository
 import com.igng.tokenmonitor.android.data.repository.HubResult
 import dagger.hilt.android.lifecycle.HiltViewModel
-import java.time.Instant
-import java.time.ZoneId
-import java.time.format.DateTimeFormatter
 import javax.inject.Inject
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -29,8 +26,10 @@ enum class RealtimeStatus { Live, Reconnecting, Disconnected }
 enum class AnalyticsPeriodKind { Today, Month, AllTime, Custom }
 
 data class CustomRangeSelection(
-  val fromInclusive: Instant,
-  val toExclusive: Instant,
+  val startDate: String,
+  val endDate: String,
+  val startHour: Int,
+  val endHour: Int,
   val label: String
 )
 
@@ -63,7 +62,8 @@ class HubViewModel @Inject constructor(private val repository: HubRepository) : 
     refreshPricing()
     val current = _state.value
     if (current.analyticsPeriod == AnalyticsPeriodKind.Custom && current.customRange != null) {
-      loadCustomRange(current.customRange.fromInclusive, current.customRange.toExclusive, current.customRange.label)
+      val range = current.customRange
+      loadCustomRange(range.startDate, range.endDate, range.startHour, range.endHour, range.label)
     }
   }
 
@@ -128,9 +128,15 @@ class HubViewModel @Inject constructor(private val repository: HubRepository) : 
     )
   }
 
-  fun loadCustomRange(fromInclusive: Instant, toExclusive: Instant, label: String? = null) {
-    val rangeLabel = label ?: formatRangeLabel(fromInclusive, toExclusive)
-    val selection = CustomRangeSelection(fromInclusive, toExclusive, rangeLabel)
+  fun loadCustomRange(
+    startDate: String,
+    endDate: String,
+    startHour: Int = 0,
+    endHour: Int = 23,
+    label: String? = null
+  ) {
+    val rangeLabel = label ?: formatRangeLabel(startDate, endDate, startHour, endHour)
+    val selection = CustomRangeSelection(startDate, endDate, startHour, endHour, rangeLabel)
     rangeJob?.cancel()
     rangeJob = viewModelScope.launch {
       _state.value = _state.value.copy(
@@ -139,7 +145,7 @@ class HubViewModel @Inject constructor(private val repository: HubRepository) : 
         customRangeLoading = true,
         error = null
       )
-      when (val result = repository.usageRange(fromInclusive.toString(), toExclusive.toString())) {
+      when (val result = repository.usageRange(startDate, endDate, startHour, endHour)) {
         is HubResult.Success -> _state.value = _state.value.copy(
           customRangeResult = result.value,
           customRangeLoading = false
@@ -226,10 +232,9 @@ private fun UsageRangeDto.toPeriodDto(): PeriodDto = PeriodDto(
   modelCosts = modelCosts
 )
 
-private val rangeLabelFormatter: DateTimeFormatter =
-  DateTimeFormatter.ofPattern("MM-dd HH:mm").withZone(ZoneId.systemDefault())
-
-fun formatRangeLabel(fromInclusive: Instant, toExclusive: Instant): String {
-  val endInclusive = toExclusive.minusSeconds(1)
-  return "${rangeLabelFormatter.format(fromInclusive)} → ${rangeLabelFormatter.format(endInclusive)}"
+fun formatRangeLabel(startDate: String, endDate: String, startHour: Int, endHour: Int): String {
+  fun pad(n: Int) = n.toString().padStart(2, '0')
+  val start = "$startDate ${pad(startHour)}:00"
+  val end = "$endDate ${pad(endHour)}:00"
+  return "$start → $end"
 }

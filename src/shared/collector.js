@@ -16,13 +16,18 @@ const { collectWslUsage: collectWslUsageImpl, emptyWslBundle, probeWslState: pro
 const { hermesProfileWatchDirs, resolveHermesHome } = require('./hermesProfiles');
 const { mergeHistories, parseGraphResult, normalizeHistory } = require('./history');
 const { retainDailyHistory } = require('./dailyHistoryArchive');
-const { collectLimitsOnce, createLimitsCollector } = require('./limitCollector');
 const cursorAuth = require('./cursorAuth');
 const { findSessionFiles, codexSessionFile } = require('./sessionFiles');
 const opencodeSession = require('./opencodeSession');
 const { buildPromaHistoryGraph, buildPromaPeriods, collectPromaRows } = require('./promaUsage');
 const { hashKey } = require('./hashKey');
 const { filterPeriodByCustomRange, normalizeCustomRange } = require('./customRange');
+const { hostOsInfo, normalizeOsInfo } = require('./osVersion');
+const {
+  LIMITS_RESET_BOUNDARY_MAX_TIMER_MS,
+  nextLimitsResetBoundary,
+  pruneAttemptedResetBoundaries
+} = require('./limitResetBoundary');
 
 function toUnpackedPath(p) {
   // electron-builder asarUnpack stores real files at .../app.asar.unpacked/...
@@ -489,17 +494,21 @@ function applySessionTimestamps(periods, home, deps = {}) {
 const SYNC_MIN_INTERVAL_MS = 5 * 60 * 1000;
 const lastSyncAt = { cursor: 0, antigravity: 0 };
 
-function syncDue(kind, nowMs = Date.now()) {
+function syncDue(kind, nowMs = Date.now(), force = false) {
+  if (force) {
+    lastSyncAt[kind] = nowMs;
+    return true;
+  }
   if (nowMs - lastSyncAt[kind] < SYNC_MIN_INTERVAL_MS) return false;
   lastSyncAt[kind] = nowMs;
   return true;
 }
 
-async function maybeSyncCursor(clientsCsv, logger) {
+async function maybeSyncCursor(clientsCsv, logger, options = {}) {
   const enabled = new Set(normalizeClientsCsv(clientsCsv).split(',').filter(Boolean));
   if (!enabled.has('cursor')) return;
   if (!cursorAuth.readActiveAccount()) return;
-  if (!syncDue('cursor')) return;
+  if (!syncDue('cursor', Date.now(), options.force === true)) return;
   try {
     await cursorAuth.runCursorSync();
   } catch (err) {
@@ -605,6 +614,9 @@ async function collectUsageOnce(options) {
   // build path on a non-Windows CI box (the real process.platform stays for
   // tokscale binary resolution, which is genuinely platform-bound).
   const platformValue = options.platform || process.platform;
+  const osInfo = options.osInfo === undefined
+    ? hostOsInfo()
+    : normalizeOsInfo(options.osInfo);
   const normalizedClients = normalizeClientsCsv(clients);
   const projectsEnabled = options.projectsEnabled !== false;
   const localSessionMetadataDeps = {
@@ -632,7 +644,7 @@ async function collectUsageOnce(options) {
   let promaRows = null;
   let promaPricing = null;
   if (normalizedClients) {
-    await maybeSyncCursor(tokscaleClients, options.logger);
+    await maybeSyncCursor(tokscaleClients, options.logger, { force: options.forceCursorSync === true });
     await maybeSyncAntigravity(tokscaleClients, options.logger, options.homeDir || os.homedir());
     if (includesProma) {
       try {
@@ -797,6 +809,8 @@ async function collectUsageOnce(options) {
     deviceId,
     hostname: os.hostname(),
     platform: `${process.platform}-${process.arch}`,
+    ...(osInfo.name ? { osName: osInfo.name } : {}),
+    ...(osInfo.version ? { osVersion: osInfo.version } : {}),
     updatedAt: collectedAt.toISOString(),
     agentVersion,
     ...(agentRuntime ? { agentRuntime } : {}),
@@ -826,11 +840,6 @@ async function collectUsageOnce(options) {
       logger: options.logger
     });
     if (history) summary.history = history;
-  }
-  if (options.limitsEnabled !== false) {
-    summary.limits = options.limitsCollector
-      ? await options.limitsCollector.snapshot(Boolean(options.forceLimits))
-      : await collectLimitsOnce(options);
   }
   return summary;
 }
@@ -1107,15 +1116,17 @@ const FULL_SCAN_INTERVAL_MS = 60 * 60 * 1000;
 function startCollector(options) {
   const {
     clients, allTimeSince, commandTimeoutMs, deviceId, agentVersion, agentRuntime,
-    intervalMs, historyIntervalMs = 15 * 60 * 1000, historyEnabled = true, watchEnabled, watchDebounceMs, limitsEnabled,
+    intervalMs, historyIntervalMs = 15 * 60 * 1000, historyEnabled = true, watchEnabled, watchDebounceMs,
     onUpdate, onPreview, onError, logger
   } = options;
+  const deviceOsInfo = options.osInfo === undefined
+    ? hostOsInfo()
+    : normalizeOsInfo(options.osInfo);
   const log = logger || (() => {});
-  const limitsCollector = limitsEnabled !== false ? createLimitsCollector(options) : null;
   let tickInFlight = false;
   let tickPending = false;
-  let pendingForceLimits = false;
   let pendingForceHistory = false;
+  let pendingForceCursorSync = false;
   let lastHistoryAt = 0;
   // Last full-scan snapshot; lets watch ticks scan only --today and derive
   // month/allTime exactly (applyPeriodDelta). Reset by every full tick.
@@ -1136,30 +1147,32 @@ function startCollector(options) {
   // valid for today and configFingerprint matches, only --today is scanned
   // and month/allTime are derived via applyPeriodDelta.
   const anchorPath = path.join(sharedDataDir(), 'collector-anchor.json');
-  try {
-    const saved = readJson(anchorPath, null);
-    if (saved && saved.dateKey === localTodayKey()) {
-      const fp = configFingerprint(clients, allTimeSince, options.projectsEnabled);
-      if (saved.configFingerprint === fp) {
-        anchor = { dateKey: saved.dateKey, today: saved.today, month: saved.month, allTime: saved.allTime };
-        // Don't restore a persisted WSL snapshot when WSL scanning is now off —
-        // the configFingerprint intentionally ignores the toggle (host periods
-        // stay valid), so without this gate a warm-scan preview would briefly
-        // re-merge the old WSL totals before the first full tick clears them.
-        wslAnchor = options.wslScanEnabled !== false ? (saved.wslBundle || null) : null;
-        wslStatusAnchor = options.wslScanEnabled !== false ? (saved.wslStatus || null) : null;
-        if (saved.fullScanAt) {
-          const parsed = Date.parse(saved.fullScanAt);
-          // Only trust timestamps that are valid and not in the future.
-          // Invalid, future, or missing timestamps leave lastFullScanAt at 0,
-          // which forces a full scan on the first interval tick (see loop()).
-          if (Number.isFinite(parsed) && parsed <= Date.now()) {
-            lastFullScanAt = parsed;
+  if (options.anchorPersistenceEnabled !== false) {
+    try {
+      const saved = readJson(anchorPath, null);
+      if (saved && saved.dateKey === localTodayKey()) {
+        const fp = configFingerprint(clients, allTimeSince, options.projectsEnabled);
+        if (saved.configFingerprint === fp) {
+          anchor = { dateKey: saved.dateKey, today: saved.today, month: saved.month, allTime: saved.allTime };
+          // Don't restore a persisted WSL snapshot when WSL scanning is now off —
+          // the configFingerprint intentionally ignores the toggle (host periods
+          // stay valid), so without this gate a warm-scan preview would briefly
+          // re-merge the old WSL totals before the first full tick clears them.
+          wslAnchor = options.wslScanEnabled !== false ? (saved.wslBundle || null) : null;
+          wslStatusAnchor = options.wslScanEnabled !== false ? (saved.wslStatus || null) : null;
+          if (saved.fullScanAt) {
+            const parsed = Date.parse(saved.fullScanAt);
+            // Only trust timestamps that are valid and not in the future.
+            // Invalid, future, or missing timestamps leave lastFullScanAt at 0,
+            // which forces a full scan on the first interval tick (see loop()).
+            if (Number.isFinite(parsed) && parsed <= Date.now()) {
+              lastFullScanAt = parsed;
+            }
           }
         }
       }
-    }
-  } catch (_) {}
+    } catch (_) {}
+  }
 
   function resolvePendingWaiters() {
     const waiters = pendingWaiters;
@@ -1183,9 +1196,9 @@ function startCollector(options) {
         deviceId,
         agentVersion,
         agentRuntime,
-        limitsCollector,
+        osInfo: deviceOsInfo,
         includeHistory,
-        forceLimits: Boolean(tickOptions.forceLimits),
+        forceCursorSync: Boolean(tickOptions.forceCursorSync),
         todayOnlyAnchor: anchored ? anchor : null,
         wslAnchor: anchored ? wslAnchor : null,
         wslStatus: anchored ? wslStatusAnchor : null,
@@ -1201,6 +1214,8 @@ function startCollector(options) {
               const preview = {
                 deviceId, hostname: os.hostname(),
                 platform: `${process.platform}-${process.arch}`,
+                ...(deviceOsInfo.name ? { osName: deviceOsInfo.name } : {}),
+                ...(deviceOsInfo.version ? { osVersion: deviceOsInfo.version } : {}),
                 updatedAt: partial.updatedAt,
                 agentVersion, agentRuntime,
                 trackedClients: (clients || '').split(',').filter(Boolean),
@@ -1241,19 +1256,21 @@ function startCollector(options) {
         wslAnchor = captured.wslBundle;
         wslStatusAnchor = captured.wslStatus || null;
         lastFullScanAt = Date.now();
-        try {
-          fs.mkdirSync(path.dirname(anchorPath), { recursive: true });
-          fs.writeFileSync(anchorPath, JSON.stringify({
-            dateKey: anchor.dateKey,
-            today: anchor.today,
-            month: anchor.month,
-            allTime: anchor.allTime,
-            wslBundle: wslAnchor,
-            wslStatus: wslStatusAnchor,
-            configFingerprint: configFingerprint(clients, allTimeSince, options.projectsEnabled),
-            fullScanAt: new Date().toISOString()
-          }));
-        } catch (_) {}
+        if (options.anchorPersistenceEnabled !== false) {
+          try {
+            fs.mkdirSync(path.dirname(anchorPath), { recursive: true });
+            fs.writeFileSync(anchorPath, JSON.stringify({
+              dateKey: anchor.dateKey,
+              today: anchor.today,
+              month: anchor.month,
+              allTime: anchor.allTime,
+              wslBundle: wslAnchor,
+              wslStatus: wslStatusAnchor,
+              configFingerprint: configFingerprint(clients, allTimeSince, options.projectsEnabled),
+              fullScanAt: new Date().toISOString()
+            }));
+          } catch (_) {}
+        }
       } else if (anchored && refreshWsl && captured) {
         // Interval anchored ticks refresh WSL independently; update the
         // frozen snapshot so subsequent watch ticks see the fresh data.
@@ -1270,20 +1287,20 @@ function startCollector(options) {
   async function runTick(reason, tickOptions = {}) {
     if (tickInFlight) {
       tickPending = true;
-      pendingForceLimits = pendingForceLimits || Boolean(tickOptions.forceLimits);
       pendingForceHistory = pendingForceHistory || Boolean(tickOptions.forceHistory);
+      pendingForceCursorSync = pendingForceCursorSync || Boolean(tickOptions.forceCursorSync);
       return new Promise((resolve) => pendingWaiters.push(resolve));
     }
     tickInFlight = true;
     try {
       await performTick(reason, tickOptions);
       while (tickPending && !stopped) {
-        const forceLimits = pendingForceLimits;
         const forceHistory = pendingForceHistory;
+        const forceCursorSync = pendingForceCursorSync;
         tickPending = false;
-        pendingForceLimits = false;
         pendingForceHistory = false;
-        await performTick('coalesced', { forceLimits, forceHistory });
+        pendingForceCursorSync = false;
+        await performTick('coalesced', { forceHistory, forceCursorSync, todayOnly: forceCursorSync });
       }
     } finally {
       tickInFlight = false;
@@ -1358,7 +1375,22 @@ function startCollector(options) {
   setupWatchers();
   loop();
 
-  return { stop, tick: (reason = 'manual', tickOptions = {}) => runTick(reason, tickOptions) };
+  function refreshClient(clientId, refreshOptions = {}) {
+    const normalized = String(clientId || '').trim().toLowerCase();
+    if (normalized !== 'cursor') {
+      throw new TypeError(`Unsupported targeted usage client: ${normalized || '(empty)'}`);
+    }
+    return runTick(`client:${normalized}`, {
+      todayOnly: true,
+      forceCursorSync: refreshOptions.forceSync === true
+    });
+  }
+
+  return {
+    refreshClient,
+    stop,
+    tick: (reason = 'manual', tickOptions = {}) => runTick(reason, tickOptions)
+  };
 }
 
 
@@ -1433,12 +1465,15 @@ module.exports = {
   decideResolver,
   DEFAULT_HISTORY_INTERVAL_MS,
   HISTORY_INTERVAL_VALUES,
+  LIMITS_RESET_BOUNDARY_MAX_TIMER_MS,
   localTodayKey,
+  nextLimitsResetBoundary,
   normalizeHistoryIntervalMs,
   sessionTimestampMap,
   locateBundledBinary,
   lookupModelPricing,
   normalizePromaPricing,
+  pruneAttemptedResetBoundaries,
   readDownloadedPointer,
   resolvePlatformBinary,
   resolvePromaPricing,

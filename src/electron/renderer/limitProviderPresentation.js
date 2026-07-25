@@ -23,6 +23,7 @@
     cursor: { web: 'Web' },
     antigravity: { rpc: 'RPC' },
     opencode: { local: 'Local', web: 'Web' },
+    openrouter: { api: 'API' },
     deepseek: { api: 'API' },
     minimax: { api: 'API' },
     mimo: { web: 'Web' },
@@ -33,7 +34,7 @@
     zaiteam: { api: 'API' },
     volcengine: { api: 'API' },
     qoder: { web: 'Web' },
-    kimi: { api: 'API' },
+    kimi: { api: 'API', web: 'Web' },
     ollama: { web: 'Web' }
   };
 
@@ -50,6 +51,7 @@
     cursor: ['Manual login', 'Web'],
     antigravity: ['App/CLI must be open', 'RPC'],
     opencode: ['Local/Web', 'Manual login'],
+    openrouter: ['Pay-as-you-go', 'API key'],
     deepseek: ['Pay-as-you-go', 'API key'],
     minimax: ['Token Plan', 'API key'],
     mimo: ['Token Plan', 'Web'],
@@ -60,7 +62,7 @@
     zaiteam: ['Team Plan', 'API key'],
     volcengine: ['Coding Plan', 'API key'],
     qoder: ['Manual login', 'Web'],
-    kimi: ['Coding Plan', 'API key'],
+    kimi: ['Membership/Coding Plan', 'Web/API'],
     ollama: ['Manual login', 'Web']
   };
 
@@ -70,6 +72,7 @@
   const CAPABILITY_STATUS_DUPLICATES = {
     'App/CLI must be open': 'Open app or CLI'
   };
+  const COMPACT_LIMIT_CRITICAL_PERCENT = 20;
 
   function normalizeId(value) {
     return String(value || '').trim().toLowerCase();
@@ -122,6 +125,98 @@
     return label.replace(/^[a-z]/, (letter) => letter.toUpperCase());
   }
 
+  function antigravityQuotaWindow(window) {
+    const kind = normalizeId(window?.kind);
+    const suffix = kind === 'session'
+      ? /\s+5-hour$/i
+      : kind === 'weekly'
+        ? /\s+weekly$/i
+        : null;
+    const label = String(window?.label || '').trim();
+    if (!suffix || !suffix.test(label)) return null;
+    const groupLabel = label.replace(suffix, '').trim();
+    if (!groupLabel) return null;
+    return { groupLabel, windowLabel: kind === 'session' ? '5-hour' : 'Weekly' };
+  }
+
+  function compactWindowRemaining(window) {
+    const rawRemaining = window?.remainingPercent;
+    const remaining = rawRemaining == null || String(rawRemaining).trim() === '' ? null : Number(rawRemaining);
+    if (remaining != null && Number.isFinite(remaining)) return Math.max(0, Math.min(100, remaining));
+    const rawUsed = window?.usedPercent;
+    const used = rawUsed == null || String(rawUsed).trim() === '' ? null : Number(rawUsed);
+    return used != null && Number.isFinite(used)
+      ? Math.max(0, Math.min(100, 100 - used))
+      : Number.POSITIVE_INFINITY;
+  }
+
+  function limitProviderCompactWindows(providerOrId, windows = []) {
+    if (providerId(providerOrId) !== 'antigravity') return windows;
+    const entries = (windows || []).map((window, index) => ({
+      window,
+      index,
+      groupLabel: antigravityQuotaWindow(window)?.groupLabel || ''
+    }));
+    if (entries.length === 0 || entries.some((entry) => !entry.groupLabel)) return windows;
+    const groups = new Map();
+    for (const entry of entries) {
+      if (!groups.has(entry.groupLabel)) groups.set(entry.groupLabel, []);
+      groups.get(entry.groupLabel).push(entry);
+    }
+    const selected = [...groups.values()].map((groupEntries, groupIndex) => {
+      const tightest = (entries) => entries.slice().sort((a, b) => {
+        const aRemaining = compactWindowRemaining(a.window);
+        const bRemaining = compactWindowRemaining(b.window);
+        if (aRemaining !== bRemaining) return aRemaining - bRemaining;
+        return a.index - b.index;
+      })[0] || null;
+      const session = tightest(groupEntries.filter((entry) => normalizeId(entry.window?.kind) === 'session'));
+      const weekly = tightest(groupEntries.filter((entry) => normalizeId(entry.window?.kind) === 'weekly'));
+      const sessionRemaining = compactWindowRemaining(session?.window);
+      const weeklyRemaining = compactWindowRemaining(weekly?.window);
+      const weeklyIsCritical = weeklyRemaining < COMPACT_LIMIT_CRITICAL_PERCENT;
+      const entry = !session
+        ? weekly
+        : !weekly
+          ? session
+          : weeklyRemaining < sessionRemaining && (weeklyIsCritical || !Number.isFinite(sessionRemaining))
+            ? weekly
+            : session;
+      return { ...entry, groupIndex, remaining: compactWindowRemaining(entry.window) };
+    });
+    return selected
+      .sort((a, b) => a.remaining - b.remaining || a.groupIndex - b.groupIndex)
+      .slice(0, 2)
+      .sort((a, b) => a.groupIndex - b.groupIndex)
+      .map((entry) => entry.window);
+  }
+
+  function limitProviderCompactWindowLabel(providerOrId, window, visibleWindows = []) {
+    if (providerId(providerOrId) !== 'antigravity') return '';
+    const labels = (visibleWindows || []).map((candidate) => antigravityQuotaWindow(candidate)?.groupLabel || '');
+    const currentLabel = antigravityQuotaWindow(window)?.groupLabel || '';
+    if (labels.length < 2 || !currentLabel || labels.some((label) => !label)) return '';
+    return new Set(labels).size === labels.length ? currentLabel : '';
+  }
+
+  function limitProviderCompactWindowPeriodLabel(providerOrId, window, visibleWindows = []) {
+    if (!limitProviderCompactWindowLabel(providerOrId, window, visibleWindows)) return '';
+    const kind = normalizeId(window?.kind);
+    if (kind === 'session') return '5-hour';
+    if (kind === 'weekly') return 'Weekly';
+    return '';
+  }
+
+  function limitResetRemainingMs(value, nowMs = Date.now(), resetNowGraceMs = 60 * 1000) {
+    if (!value) return null;
+    const resetMs = new Date(value).getTime();
+    const currentMs = Number(nowMs);
+    if (!Number.isFinite(resetMs) || !Number.isFinite(currentMs)) return null;
+    const remainingMs = resetMs - currentMs;
+    if (remainingMs > 0) return remainingMs;
+    return remainingMs >= -Math.max(0, Number(resetNowGraceMs) || 0) ? 0 : null;
+  }
+
   // The "live" Codex account is the one THIS device's Codex app/CLI is currently
   // signed into (sourceDetail app/cli/unknown). Managed accounts added inside
   // Token Monitor report sourceDetail 'managed' and are NOT live. A remote
@@ -154,7 +249,8 @@
     if (status === 'disabled') return { label: 'Disabled', tone: 'muted' };
     if (status === 'noSyncedData') return { label: 'No synced data', tone: 'sync' };
     if (status === 'unauthorized') {
-      return providerName === 'deepseek' || providerName === 'minimax' || providerName === 'copilot' || providerName === 'zai' || providerName === 'zaiteam' || providerName === 'volcengine' || providerName === 'kimi'
+      if (providerName === 'kimi') return { label: 'Update credential', tone: 'setup' };
+      return providerName === 'openrouter' || providerName === 'deepseek' || providerName === 'minimax' || providerName === 'copilot' || providerName === 'zai' || providerName === 'zaiteam' || providerName === 'volcengine' || providerName === 'kimi'
         ? { label: 'Update API key', tone: 'setup' }
         : providerName === 'qoder'
           ? { label: 'Sign in again', tone: 'setup' }
@@ -167,9 +263,10 @@
     if (status === 'unavailable') return { label: 'Unavailable', tone: 'warn' };
     if (providerName === 'mimo' && status === 'error') return { label: 'Unavailable', tone: 'warn' };
     if (status === 'notConfigured') {
+      if (providerName === 'kimi') return { label: 'Add credential', tone: 'setup' };
       if (providerName === 'antigravity') return { label: 'Open app or CLI', tone: 'setup' };
       if (providerName === 'cursor' || providerName === 'copilot' || providerName === 'qoder' || providerName === 'ollama') return { label: 'Sign in', tone: 'setup' };
-      if (providerName === 'deepseek' || providerName === 'minimax' || providerName === 'zai' || providerName === 'zaiteam' || providerName === 'volcengine' || providerName === 'kimi') return { label: 'Add API key', tone: 'setup' };
+      if (providerName === 'openrouter' || providerName === 'deepseek' || providerName === 'minimax' || providerName === 'zai' || providerName === 'zaiteam' || providerName === 'volcengine' || providerName === 'kimi') return { label: 'Add API key', tone: 'setup' };
       if (providerName === 'grok') return { label: 'Run grok login', tone: 'setup' };
       if (providerName === 'kiro') return { label: 'Run kiro-cli login', tone: 'setup' };
       return { label: 'Not set up', tone: 'setup' };
@@ -177,8 +274,9 @@
     return status ? { label: 'Error', tone: 'warn' } : null;
   }
 
-  function apiKeyAccountStatus(provider, configured) {
+  function apiKeyAccountStatus(provider, configured, enabled = true) {
     if (!configured) return 'notConfigured';
+    if (!enabled) return 'disabled';
     const status = statusId(provider);
     if (!status) return 'checking';
     if (status === 'ok') return 'linked';
@@ -294,12 +392,17 @@
   }
 
   return {
+    antigravityQuotaWindow,
     apiKeyAccountStatus,
     isCodexLiveAccount,
     limitProviderCapabilityTags,
+    limitProviderCompactWindowLabel,
+    limitProviderCompactWindowPeriodLabel,
+    limitProviderCompactWindows,
     limitProviderDisplayLabel,
     limitProviderMainDeviceLabel,
     limitProviderProvenance,
+    limitResetRemainingMs,
     limitProviderSourceLabel,
     limitProviderStatusLabel,
     limitProviderSettingsTags

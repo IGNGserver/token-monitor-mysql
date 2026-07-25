@@ -1,0 +1,11 @@
+# Local / contributor override: build the Hub image from this repo instead of
+# pulling ghcr.io/igngserver/token-monitor-hub.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+#
+services:
+  hub:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ghcr.io/igngserver/token-monitor-hub:${TOKEN_MONITOR_VERSION:-latest}

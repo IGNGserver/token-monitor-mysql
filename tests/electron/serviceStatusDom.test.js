@@ -230,6 +230,9 @@ test('Home limit provider settings stay compact and list only enabled providers'
   assert.match(homeLimitRows, /const hasConfiguredOrder = Boolean\(state\.settings\?\.homeLimitProviderOrder\)/);
   assert.doesNotMatch(homeLimitRows, /normalizeLimitProviderOrder\(state\.settings\?\.limitProviderOrder, LIMIT_PROVIDERS\)\.join\(','\) !== DEFAULT_LIMIT_PROVIDER_ORDER/);
   assert.match(homeLimitRows, /sort: hasConfiguredOrder \? 'configured' : 'remaining'/);
+  assert.match(homeLimitRows, /homeLimitAccountTitle\(id, provider, index, providerEntries\)/);
+  assert.match(homeLimitRows, /showHomeLimitProviderNames === true \|\| state\.settings\?\.showToolIcons === false/);
+  assert.match(homeLimitRows, /`\$\{providerTitle\} · \$\{accountTitle\}`/);
   assert.match(renderHomeLimitProviderList, /enabledLimitProviderSet\(\)/);
   assert.match(renderHomeLimitProviderList, /orderedLimitProviders\(LIMIT_PROVIDERS, homeLimitProviderOrderValue\(\)\)/);
   assert.match(renderHomeLimitProviderList, /const hasCustomOrder = Boolean\(state\.settings\?\.homeLimitProviderOrder\);/);
@@ -284,7 +287,7 @@ test('view switcher preserves click-to-cycle and direct selection without crowdi
   assert.match(cssRule(css, '.view-switcher'), /flex:\s*0 1 auto/);
   assert.match(cssRule(css, '.view-switcher-current'), /min-width:\s*0/);
   assert.match(cssRule(css, '.view-switcher-current'), /color:\s*var\(--muted\)/);
-  assert.doesNotMatch(cssRule(css, '.view-switcher-current'), /color:\s*var\(--green\)/);
+  assert.doesNotMatch(cssRule(css, '.view-switcher-current'), /color:\s*var\(--accent\)/);
   assert.match(cssRule(css, '.view-switcher-disclosure'), /flex:\s*0 0 24px/);
   assert.match(cssRule(css, '.view-switcher-menu'), /position:\s*absolute/);
   assert.match(cssRule(css, '.view-switcher-menu'), /width:\s*100%/);
@@ -303,11 +306,48 @@ test('view switcher preserves click-to-cycle and direct selection without crowdi
   assert.match(css, /@media \(prefers-reduced-motion: reduce\)[\s\S]*\.view-switcher-menu/);
   assert.match(cssRule(css, '.view-switcher-menu-item'), /grid-template-columns:\s*16px minmax\(0, 1fr\)/);
   assert.doesNotMatch(css, /\.view-switcher-menu-item\.is-current::after/);
-  assert.match(cssRule(css, '#footerActionSlot .icon-button'), /flex:\s*0 0 34px/);
-  assert.match(cssRule(css, '#footerActionSlot .refresh-button'), /flex:\s*0 0 34px/);
+  assert.match(cssRule(css, '.utility-actions'), /flex:\s*0 0 34px/);
+  assert.match(cssRule(css, '.utility-actions .refresh-button'), /position:\s*absolute/);
+  assert.match(cssRule(css, '.utility-actions .refresh-button'), /right:\s*calc\(100% \+ 6px\)/);
   assert.doesNotMatch(css, /@media \(max-width: 280px\)[\s\S]*\.view-switcher-current > \.view-switcher-icon/);
   assert.match(cssRule(css, '.view-switcher-icon'), /flex:\s*0 0 auto/);
   assert.doesNotMatch(css, /\.view-dock/);
+});
+
+test('Home-launched secondary views expose an accessible return action', () => {
+  const html = readRendererFile('index.html');
+  const app = readRendererFile('app.js');
+  const css = readRendererFile('styles.css');
+  const homeModuleShellBody = functionBody(app, 'homeModuleShell', 'renderHomeLimitModule');
+  const setBreakdownBody = functionBody(app, 'setBreakdown', 'renderBreakdownChange');
+
+  assert.match(html, /id="viewBackRow" class="view-back-row hidden"/);
+  assert.match(html, /id="backHomeButton"[^>]*data-i18n-title="views\.backHome"[^>]*data-i18n-aria-label="views\.backHome"/);
+  assert.match(html, /class="back-home-icon" aria-hidden="true"><\/span>/);
+  assert.doesNotMatch(html, /class="back-home-icon"[^>]*>←<\/span>/);
+  assert.match(app, /state\.homeReturnVisible = false/);
+  assert.match(homeModuleShellBody, /renderBreakdownChange\(viewId, \{ fromHome: true \}\)/);
+  assert.equal((homeModuleShellBody.match(/\{ fromHome: true \}/g) || []).length, 2);
+  assert.match(setBreakdownBody, /state\.homeReturnVisible = options\.fromHome === true && state\.breakdown === 'home' && next !== 'home'/);
+  assert.match(app, /els\.viewBackRow\?\.classList\.toggle\('hidden', state\.breakdown === 'home' \|\| !state\.homeReturnVisible\)/);
+  assert.match(app, /els\.backHomeButton\?\.addEventListener\('click',[\s\S]*?renderBreakdownChange\('home'\)/);
+  const backRowRule = cssRule(css, '.view-back-row');
+  const backButtonRule = cssRule(css, '.back-home-button');
+  const backInteractionRule = cssRule(css, '.back-home-button:hover,\n.back-home-button:active');
+  const backIconRule = cssRule(css, '.back-home-icon');
+  assert.match(backRowRule, /min-height:\s*26px/);
+  assert.match(backRowRule, /padding:\s*0\s*;/);
+  assert.match(cssRule(css, '.view-back-row.hidden'), /display:\s*none/);
+  assert.match(backButtonRule, /height:\s*26px/);
+  assert.match(backButtonRule, /margin-left:\s*0\s*;/);
+  assert.match(backButtonRule, /padding:\s*0 6px 0 0\s*;/);
+  assert.match(backInteractionRule, /color:\s*var\(--text\)/);
+  assert.doesNotMatch(backInteractionRule, /background:/);
+  assert.match(cssRule(css, '.back-home-button:focus-visible'), /outline:\s*2px solid/);
+  assert.match(backIconRule, /width:\s*12px/);
+  assert.match(backIconRule, /flex:\s*0 0 12px/);
+  assert.match(backIconRule, /mask:\s*url\("icons\/actions\/arrow-left\.svg"\)/);
+  assert.match(backIconRule, /transform:\s*translateX\(-2px\)/);
 });
 
 test('Projects view separates visibility from metadata collection', () => {
@@ -336,13 +376,15 @@ test('Projects TOTAL view explains an incomplete cross-device breakdown', () => 
   const app = readRendererFile('app.js');
   const css = readRendererFile('styles.css');
   assert.match(app, /projectRowsApi\.projectBreakdownIncomplete\(state\.stats, state\.period\)/);
-  assert.match(app, /hint\.className = 'project-incomplete-hint'/);
+  assert.match(app, /hint\.className = 'breakdown-incomplete-hint'/);
   assert.doesNotMatch(app, /hint\.dataset\.key/);
   assert.match(app, /children\.filter\(\(child\) => child !== existingHint\)/);
   assert.match(app, /JSON\.stringify\(\[state\.breakdown, hintText, rows\.map\(\(row\) => row\.key\)\]\)/);
   assert.match(app, /hint\.setAttribute\('role', 'status'\)/);
-  assert.match(app, /t\('projects\.incomplete'\)/);
-  assert.match(cssRule(css, '.project-incomplete-hint'), /color:\s*var\(--muted\)/);
+  assert.match(app, /incompleteHint = 'projects\.incomplete'/);
+  assert.match(app, /incompleteHint = 'sessions\.incomplete'/);
+  assert.match(app, /t\(incompleteHint\)/);
+  assert.match(cssRule(css, '.breakdown-incomplete-hint'), /color:\s*var\(--muted\)/);
 });
 
 test('project rows use a fuller icon without changing the navigation icon', () => {

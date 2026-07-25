@@ -5,11 +5,10 @@
 // Primary path: Grok CLI's `grok agent stdio` JSON-RPC extension method
 // `x.ai/billing`. Web fallback mirrors CodexBar/tokscale's grok.com
 // gRPC-web billing endpoint with a bearer token from ~/.grok/auth.json
-// (written by `grok login`) or GROK_BEARER_TOKEN env var. The older
-// cli-chat-proxy JSON endpoint is kept only as a final compatibility fallback.
+// (written by `grok login`) or GROK_BEARER_TOKEN env var.
 //
-// Field shape follows the billing endpoint's
-// `config: { monthlyLimit, used, billingPeriodEnd }` envelope.
+// The CLI RPC may return a JSON `config` envelope; the web fallback returns
+// the protobuf `GetGrokCreditsConfig` response used by CodexBar.
 
 const fs = require('node:fs');
 const os = require('node:os');
@@ -17,10 +16,10 @@ const path = require('node:path');
 const { spawn } = require('node:child_process');
 const { normalizeLimitProvider } = require('./limits');
 const { hashKey } = require('./hashKey');
+const { createOutboundFetch } = require('./outboundFetch');
+const { abortError } = require('./probeDeadline');
 
 const GROK_WEB_BILLING_GRPC_URL = 'https://grok.com/grok_api_v2.GrokBuildBilling/GetGrokCreditsConfig';
-const GROK_LEGACY_BILLING_URL = 'https://cli-chat-proxy.grok.com/v1/billing';
-const GROK_BILLING_URL = GROK_LEGACY_BILLING_URL;
 const GROK_KEY_NAMES = ['GROK_BEARER_TOKEN'];
 const GROK_OIDC_PREFIX = 'https://auth.x.ai::';
 const GROK_LEGACY_SCOPE = 'https://accounts.x.ai/sign-in';
@@ -147,11 +146,9 @@ function buildWindow(label, used, limit, resetsAt, windowMinutes = null) {
   };
 }
 
-// Parse the JSON body returned by GET /v1/billing into the single monthly
-// quota window. The API also returns on-demand usage, but token-monitor's
-// "Session / Weekly" UI model doesn't have a clean place for an auxiliary
-// "On-demand" meter alongside "Monthly", so ours collapses to the primary
-// subscription window.
+// Parse JSON billing from RPC `x.ai/billing` into one quota window. Prefer
+// newer unified-credits fields when present; retain monthlyLimit/used support
+// for current CLI response compatibility.
 function parseGrokBilling(body) {
   const root = body && typeof body === 'object' ? body : null;
   const config = root && root.config && typeof root.config === 'object' ? root.config : root;
@@ -160,6 +157,27 @@ function parseGrokBilling(body) {
     err.status = 'unavailable';
     throw err;
   }
+
+  // Newer credits-config shape (creditUsagePercent + currentPeriod).
+  const creditPercent = numberOrNull(
+    config.creditUsagePercent ?? config.credit_usage_percent
+  );
+  const currentPeriod = config.currentPeriod && typeof config.currentPeriod === 'object'
+    ? config.currentPeriod
+    : (config.current_period && typeof config.current_period === 'object' ? config.current_period : null);
+  if (creditPercent !== null) {
+    const periodStart = currentPeriod?.start ?? currentPeriod?.billingPeriodStart;
+    const periodEnd = currentPeriod?.end ?? currentPeriod?.billingPeriodEnd;
+    const resetAt = normalizeIsoReset(periodEnd);
+    const windowMinutes = windowMinutesFromBillingCycle(periodStart, periodEnd);
+    const label = billingWindowLabel(windowMinutes);
+    const periodType = String(currentPeriod?.type || currentPeriod?.period_type || currentPeriod?.periodType || '').toUpperCase();
+    const forcedLabel = periodType.includes('WEEK') ? 'Weekly' : periodType.includes('MONTH') ? 'Monthly' : label;
+    // Percent is already 0–100 usage; model as used/limit against 100.
+    const window = buildWindow(forcedLabel, creditPercent, 100, resetAt, windowMinutes);
+    if (window) return [window];
+  }
+
   const monthlyLimit = numberOrNull(config.monthlyLimit);
   const usage = config.usage && typeof config.usage === 'object' ? config.usage : null;
   const used = numberOrNull(config.used ?? config.totalUsed ?? usage?.totalUsed ?? usage?.includedUsed);
@@ -201,6 +219,68 @@ function grpcWebDataFrames(data) {
     offset = end;
   }
   return frames;
+}
+
+function grpcWebTrailerFields(data) {
+  const bytes = bufferFrom(data);
+  const fields = {};
+  let offset = 0;
+  while (offset + 5 <= bytes.length) {
+    const flags = bytes[offset];
+    const length = bytes.readUInt32BE(offset + 1);
+    const start = offset + 5;
+    const end = start + length;
+    if (end > bytes.length) break;
+    if ((flags & 0x80) !== 0) {
+      const text = bytes.subarray(start, end).toString('utf8');
+      for (const line of text.split(/\r?\n/)) {
+        const separator = line.indexOf(':');
+        if (separator <= 0) continue;
+        fields[line.slice(0, separator).trim().toLowerCase()] = line.slice(separator + 1).trim();
+      }
+    }
+    offset = end;
+  }
+  return fields;
+}
+
+function grpcField(fields, name) {
+  if (!fields) return '';
+  if (typeof fields.get === 'function') return String(fields.get(name) || '');
+  const target = name.toLowerCase();
+  for (const [key, value] of Object.entries(fields)) {
+    if (String(key).toLowerCase() === target) return String(value || '');
+  }
+  return '';
+}
+
+function decodeGrpcMessage(value) {
+  const raw = String(value || '');
+  try { return decodeURIComponent(raw); } catch (_) { return raw; }
+}
+
+function validateGrokGrpcStatus(fields) {
+  const rawStatus = grpcField(fields, 'grpc-status');
+  if (!rawStatus || rawStatus === '0') return;
+  const status = Number(rawStatus);
+  const message = decodeGrpcMessage(grpcField(fields, 'grpc-message'));
+  const lower = message.toLowerCase();
+  const authenticationFailure = status === 16
+    || (status === 7 && (
+      lower.includes('bad-credentials')
+      || lower.includes('unauthenticated')
+      || (lower.includes('oauth2') && lower.includes('could not be validated'))
+      || (lower.includes('access token') && (
+        lower.includes('invalid')
+        || lower.includes('expired')
+        || lower.includes('could not be validated')
+      ))
+    ));
+  const error = new Error(authenticationFailure
+    ? 'Grok web billing rejected credentials'
+    : `Grok web billing RPC failed (status ${rawStatus}${message ? `: ${message}` : ''})`);
+  error.status = authenticationFailure ? 'unauthorized' : 'unavailable';
+  throw error;
 }
 
 function looksLikeProtobufPayload(data) {
@@ -358,6 +438,8 @@ async function fetchGrokRpcBilling(options = {}, deps = {}) {
   const command = grokRpcCommand(env, options);
   const args = grokRpcArgs(options);
   const timeoutMs = Number(deps.rpcTimeoutMs || deps.fetchTimeoutMs || 5000);
+  const signal = deps.signal;
+  if (signal?.aborted) throw abortError(signal);
 
   return new Promise((resolve, reject) => {
     let child;
@@ -369,6 +451,7 @@ async function fetchGrokRpcBilling(options = {}, deps = {}) {
     function cleanup() {
       if (timer) clearTimeout(timer);
       timer = null;
+      signal?.removeEventListener?.('abort', onAbort);
       if (child && typeof child.kill === 'function') {
         try { child.kill(); } catch (_) {}
       }
@@ -380,6 +463,10 @@ async function fetchGrokRpcBilling(options = {}, deps = {}) {
       cleanup();
       if (error) reject(error);
       else resolve(value);
+    }
+
+    function onAbort() {
+      finish(abortError(signal));
     }
 
     function writeJsonLine(value) {
@@ -425,6 +512,11 @@ async function fetchGrokRpcBilling(options = {}, deps = {}) {
     }
 
     timer = setTimeout(() => finish(grokRpcError('Grok RPC timed out')), timeoutMs);
+    signal?.addEventListener?.('abort', onAbort, { once: true });
+    if (signal?.aborted) {
+      onAbort();
+      return;
+    }
     child.on?.('error', finish);
     child.on?.('exit', (code) => {
       if (!settled) finish(grokRpcError(`Grok RPC exited before billing response (${code ?? 'unknown'})`));
@@ -477,12 +569,33 @@ function unauthorizedGrokProvider(updatedAt, source = 'web', sourceDetail = '') 
   });
 }
 
-async function fetchGrokWebGrpcBilling(credential, deps = {}) {
+function resolveGrokFetch(deps = {}) {
+  if (typeof deps.fetch === 'function') return deps.fetch;
+  return createOutboundFetch(deps.env || process.env, deps);
+}
+
+function isRetryableNetworkError(error) {
+  if (!error || error.status === 'unauthorized') return false;
+  const code = String(error.code || error.cause?.code || '');
+  const message = String(error.message || error.cause?.message || error || '').toLowerCase();
+  // A reachable proxy/host actively refused the connection; an immediate
+  // retry cannot help and `fetch failed` must not classify it as transient.
+  if (code === 'ECONNREFUSED') return false;
+  return code === 'ECONNRESET'
+    || code === 'ETIMEDOUT'
+    || code === 'UND_ERR_CONNECT_TIMEOUT'
+    || code === 'UND_ERR_SOCKET'
+    || message.includes('fetch failed')
+    || message.includes('socket disconnected')
+    || message.includes('connect timeout');
+}
+
+async function fetchGrokWebGrpcBillingOnce(credential, deps = {}) {
   const timeoutMs = Number(deps.fetchTimeoutMs || 12000);
   const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
   const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
   try {
-    const fetchFn = deps.fetch || fetch;
+    const fetchFn = resolveGrokFetch(deps);
     const response = await fetchFn(GROK_WEB_BILLING_GRPC_URL, {
       method: 'POST',
       headers: {
@@ -509,40 +622,23 @@ async function fetchGrokWebGrpcBilling(credential, deps = {}) {
       err.status = 'unavailable';
       throw err;
     }
+    validateGrokGrpcStatus(response.headers);
     const body = Buffer.from(await response.arrayBuffer());
+    validateGrokGrpcStatus(grpcWebTrailerFields(body));
     return parseGrokGrpcWebBilling(body, (deps.now || Date.now)());
   } finally {
     if (timer) clearTimeout(timer);
   }
 }
 
-async function fetchGrokLegacyJsonBilling(credential, deps = {}) {
-  const timeoutMs = Number(deps.fetchTimeoutMs || 12000);
-  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
-  const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
+// Local proxies occasionally reset the first CONNECT; one silent retry is enough
+// to keep the Grok meter green without lengthening the happy path much.
+async function fetchGrokWebGrpcBilling(credential, deps = {}) {
   try {
-    const fetchFn = deps.fetch || fetch;
-    const response = await fetchFn(GROK_LEGACY_BILLING_URL, {
-      headers: {
-        Authorization: `Bearer ${credential.token}`,
-        Accept: 'application/json'
-      },
-      ...(controller ? { signal: controller.signal } : {})
-    });
-    if (response.status === 401 || response.status === 403) {
-      const err = new Error('Grok legacy billing rejected credentials');
-      err.status = 'unauthorized';
-      throw err;
-    }
-    if (!response.ok) {
-      const err = new Error(`Grok legacy billing request failed (HTTP ${response.status})`);
-      err.status = 'unavailable';
-      throw err;
-    }
-    const body = await response.json();
-    return parseGrokBilling(body);
-  } finally {
-    if (timer) clearTimeout(timer);
+    return await fetchGrokWebGrpcBillingOnce(credential, deps);
+  } catch (error) {
+    if (!isRetryableNetworkError(error)) throw error;
+    return fetchGrokWebGrpcBillingOnce(credential, deps);
   }
 }
 
@@ -567,6 +663,7 @@ async function fetchGrokLimits(options = {}, deps = {}) {
         windows
       });
     } catch (error) {
+      if (deps.signal?.aborted) throw abortError(deps.signal);
       const status = classifyGrokRpcError(error);
       if (!credential || status === 'unauthorized') {
         return status === 'unauthorized'
@@ -593,32 +690,23 @@ async function fetchGrokLimits(options = {}, deps = {}) {
       windows: []
     });
   }
+  if (deps.signal?.aborted) throw abortError(deps.signal);
   let windows;
   try {
     windows = await (deps.fetchWebGrpcBilling || fetchGrokWebGrpcBilling)(credential, deps);
   } catch (webError) {
-    if (webError && webError.status === 'unauthorized') {
-      return normalizeLimitProvider({
-        provider: 'grok',
-        source: 'web',
-        status: 'unauthorized',
-        updatedAt,
-        windows: []
-      });
-    }
-    try {
-      windows = await (deps.fetchLegacyJsonBilling || fetchGrokLegacyJsonBilling)(credential, deps);
-    } catch (legacyError) {
-      return normalizeLimitProvider({
-        provider: 'grok',
-        source: 'web',
-        status: legacyError && legacyError.status ? legacyError.status : 'unavailable',
-        updatedAt,
-        windows: []
-      });
-    }
+    if (deps.signal?.aborted) throw abortError(deps.signal);
+    return normalizeLimitProvider({
+      provider: 'grok',
+      source: 'web',
+      sourceDetail: 'credits-config',
+      status: webError && webError.status ? webError.status : 'unavailable',
+      updatedAt,
+      windows: []
+    });
   }
 
+  if (deps.signal?.aborted) throw abortError(deps.signal);
   try {
     return normalizeLimitProvider({
       provider: 'grok',
@@ -626,6 +714,7 @@ async function fetchGrokLimits(options = {}, deps = {}) {
       accountLabel: 'SuperGrok',
       accountEmail: credential.email || '',
       source: 'web',
+      sourceDetail: 'credits-config',
       status: 'ok',
       updatedAt,
       windows
@@ -642,9 +731,7 @@ async function fetchGrokLimits(options = {}, deps = {}) {
 }
 
 module.exports = {
-  GROK_BILLING_URL,
   GROK_WEB_BILLING_GRPC_URL,
-  GROK_LEGACY_BILLING_URL,
   GROK_KEY_NAMES,
   GROK_OIDC_PREFIX,
   GROK_LEGACY_SCOPE,
@@ -653,8 +740,12 @@ module.exports = {
   grokCredential,
   parseGrokBilling,
   parseGrokGrpcWebBilling,
+  resolveGrokFetch,
   fetchGrokRpcBilling,
   fetchGrokWebGrpcBilling,
-  fetchGrokLegacyJsonBilling,
-  fetchGrokLimits
+  fetchGrokLimits,
+  isRetryableNetworkError,
+  grpcWebTrailerFields,
+  validateGrokGrpcStatus,
+  billingWindowLabel
 };

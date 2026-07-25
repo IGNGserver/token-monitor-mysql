@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#f4f5f7" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0b0c0e" media="(prefers-color-scheme: dark)" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Token Monitor" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="description" content="Live multi-device token, cost, and AI limits dashboard for Token Monitor hub." />
+    <title>Token Monitor</title>
+    <link rel="icon" type="image/png" href="/favicon.png" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="stylesheet" href="/css/app.css" />
+  </head>
+  <body>
+    <div id="app" class="app">
+      <aside class="sidebar" aria-label="Primary">
+        <div class="brand">
+          <img class="brand-mark" src="/icons/icon-192.png" width="28" height="28" alt="" />
+          <div class="brand-copy">
+            <strong>Token Monitor</strong>
+            <span data-i18n="brand.subtitle">Hub dashboard</span>
+          </div>
+        </div>
+        <nav class="nav" id="primaryNav"></nav>
+        <div class="sidebar-foot">
+          <div id="streamStatus" class="stream-status" data-state="offline">
+            <span class="stream-dot" aria-hidden="true"></span>
+            <span id="streamStatusText">Offline</span>
+          </div>
+          <button type="button" id="settingsOpen" class="ghost-btn sidebar-settings" data-i18n="nav.settings">Settings</button>
+        </div>
+      </aside>
+
+      <div class="main">
+        <header class="topbar">
+          <div class="topbar-left">
+            <button type="button" id="menuToggle" class="icon-btn mobile-only" aria-label="Menu">☰</button>
+            <div>
+              <h1 id="pageTitle" class="page-title">Home</h1>
+              <p id="pageMeta" class="page-meta">—</p>
+            </div>
+          </div>
+          <div class="topbar-actions">
+            <div class="period-tabs" id="periodTabs" role="tablist" aria-label="Period"></div>
+            <button type="button" id="customRangeBtn" class="icon-btn" title="Custom range" aria-label="Custom range">▦</button>
+            <button type="button" id="refreshBtn" class="icon-btn" title="Refresh" aria-label="Refresh">↻</button>
+          </div>
+        </header>
+
+        <section class="hero" id="heroStrip">
+          <div class="hero-card">
+            <span class="hero-label" data-i18n="stats.tokens">Tokens</span>
+            <strong id="totalTokens" class="hero-value">0</strong>
+          </div>
+          <div class="hero-card">
+            <span class="hero-label" data-i18n="stats.cost">Cost</span>
+            <strong id="totalCost" class="hero-value">$0</strong>
+          </div>
+          <div class="hero-card">
+            <span class="hero-label" data-i18n="stats.devices">Devices</span>
+            <strong id="deviceCount" class="hero-value">0</strong>
+          </div>
+          <div class="hero-card">
+            <span class="hero-label" data-i18n="stats.live">Live</span>
+            <strong id="liveLabel" class="hero-value hero-live">—</strong>
+          </div>
+        </section>
+
+        <main id="content" class="content" tabindex="-1"></main>
+      </div>
+    </div>
+
+    <div id="authGate" class="auth-gate hidden" role="dialog" aria-modal="true" aria-labelledby="authTitle">
+      <form id="authForm" class="auth-card">
+        <img src="/icons/icon-192.png" width="48" height="48" alt="" />
+        <h2 id="authTitle" data-i18n="auth.title">Connect to hub</h2>
+        <p class="muted" data-i18n="auth.desc">Enter the shared secret configured on this hub. Leave blank only when the hub runs without authentication.</p>
+        <label class="field">
+          <span data-i18n="auth.secret">Shared secret</span>
+          <input id="secretInput" type="password" autocomplete="current-password" spellcheck="false" />
+        </label>
+        <label class="check-row">
+          <input id="rememberSecret" type="checkbox" checked />
+          <span data-i18n="auth.remember">Remember on this device</span>
+        </label>
+        <p id="authError" class="form-error hidden"></p>
+        <button type="submit" class="primary-btn" data-i18n="auth.connect">Open dashboard</button>
+      </form>
+    </div>
+
+    <div id="settingsDrawer" class="drawer hidden" aria-hidden="true">
+      <div class="drawer-backdrop" data-close-settings></div>
+      <aside class="drawer-panel" role="dialog" aria-labelledby="settingsTitle">
+        <header class="drawer-head">
+          <h2 id="settingsTitle" data-i18n="settings.title">Settings</h2>
+          <button type="button" class="icon-btn" data-close-settings aria-label="Close">×</button>
+        </header>
+        <div class="drawer-body">
+          <label class="field">
+            <span data-i18n="settings.language">Language</span>
+            <select id="languageSelect">
+              <option value="auto">Auto</option>
+              <option value="en">English</option>
+              <option value="zh-CN">简体中文</option>
+              <option value="zh-TW">繁體中文</option>
+              <option value="ja">日本語</option>
+              <option value="ko">한국어</option>
+            </select>
+          </label>
+          <label class="field">
+            <span data-i18n="settings.theme">Theme</span>
+            <select id="themeSelect">
+              <option value="system">System</option>
+              <option value="light">Light</option>
+              <option value="dark">Dark</option>
+            </select>
+          </label>
+          <label class="field">
+            <span data-i18n="settings.currency">Currency</span>
+            <select id="currencySelect">
+              <option value="USD">USD</option>
+              <option value="CNY">CNY</option>
+              <option value="TWD">TWD</option>
+              <option value="HKD">HKD</option>
+            </select>
+          </label>
+          <label class="field">
+            <span data-i18n="settings.secret">Hub secret</span>
+            <input id="settingsSecret" type="password" autocomplete="off" spellcheck="false" />
+          </label>
+          <div class="drawer-actions">
+            <button type="button" id="saveSettingsBtn" class="primary-btn" data-i18n="settings.save">Save</button>
+            <button type="button" id="signOutBtn" class="ghost-btn" data-i18n="settings.signOut">Clear secret</button>
+          </div>
+          <p class="muted tiny" id="aboutLine">Token Monitor hub web</p>
+        </div>
+      </aside>
+    </div>
+
+    <div id="rangePopover" class="popover hidden" role="dialog" aria-labelledby="rangeTitle">
+      <div class="popover-card">
+        <header class="popover-head">
+          <h3 id="rangeTitle" data-i18n="range.title">Custom range</h3>
+          <button type="button" class="icon-btn" id="rangeClose" aria-label="Close">×</button>
+        </header>
+        <div class="popover-body">
+          <label class="field">
+            <span data-i18n="range.from">From</span>
+            <input id="rangeFrom" type="datetime-local" />
+          </label>
+          <label class="field">
+            <span data-i18n="range.to">To</span>
+            <input id="rangeTo" type="datetime-local" />
+          </label>
+          <p id="rangeError" class="form-error hidden"></p>
+          <div class="drawer-actions">
+            <button type="button" id="rangeApply" class="primary-btn" data-i18n="range.apply">Apply</button>
+            <button type="button" id="rangeClear" class="ghost-btn" data-i18n="range.clear">Clear</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="toast" class="toast hidden" role="status"></div>
+    <div id="navScrim" class="nav-scrim hidden"></div>
+
+    <script type="module" src="/js/app.js"></script>
+  </body>
+</html>

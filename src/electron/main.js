@@ -7,9 +7,19 @@ const path = require('node:path');
 const { app, BrowserWindow, clipboard, dialog, globalShortcut, ipcMain, nativeImage, Notification, screen, session, shell } = require('electron');
 const { autoUpdater } = require('electron-updater');
 const { defaultDeviceId, generateHubSecret, lanIpv4Addresses, loadDotEnv, pidFilePath, sharedDataDir } = require('../shared/config');
+const {
+  CredentialStore,
+  credentialSettingsForRenderer,
+  hasCredentialSettings,
+  persistSettingsAndCredentials,
+  readRegularFileNoFollow,
+  stripCredentialSettings,
+  writePrivateJsonAtomic
+} = require('../shared/credentialStore');
 const { installSafeStdout } = require('../shared/safeStdio');
 const { appVersion } = require('../shared/appVersion');
 const { exportFileSet, exportSignature, EXPORT_FILENAMES } = require('../shared/exporter');
+const { createDefaultTrayLayout, normalizeTrayLayout } = require('../shared/trayLayout');
 const motionPreferenceApi = require('./motionPreference');
 
 // Install EPIPE suppression before anything that might log. Without this,
@@ -17,16 +27,28 @@ const motionPreferenceApi = require('./motionPreference');
 // event and Electron pops a "JavaScript error in the main process" dialog.
 installSafeStdout();
 const { DEFAULT_CLIENTS, KNOWN_CLIENTS, clientsCsvForSetting } = require('../shared/clientTracking');
-const { startCollector, collectCustomRangeOnce, lookupModelPricing, normalizeHistoryIntervalMs } = require('../shared/collector');
+const { collectCustomRangeOnce, lookupModelPricing, normalizeHistoryIntervalMs } = require('../shared/collector');
+const { createDeviceRuntime } = require('../shared/deviceRuntime');
 const { customPricingPath } = require('../shared/tokscaleConfig');
 const { applyCustomPricing, normalizeCustomPricingSetting } = require('../shared/tokscaleCustomPricing');
 const { createHub } = require('../hub/server');
-const { collectLimitsOnce, deepseekToken, normalizeLimitsRefreshMs, parseBoolean, parseLimitProviders, runCodexLogin, minimaxToken, copilotToken, zaiToken, zaiRegion, zaiTeamToken, volcengineCredentials, qoderCookie, kimiToken, ollamaSessionCookie } = require('../shared/limitCollector');
-const { mergeCodexTransientWindows } = require('../shared/limits');
+const { deepseekToken, normalizeLimitsRefreshMs, parseBoolean, parseLimitProviders, runCodexLogin, minimaxToken, copilotToken, zaiToken, zaiRegion, zaiTeamToken, volcengineCredentials, qoderCookie, kimiToken, kimiWebToken, ollamaSessionCookie } = require('../shared/limitCollector');
 const { fetchOllamaLimits, rememberOllamaValidation } = require('../shared/ollamaLimits');
 const { copilotLoginErrorMessage, isAllowedVerificationUrl, runCopilotDeviceFlowLogin } = require('../shared/copilotDeviceFlow');
-const { codexAuthIdentity, hashAccountKey } = require('../shared/codexAuth');
+const {
+  codexAuthIdentity,
+  codexManagedAccountIdentityKey,
+  codexManagedAccountMatchesIdentity,
+  hashAccountKey,
+  preserveCodexManagedHydrationCollisions,
+  upgradeCodexManagedAccountIdentity
+} = require('../shared/codexAuth');
 const { codexLoginUrlFromOutput, isAllowedCodexLoginUrl } = require('../shared/codexLogin');
+const {
+  authWithSelectedCodexWorkspace,
+  listCodexWorkspaces,
+  normalizeWorkspaceId
+} = require('../shared/codexWorkspaces');
 const {
   codexAccountMatchesIdentity,
   liveCodexAuthPath,
@@ -63,11 +85,13 @@ const {
   downloadedAppUpdateMatchesLatest,
   GITHUB_REPO,
   mergeLatestReleaseMetadata,
+  shouldDownloadAutomaticAppUpdate,
   shouldSkipAppUpdateCheck
 } = require('../shared/appUpdater');
 const cursorAuth = require('../shared/cursorAuth');
 const cursorProbe = require('../shared/cursorProbe');
 const opencodeWeb = require('../shared/opencodeWeb');
+const openrouterLimits = require('../shared/openrouterLimits');
 const semver = require('semver');
 const { normalizeCurrency, resolveEffectiveRates, configureRates } = require('../shared/currency');
 const { fetchRates, isCacheStale } = require('../shared/exchangeRates');
@@ -87,7 +111,7 @@ const {
   writeSessionUsageArchive
 } = require('../shared/sessionUsageArchive');
 const { clearDailyHistoryArchive } = require('../shared/dailyHistoryArchive');
-const { aggregateDevices, aggregateHistory, applyProjectRollups, carryDeviceHistory } = require('../shared/usage');
+const { aggregateDevices, aggregateHistory, applyProjectRollups } = require('../shared/usage');
 const { postSyncPayload, syncPayload } = require('../shared/syncPayload');
 const { mergedLocalAllTimeSessions } = require('../shared/localSessions');
 const {
@@ -123,6 +147,13 @@ const { SERVICE_STATUS_PROVIDERS, createServiceStatusClient } = require('./servi
 const { classifyStreamFailure } = require('./syncConnection');
 const { composeLocalSyncStats } = require('./syncDisplayStats');
 const { createSyncUploadScheduler, normalizeSyncUploadIntervalMs } = require('./syncUploadScheduler');
+const {
+  classifySettingsChange,
+  envelopeFromSettings,
+  limitsConfigFromSettings,
+  usageConfigFromSettings
+} = require('./runtimeConfig');
+const { runManualDeviceRefresh } = require('./deviceRuntimeCoordinator');
 const { describeWindowBehavior, normalizeWindowBehaviorSettings } = require('./windowBehavior');
 const {
   normalizeWindowToggleShortcut,
@@ -147,6 +178,13 @@ const {
   moveFloatingBubbleBounds
 } = require('./floatingBubble');
 const { applyWindowsChrome } = require('./windowsChrome');
+const { setMoveToActiveSpace } = require('./macosSpaceBehavior');
+const {
+  normalizeWindowsBackdropMode,
+  windowsElectronBackgroundMaterial,
+  isWindowsAccentBackdrop
+} = require('./windowsBackdropMode');
+const { applyWindowsAccentBlur } = require('./windowsBackdrop');
 
 if (!app.isPackaged) loadDotEnv();
 
@@ -168,7 +206,7 @@ const CSP_HEADER = [
   "form-action 'none'",
   "frame-ancestors 'none'"
 ].join('; ');
-const TRAY_CONTENT_VALUES = new Set(['tokens', 'cost', 'both', 'tokensAll', 'costAll', 'bothAll', 'limitsAllSessions', 'bars', 'barsSession', 'barsWeekly', 'barsAllSessions', 'icon']);
+const TRAY_CONTENT_VALUES = new Set(['tokens', 'cost', 'both', 'tokensAll', 'costAll', 'bothAll', 'limitsAllSessions', 'bars', 'barsSession', 'barsWeekly', 'barsAllSessions', 'icon', 'custom']);
 const HUB_MODE_VALUES = new Set(['local', 'client', 'host']);
 const LANGUAGE_VALUES = new Set(LANGUAGE_OPTIONS.map((option) => option.value));
 const COLLECTION_MODE_VALUES = new Set(['live', 'interval']);
@@ -184,6 +222,9 @@ let mainWindow = null;
 let dashboardWindow = null;
 let settingsPath = null;
 let settings = null;
+let persistedSettingsSnapshot = null;
+let credentialStore = null;
+let credentialStorageErrorShown = false;
 let sessionUsageArchive = null;
 let rendererViewState = normalizeInitialRendererViewState();
 const serviceStatusClient = createServiceStatusClient();
@@ -223,16 +264,20 @@ function defaultSettings() {
     glassOpacity: 68,
     glassBlur: 32,
     systemGlass: true,
+    windowsBackdrop: 'acrylic',
     reduceMotion: 'system',
     showLiveDot: true,
     showToolIcons: true,
     titleIconOnly: true,
     showCompactTotalTokens: false,
+    heatmapMetric: 'cost',
+    homeActiveDaysWindow: 'all',
     themeColors: {},
     vendorColors: {},
     floatingBubbleEnabled: false,
     floatingBubbleTrigger: 'click',
     floatingBubbleContent: 'icon',
+    floatingBubbleCustomLayout: createDefaultTrayLayout(),
     floatingBubbleBounds: null,
     lastViewState: { period: 'today', breakdown: 'tool' },
     discordRpcEnabled: false,
@@ -247,6 +292,7 @@ function defaultSettings() {
     homeModuleOrder: defaultHomeModulePreferences().homeModuleOrder,
     hiddenHomeModules: defaultHomeModulePreferences().hiddenHomeModules,
     showHomeLimitBars: false,
+    showHomeLimitProviderNames: false,
     projectsEnabled: parseBoolean(process.env.TOKEN_MONITOR_PROJECTS_ENABLED, false),
     historyEnabled: true,
     historyIntervalMs: normalizeHistoryIntervalMs(process.env.TOKEN_MONITOR_HISTORY_INTERVAL_MS),
@@ -281,14 +327,17 @@ function defaultSettings() {
     closeToTray: false,
     startInTray: false,
     trayContent: 'tokens',
+    trayCustomLayout: createDefaultTrayLayout(),
     showTrayProviderBadge: false,
     windowToggleShortcut: '',
     currency: normalizeCurrency(process.env.TOKEN_MONITOR_CURRENCY || 'USD'),
     currencyRates: {},
     startAtLogin: false,
+    automaticAppUpdates: false,
     language: 'auto',
     opencodeCookie: '',
     opencodeProfiles: {},
+    openrouterProfiles: {},
     deepseekApiKey: '',
     minimaxApiKey: '',
     copilotApiToken: '',
@@ -304,6 +353,7 @@ function defaultSettings() {
     qoderCookie: '',
     qoderSite: 'global',
     kimiApiKey: '',
+    kimiWebAccessToken: '',
     ollamaCookie: '',
     codexManagedAccounts: [],
     mimoManagedAccounts: [],
@@ -319,6 +369,19 @@ function normalizeCollectionMode(value, fallback = 'live') {
   const next = String(value || '').trim();
   if (COLLECTION_MODE_VALUES.has(next)) return next;
   return COLLECTION_MODE_VALUES.has(fallback) ? fallback : 'live';
+}
+
+function normalizeHeatmapMetric(value, fallback = 'cost') {
+  const next = String(value || '').trim();
+  if (next === 'tokens' || next === 'cost') return next;
+  return fallback === 'tokens' ? 'tokens' : 'cost';
+}
+
+function normalizeHomeActiveDaysWindow(value, fallback = 'all') {
+  const next = String(value || '').trim();
+  if (next === 'year') return 'year';
+  if (next === 'all') return 'all';
+  return fallback === 'year' ? 'year' : 'all';
 }
 
 function normalizeCollectionIntervalMs(value, fallback = DEFAULT_COLLECTION_INTERVAL_MS) {
@@ -338,6 +401,39 @@ function collectorWatchEnabled() {
 
 function syncUploadIntervalMs() {
   return normalizeSyncUploadIntervalMs(settings?.syncUploadIntervalMs);
+}
+
+function electronUsageConfig(errorPrefix) {
+  return usageConfigFromSettings(settings, {
+    agentVersion: appVersion(),
+    agentRuntime: 'electron-widget',
+    commandTimeoutMs: 120 * 1000,
+    defaultDeviceId: defaultDeviceId(),
+    intervalMs: collectorIntervalMs(),
+    historyIntervalMs: normalizeHistoryIntervalMs(settings.historyIntervalMs),
+    watchEnabled: collectorWatchEnabled(),
+    watchDebounceMs: 1500,
+    dailyHistoryArchiveWriteEnabled: () => !isExternalAgentActive(),
+    onError: (error, reason) => console.log(`[${errorPrefix}] ${reason}: ${error.message}`),
+    logger: (message) => console.log(`[${errorPrefix}] ${message}`)
+  });
+}
+
+function electronLimitsConfig() {
+  return limitsConfigFromSettings(settings, {
+    env: process.env,
+    defaultLimitProviders: defaultLimitProviders(),
+    codexManagedAccounts: codexManagedAccountsForCollector(),
+    mimoManagedAccounts: mimoManagedAccountsForCollector()
+  });
+}
+
+function electronDeviceEnvelope() {
+  return envelopeFromSettings(settings, {
+    agentVersion: appVersion(),
+    agentRuntime: 'electron-widget',
+    defaultDeviceId: defaultDeviceId()
+  });
 }
 
 function defaultLimitProviders() {
@@ -443,6 +539,14 @@ function currentKimiApiKey() {
   return settings?.kimiApiKey || kimiToken(process.env);
 }
 
+function normalizeKimiWebAccessToken(value) {
+  return kimiWebToken({}, String(value || ''));
+}
+
+function currentKimiWebAccessToken() {
+  return settings?.kimiWebAccessToken || kimiWebToken(process.env);
+}
+
 function normalizeCopilotEnterpriseHost(value) {
   return String(value || '').trim().replace(/^https?:\/\//i, '').split('/')[0].toLowerCase();
 }
@@ -450,8 +554,28 @@ function normalizeCopilotEnterpriseHost(value) {
 let codexLoginController = null;
 let codexLoginFlowId = '';
 let codexLoginCanCancel = false;
+let codexWorkspaceSelection = null;
+let codexWorkspaceLabelHydrationPromise = null;
 let copilotLoginController = null;
 let copilotLoginFlowId = '';
+const CODEX_WORKSPACE_LABEL_HYDRATION_CONCURRENCY = 3;
+
+// Startup label hydration is a small one-shot map. LimitsRuntime's bounded
+// executor owns lane-aware provider refresh state, so it is not reusable here.
+async function mapWithConcurrency(items, concurrency, mapper) {
+  const results = new Array(items.length);
+  let nextIndex = 0;
+  async function worker() {
+    while (nextIndex < items.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      results[index] = await mapper(items[index], index);
+    }
+  }
+  const workerCount = Math.min(items.length, Math.max(1, Math.trunc(concurrency) || 1));
+  await Promise.all(Array.from({ length: workerCount }, () => worker()));
+  return results;
+}
 
 function normalizeCodexManagedAccounts(value) {
   if (!Array.isArray(value)) return [];
@@ -462,15 +586,30 @@ function normalizeCodexManagedAccounts(value) {
     const id = String(account.id || '').trim();
     const homePath = String(account.homePath || '').trim();
     if (!id || !homePath) continue;
+    const email = String(account.email || '').trim().toLowerCase();
+    const workspaceAccountId = normalizeWorkspaceId(
+      account.workspaceAccountId
+      || account.providerAccountId
+    );
+    const rawWorkspaceLabel = String(account.workspaceLabel || '').trim();
+    const workspaceKind = account.workspaceKind === 'personal' ? 'personal' : '';
     const accountKey = String(account.accountKey || '').trim();
-    const dedupe = accountKey || String(account.email || '').trim().toLowerCase() || id;
+    const dedupe = codexManagedAccountIdentityKey({
+      id,
+      accountKey,
+      email,
+      workspaceAccountId
+    });
     if (seen.has(dedupe)) continue;
     seen.add(dedupe);
     accounts.push({
       id,
-      email: String(account.email || '').trim().toLowerCase(),
+      email,
       accountKey,
       accountLabel: String(account.accountLabel || '').trim(),
+      workspaceAccountId,
+      workspaceLabel: workspaceKind ? '' : rawWorkspaceLabel,
+      workspaceKind,
       homePath,
       authPath: String(account.authPath || path.join(homePath, 'auth.json')).trim(),
       addedAt: account.addedAt || new Date().toISOString(),
@@ -481,10 +620,118 @@ function normalizeCodexManagedAccounts(value) {
   return accounts;
 }
 
+function hydrateCodexManagedAccounts(value) {
+  const storedAccounts = normalizeCodexManagedAccounts(value);
+  const hydratedAccounts = storedAccounts.map((account) => {
+    try {
+      const auth = JSON.parse(readRegularFileNoFollow(account.authPath, {
+        fs,
+        description: 'Managed Codex auth',
+        encoding: 'utf8'
+      }));
+      return upgradeCodexManagedAccountIdentity(account, codexAuthIdentity(auth));
+    } catch (_) {
+      return account;
+    }
+  });
+  const resolvedAccounts = preserveCodexManagedHydrationCollisions(storedAccounts, hydratedAccounts);
+  if (resolvedAccounts.some((account, index) => account !== hydratedAccounts[index])) {
+    console.warn('[codex] Managed account identity hydration found a collision; preserved stored identities.');
+  }
+  return resolvedAccounts;
+}
+
+function hydrateCodexManagedWorkspaceLabels() {
+  if (codexWorkspaceLabelHydrationPromise) return codexWorkspaceLabelHydrationPromise;
+  if (
+    settings?.limitsEnabled === false
+    || !parseLimitProviders(settings?.limitProviders).includes('codex')
+  ) return Promise.resolve(false);
+  const candidates = normalizeCodexManagedAccounts(settings?.codexManagedAccounts)
+    .filter((account) => (
+      account.enabled !== false
+      && account.workspaceAccountId
+      && !account.workspaceLabel
+      && !account.workspaceKind
+    ));
+  if (candidates.length === 0) return Promise.resolve(false);
+
+  const task = mapWithConcurrency(
+    candidates,
+    CODEX_WORKSPACE_LABEL_HYDRATION_CONCURRENCY,
+    async (account) => {
+      try {
+        const auth = JSON.parse(readRegularFileNoFollow(account.authPath, {
+          fs,
+          description: 'Managed Codex auth',
+          encoding: 'utf8'
+        }));
+        const workspaces = await listCodexWorkspaces(auth, { env: process.env });
+        const workspace = workspaces.find((entry) => entry.id === account.workspaceAccountId);
+        return workspace
+          ? {
+              id: account.id,
+              workspaceAccountId: account.workspaceAccountId,
+              label: workspace.label,
+              workspaceKind: workspace.workspaceKind
+            }
+          : null;
+      } catch (_) {
+        return null;
+      }
+    }
+  ).then((results) => {
+    const labels = new Map(
+      results.filter(Boolean).map((result) => [result.id, result])
+    );
+    if (labels.size === 0) return false;
+    let changed = false;
+    const accounts = normalizeCodexManagedAccounts(settings?.codexManagedAccounts).map((account) => {
+      const resolved = labels.get(account.id);
+      if (
+        !resolved
+        || account.workspaceLabel
+        || account.workspaceKind
+        || account.enabled === false
+        || account.workspaceAccountId !== resolved.workspaceAccountId
+      ) return account;
+      changed = true;
+      return {
+        ...account,
+        workspaceLabel: resolved.label,
+        workspaceKind: resolved.workspaceKind,
+        updatedAt: new Date().toISOString()
+      };
+    });
+    if (!changed) return false;
+    settings.codexManagedAccounts = accounts;
+    saveSettings();
+    pushSettingsToRenderer();
+    void queueLimitInvalidation({ provider: 'codex' }, 'workspace-label-hydrated');
+    return true;
+  });
+
+  codexWorkspaceLabelHydrationPromise = task.finally(() => {
+    codexWorkspaceLabelHydrationPromise = null;
+  });
+  return codexWorkspaceLabelHydrationPromise;
+}
+
 function codexAccountsForRenderer() {
   return normalizeCodexManagedAccounts(settings?.codexManagedAccounts).map(({
-    id, email, accountKey, accountLabel, addedAt, updatedAt, enabled
-  }) => ({ id, email, accountKey, accountLabel, addedAt, updatedAt, enabled }));
+    id, email, accountKey, accountLabel, workspaceAccountId, workspaceLabel, workspaceKind, addedAt, updatedAt, enabled
+  }) => ({
+    id,
+    email,
+    accountKey,
+    accountLabel,
+    workspaceAccountId,
+    workspaceLabel,
+    workspaceKind,
+    addedAt,
+    updatedAt,
+    enabled
+  }));
 }
 
 function codexManagedAccountsForCollector() {
@@ -528,7 +775,7 @@ function mimoManagedAccountsForCollector() {
   })).filter((account) => account.cookieHeader);
 }
 
-function mimoCredentialPath(id) {
+function legacyMimoCredentialPath(id) {
   const digest = crypto.createHash('sha256').update(String(id || '')).digest('hex');
   return path.join(app.getPath('userData'), 'mimo-credentials', `${digest}.cookie`);
 }
@@ -536,35 +783,24 @@ function mimoCredentialPath(id) {
 function writeMimoCredential(id, value) {
   const cookieHeader = normalizeMimoCookieHeader(value);
   if (!cookieHeader) return false;
-  const destination = mimoCredentialPath(id);
-  const temporary = `${destination}.${process.pid}.tmp`;
   try {
-    fs.mkdirSync(path.dirname(destination), { recursive: true, mode: 0o700 });
-    fs.chmodSync(path.dirname(destination), 0o700);
-    fs.writeFileSync(temporary, `${cookieHeader}\n`, { encoding: 'utf8', mode: 0o600 });
-    fs.chmodSync(temporary, 0o600);
-    fs.renameSync(temporary, destination);
-    fs.chmodSync(destination, 0o600);
-    return true;
+    return ensureCredentialStore().writeMimoCredential(id, cookieHeader);
   } catch (_) {
-    try { fs.rmSync(temporary, { force: true }); } catch (_) {}
     return false;
   }
 }
 
 function readMimoCredential(id) {
   try {
-    return normalizeMimoCookieHeader(fs.readFileSync(mimoCredentialPath(id), 'utf8'));
+    return normalizeMimoCookieHeader(ensureCredentialStore().readMimoCredential(id));
   } catch (_) {
     return '';
   }
 }
 
 function removeMimoCredential(id) {
-  const target = mimoCredentialPath(id);
   try {
-    fs.rmSync(target, { force: true });
-    return !fs.existsSync(target);
+    return ensureCredentialStore().removeMimoCredential(id);
   } catch (_) {
     return false;
   }
@@ -582,6 +818,7 @@ async function addMimoManagedAccount(cookieValue) {
     return { ok: false, errorCode };
   }
   result.account.accountEmail = String(validation.accountEmail || '').trim().slice(0, 254);
+  const previousCookie = readMimoCredential(result.account.id);
   const credentialStored = writeMimoCredential(result.account.id, result.account.cookieHeader);
   delete result.account.cookieHeader;
   if (!credentialStored) return { ok: false, errorCode: 'credentialStorageUnavailable' };
@@ -589,10 +826,20 @@ async function addMimoManagedAccount(cookieValue) {
     ...accounts.filter((account) => account.accountKey !== result.account.accountKey),
     result.account
   ]);
-  saveSettings();
+  try {
+    saveSettings({ throwOnError: true });
+  } catch (_) {
+    if (previousCookie) writeMimoCredential(result.account.id, previousCookie);
+    else removeMimoCredential(result.account.id);
+    return { ok: false, errorCode: 'credentialStorageUnavailable' };
+  }
   pushSettingsToRenderer();
   sendMimoAccountsPush();
-  startMode();
+  void queueLimitInvalidation({
+    provider: 'mimo',
+    accountId: result.account.id,
+    accountKey: result.account.accountKey
+  }, 'account-added');
   return { ok: true, accounts: mimoAccountsForRenderer() };
 }
 
@@ -601,12 +848,21 @@ async function removeMimoManagedAccount(id) {
   const accounts = normalizeMimoManagedAccounts(settings.mimoManagedAccounts);
   const account = accounts.find((entry) => entry.id === accountId);
   if (!account) return { ok: false, error: 'Account not found' };
+  const previousCookie = readMimoCredential(accountId);
   if (!removeMimoCredential(accountId)) return { ok: false, error: 'Could not remove stored credential' };
   settings.mimoManagedAccounts = accounts.filter((entry) => entry.id !== accountId);
-  saveSettings();
+  try {
+    saveSettings({ throwOnError: true });
+  } catch (_) {
+    if (previousCookie) writeMimoCredential(accountId, previousCookie);
+    return { ok: false, error: 'Could not persist account removal' };
+  }
   pushSettingsToRenderer();
   sendMimoAccountsPush();
-  startMode();
+  void queueLimitInvalidation({ provider: 'mimo', accountId, accountKey: account.accountKey }, 'account-removed', {
+    clear: true,
+    refresh: false
+  });
   return { ok: true, accounts: mimoAccountsForRenderer() };
 }
 
@@ -618,10 +874,17 @@ function setMimoManagedAccountEnabled(id, enabled) {
   account.enabled = Boolean(enabled);
   account.updatedAt = new Date().toISOString();
   settings.mimoManagedAccounts = accounts;
-  saveSettings();
+  try {
+    saveSettings({ throwOnError: true });
+  } catch (_) {
+    return { ok: false, error: 'Could not persist account state' };
+  }
   pushSettingsToRenderer();
   sendMimoAccountsPush();
-  startMode();
+  void queueLimitInvalidation({ provider: 'mimo', accountId, accountKey: account.accountKey }, 'account-state', {
+    clear: !account.enabled,
+    refresh: account.enabled
+  });
   return { ok: true, accounts: mimoAccountsForRenderer() };
 }
 
@@ -637,18 +900,8 @@ function codexManagedHomePath(accountId) {
   return resolvedHome;
 }
 
-function codexEmailDerivedAccountKey(account, identity) {
-  const email = String(identity.email || account.email || '').trim().toLowerCase();
-  return Boolean(email && String(account.accountKey || '').trim() === hashAccountKey(email));
-}
-
 function findExistingCodexAccount(accounts, identity) {
-  return accounts.find((account) => {
-    if (identity.accountKey && account.accountKey && !codexEmailDerivedAccountKey(account, identity)) {
-      return account.accountKey === identity.accountKey;
-    }
-    return Boolean(identity.email && account.email === identity.email);
-  });
+  return accounts.find((account) => codexManagedAccountMatchesIdentity(account, identity));
 }
 
 function codexAccountId(identity, existing) {
@@ -678,6 +931,9 @@ function commitCodexManagedAccount(identity, homePath, existing, options = {}) {
     email: identity.email,
     accountKey: identity.accountKey || hashAccountKey(identity.email || id),
     accountLabel: identity.accountLabel,
+    workspaceAccountId: identity.workspaceAccountId || identity.providerAccountId || '',
+    workspaceLabel: String(identity.workspaceLabel || '').trim(),
+    workspaceKind: identity.workspaceKind === 'personal' ? 'personal' : '',
     homePath,
     authPath: path.join(homePath, 'auth.json'),
     addedAt: existing?.addedAt || now,
@@ -688,13 +944,37 @@ function commitCodexManagedAccount(identity, homePath, existing, options = {}) {
     ...accounts.filter((account) => account.id !== id),
     record
   ]);
-  saveSettings();
-  if (options.restart !== false) startMode();
+  if (options.persist !== false) saveSettings({ throwOnError: true });
   return codexAccountsForRenderer().find((account) => account.id === id);
 }
 
 function hasCodexIdentity(identity) {
   return Boolean(identity?.accountKey || identity?.email);
+}
+
+async function snapshotCodexAuthFile(authPath) {
+  let parentExisted = true;
+  try { await fs.promises.stat(path.dirname(authPath)); } catch (error) {
+    if (error?.code !== 'ENOENT') throw error;
+    parentExisted = false;
+  }
+  try {
+    return { authPath, data: await fs.promises.readFile(authPath, 'utf8'), existed: true, parentExisted };
+  } catch (error) {
+    if (error?.code !== 'ENOENT') throw error;
+    return { authPath, data: '', existed: false, parentExisted };
+  }
+}
+
+async function restoreCodexAuthFileSnapshot(snapshot, options = {}) {
+  if (snapshot.existed) {
+    await writeCodexAuthFile(snapshot.authPath, snapshot.data);
+    return;
+  }
+  await fs.promises.rm(snapshot.authPath, { force: true });
+  if (options.removeNewParent && !snapshot.parentExisted) {
+    await removeManagedHomeIfSafe(path.dirname(snapshot.authPath));
+  }
 }
 
 async function preserveLiveCodexAuthAsManagedAccount(targetIdentity) {
@@ -711,11 +991,22 @@ async function preserveLiveCodexAuthAsManagedAccount(targetIdentity) {
   const existing = findExistingCodexAccount(accounts, liveMaterial.identity);
   const homePath = codexManagedHomePath(codexAccountId(liveMaterial.identity, existing));
   if (!homePath) return null;
-  await writeCodexAuthFile(path.join(homePath, 'auth.json'), liveMaterial.data);
-  return commitCodexManagedAccount(liveMaterial.identity, homePath, existing, {
-    enabled: existing?.enabled ?? true,
-    restart: false
-  });
+  const authSnapshot = await snapshotCodexAuthFile(path.join(homePath, 'auth.json'));
+  try {
+    await writeCodexAuthFile(authSnapshot.authPath, liveMaterial.data);
+    const account = commitCodexManagedAccount(liveMaterial.identity, homePath, existing, {
+      enabled: existing?.enabled ?? true,
+      persist: false,
+      restart: false
+    });
+    return {
+      account,
+      rollback: () => restoreCodexAuthFileSnapshot(authSnapshot, { removeNewParent: true })
+    };
+  } catch (error) {
+    await restoreCodexAuthFileSnapshot(authSnapshot, { removeNewParent: true }).catch(() => {});
+    throw error;
+  }
 }
 
 function codexLoginErrorMessage(result) {
@@ -747,6 +1038,55 @@ async function rollbackCodexManagedHome(homePath, backupHomePath, movedToFinal) 
   if (backupHomePath) await fs.promises.rename(backupHomePath, homePath);
 }
 
+async function resolveCodexWorkspaceAfterLogin(auth, homePath, options = {}) {
+  const initialIdentity = codexAuthIdentity(auth);
+  let workspaces;
+  try {
+    workspaces = await listCodexWorkspaces(auth, {
+      env: process.env,
+      signal: options.signal
+    });
+  } catch (error) {
+    if (options.signal?.aborted) return { cancelled: true };
+    console.warn('Could not list Codex workspaces after sign-in:', error?.message || error);
+    return { auth, identity: initialIdentity };
+  }
+  if (options.signal?.aborted) return { cancelled: true };
+  if (workspaces.length === 0) return { auth, identity: initialIdentity };
+
+  const currentWorkspaceId = normalizeWorkspaceId(initialIdentity.workspaceAccountId);
+  let selected;
+  if (workspaces.length === 1) {
+    selected = workspaces[0];
+  } else if (typeof options.selectWorkspace === 'function') {
+    const selectedId = normalizeWorkspaceId(await options.selectWorkspace({
+      email: initialIdentity.email,
+      currentWorkspaceId,
+      workspaces
+    }));
+    if (!selectedId || options.signal?.aborted) return { cancelled: true };
+    selected = workspaces.find((workspace) => workspace.id === selectedId) || null;
+    if (!selected) throw new Error('The selected Codex workspace is no longer available.');
+  } else {
+    selected = workspaces.find((workspace) => workspace.id === currentWorkspaceId) || null;
+  }
+  if (!selected) return { auth, identity: initialIdentity };
+
+  const selectedAuth = authWithSelectedCodexWorkspace(auth, selected.id);
+  await writeCodexAuthFile(
+    path.join(homePath, 'auth.json'),
+    `${JSON.stringify(selectedAuth, null, 2)}\n`
+  );
+  return {
+    auth: selectedAuth,
+    identity: {
+      ...codexAuthIdentity(selectedAuth),
+      workspaceLabel: selected.label,
+      workspaceKind: selected.workspaceKind
+    }
+  };
+}
+
 // Best practice: each account gets its own OAuth grant via an isolated
 // `codex login` (CodexBar/tokscale model), so it never shares a refresh-token
 // lineage with the user's live Codex CLI login.
@@ -769,7 +1109,10 @@ async function addCodexManagedAccount(onOutput, options = {}) {
     } catch (_) {
       return { ok: false, error: 'Sign-in finished but no Codex credentials were written.' };
     }
-    const identity = codexAuthIdentity(auth);
+    const workspaceResult = await resolveCodexWorkspaceAfterLogin(auth, tempHome, options);
+    if (workspaceResult.cancelled) return cancelledCodexLoginResult();
+    auth = workspaceResult.auth;
+    const identity = workspaceResult.identity;
     if (!identity.accountKey && !identity.email) {
       return { ok: false, error: 'Could not identify the Codex account after sign-in.' };
     }
@@ -834,7 +1177,11 @@ async function addCodexManagedAccount(onOutput, options = {}) {
       movedToFinal = false;
       throw error;
     }
-    startMode();
+    void queueLimitInvalidation({
+      provider: 'codex',
+      accountId: account.id,
+      accountKey: account.accountKey || ''
+    }, 'account-added');
     return { ok: true, account };
   } finally {
     if (!accountCommitted) await removeManagedHomeIfSafe(tempHome).catch(() => {});
@@ -847,9 +1194,16 @@ async function removeCodexManagedAccount(id) {
   const account = accounts.find((entry) => entry.id === accountId);
   if (!account) return { ok: false, error: 'Account not found' };
   settings.codexManagedAccounts = accounts.filter((entry) => entry.id !== accountId);
-  saveSettings();
+  try {
+    saveSettings({ throwOnError: true });
+  } catch (error) {
+    return { ok: false, error: error?.message || 'Could not persist account removal' };
+  }
   await removeManagedHomeIfSafe(account.homePath);
-  startMode();
+  void queueLimitInvalidation({ provider: 'codex', accountId, accountKey: account.accountKey || '' }, 'account-removed', {
+    clear: true,
+    refresh: false
+  });
   return { ok: true, accounts: codexAccountsForRenderer() };
 }
 
@@ -860,8 +1214,15 @@ function setCodexManagedAccountEnabled(id, enabled) {
   if (!account) return { ok: false, error: 'Account not found' };
   account.enabled = Boolean(enabled);
   settings.codexManagedAccounts = accounts;
-  saveSettings();
-  startMode();
+  try {
+    saveSettings({ throwOnError: true });
+  } catch (error) {
+    return { ok: false, error: error?.message || 'Could not persist account state' };
+  }
+  void queueLimitInvalidation({ provider: 'codex', accountId, accountKey: account.accountKey || '' }, 'account-state', {
+    clear: !account.enabled,
+    refresh: account.enabled
+  });
   return { ok: true, accounts: codexAccountsForRenderer() };
 }
 
@@ -882,14 +1243,25 @@ async function switchCodexSystemAccount(id) {
     return { ok: false, error: 'Could not identify the selected Codex account credentials.' };
   }
 
+  const previousAccounts = normalizeCodexManagedAccounts(settings.codexManagedAccounts);
+  const liveAuthPath = liveCodexAuthPath(process.env);
+  let liveAuthSnapshot;
   try {
-    await preserveLiveCodexAuthAsManagedAccount(targetMaterial.identity);
-    await writeCodexAuthFile(liveCodexAuthPath(process.env), targetMaterial.data);
+    liveAuthSnapshot = await snapshotCodexAuthFile(liveAuthPath);
+  } catch (error) {
+    return { ok: false, error: `Could not back up the local Codex account: ${error?.message || error}` };
+  }
+  let preservedLiveAccount = null;
+  try {
+    preservedLiveAccount = await preserveLiveCodexAuthAsManagedAccount(targetMaterial.identity);
+    await writeCodexAuthFile(liveAuthPath, targetMaterial.data);
     const refreshedAccounts = normalizeCodexManagedAccounts(settings.codexManagedAccounts);
     const refreshed = refreshedAccounts.find((entry) => entry.id === account.id) || account;
     commitCodexManagedAccount(targetMaterial.identity, refreshed.homePath, refreshed, {
-      enabled: refreshed.enabled !== false
+      enabled: refreshed.enabled !== false,
+      restart: false
     });
+    void queueLimitInvalidation({ provider: 'codex' }, 'system-account-switch');
     const activeAccountId = codexAccountId(targetMaterial.identity, refreshed);
     const accountsForRenderer = codexAccountsForRenderer();
     return {
@@ -899,7 +1271,14 @@ async function switchCodexSystemAccount(id) {
       accounts: accountsForRenderer
     };
   } catch (error) {
-    return { ok: false, error: `Could not switch the local Codex account: ${error?.message || error}` };
+    settings.codexManagedAccounts = previousAccounts;
+    const rollbackErrors = [];
+    try { await restoreCodexAuthFileSnapshot(liveAuthSnapshot); } catch (rollbackError) { rollbackErrors.push(rollbackError); }
+    try { await preservedLiveAccount?.rollback?.(); } catch (rollbackError) { rollbackErrors.push(rollbackError); }
+    const rollbackDetail = rollbackErrors.length > 0
+      ? ` Rollback also failed: ${rollbackErrors.map((rollbackError) => rollbackError?.message || rollbackError).join('; ')}`
+      : '';
+    return { ok: false, error: `Could not switch the local Codex account: ${error?.message || error}.${rollbackDetail}` };
   }
 }
 
@@ -909,18 +1288,23 @@ async function refreshCodexManagedAccountLimits(id) {
   const account = accounts.find((entry) => entry.id === accountId);
   if (!account) return { ok: false, error: 'Account not found' };
   if (account.enabled === false) return { ok: false, error: 'Account is disabled' };
+  if (!deviceRuntimeHandle) return { ok: false, error: 'Limits runtime is not ready' };
   try {
-    const summary = await collectLimitsOnce({
-      ...settings,
-      limitsEnabled: true,
-      limitProviders: 'codex',
-      includeLiveCodexAccount: false,
-      codexManagedAccounts: [account]
-    }, { env: process.env });
-    const stableSummary = mergeCodexTransientWindows(latestStats?.limits, summary);
+    const result = await deviceRuntimeHandle.refreshLimits({
+      provider: 'codex',
+      accountId: account.id,
+      accountKey: account.accountKey || ''
+    }, 'account-refresh');
+    const summary = result?.snapshot || deviceRuntimeHandle.getSnapshot()?.limits;
+    const providers = (summary?.providers || []).filter((provider) => {
+      if (provider?.provider !== 'codex') return false;
+      if (account.accountKey) return provider.accountKey === account.accountKey;
+      if (account.email) return String(provider.accountEmail || '').toLowerCase() === account.email;
+      return provider.sourceDetail === 'managed';
+    });
     return {
       ok: true,
-      providers: (stableSummary.providers || []).filter((provider) => provider?.provider === 'codex')
+      providers
     };
   } catch (error) {
     return { ok: false, error: `Could not refresh Codex account limits: ${error?.message || error}` };
@@ -1062,6 +1446,17 @@ function ensureSettingsLoaded() {
   if (settings.appUpdate?.lastKnownLatest?.htmlUrl && !settings.appUpdate.lastKnownLatest.htmlUrl.startsWith('https://github.com/IGNGserver/token-monitor-mysql/releases/')) {
     settings.appUpdate = { ...settings.appUpdate, lastKnownLatest: null, lastCheckedAt: null, dismissedVersion: null };
     saveSettings();
+  }
+  const persistedCodexAccounts = settings.codexManagedAccounts;
+  const hydratedCodexAccounts = hydrateCodexManagedAccounts(persistedCodexAccounts);
+  persistedSettingsSnapshot = cloneSettingsSnapshot(settings);
+  if (JSON.stringify(hydratedCodexAccounts) !== JSON.stringify(persistedCodexAccounts)) {
+    settings.codexManagedAccounts = hydratedCodexAccounts;
+    if (!saveSettings()) {
+      // Keep the runtime identity coherent even if the migration cannot be
+      // persisted yet; the next ordinary settings save will retry it.
+      settings.codexManagedAccounts = hydratedCodexAccounts;
+    }
   }
   rendererViewState = normalizeInitialRendererViewState(settings.lastViewState, rendererViewState);
   return settings;
@@ -1237,7 +1632,6 @@ function expandFloatingBubble(options = {}) {
   sendFloatingBubbleState();
   if (options.focus !== false) {
     mainWindow.show();
-    mainWindow.focus();
   }
   return true;
 }
@@ -1335,13 +1729,91 @@ function normalizeCurrencyOverrides(value) {
   return out;
 }
 
+function ensureCredentialStore() {
+  if (!credentialStore) credentialStore = new CredentialStore(app.getPath('userData'));
+  return credentialStore;
+}
+
+function reportCredentialStorageError(context, error) {
+  const detail = error?.message || String(error || 'Unknown error');
+  console.error(`[credentials] ${context}: ${detail}`);
+  if (credentialStorageErrorShown || !app.isReady()) return;
+  credentialStorageErrorShown = true;
+  try {
+    dialog.showErrorBox(
+      'Credential storage error',
+      `Token Monitor could not safely access credentials.json (${context}). The save was stopped and previous data was restored where possible. Check the file's JSON and permissions, then restart the app.\n\n${detail}`
+    );
+  } catch (_) {}
+}
+
+function loadCredentialSettings(saved) {
+  try {
+    const store = ensureCredentialStore();
+    store.migrateLegacySettings(saved);
+    const stored = store.settingsCredentials();
+    // Cleanup is intentionally independent from the migration marker. If the
+    // first cleanup write fails after credentials.json was committed, retry on
+    // every startup until no credential keys remain in settings.json.
+    if (hasCredentialSettings(saved)) {
+      try {
+        writePrivateJsonAtomic(settingsPath, stripCredentialSettings(saved));
+      } catch (error) {
+        reportCredentialStorageError('could not remove migrated credentials from settings.json', error);
+      }
+    }
+    return stored;
+  } catch (error) {
+    reportCredentialStorageError('could not load credentials.json', error);
+    return {};
+  }
+}
+
+function migrateLegacyMimoCredentialFiles(accounts) {
+  const entries = [];
+  for (const account of accounts || []) {
+    try {
+      const cookieHeader = normalizeMimoCookieHeader(readRegularFileNoFollow(legacyMimoCredentialPath(account.id), {
+        fs,
+        description: 'Legacy MiMo credential',
+        encoding: 'utf8'
+      }));
+      if (cookieHeader) entries.push({ id: account.id, cookieHeader });
+    } catch (_) {}
+  }
+  if (entries.length === 0) return;
+  try {
+    ensureCredentialStore().migrateLegacyMimoCredentials(entries);
+    for (const entry of entries) {
+      if (!readMimoCredential(entry.id)) continue;
+      try { fs.rmSync(legacyMimoCredentialPath(entry.id), { force: true }); } catch (_) {}
+    }
+    try { fs.rmdirSync(path.join(app.getPath('userData'), 'mimo-credentials')); } catch (_) {}
+  } catch (error) {
+    console.warn(`[credentials] Could not migrate MiMo credentials: ${error.message}`);
+  }
+}
+
 function readSettings() {
   settingsPath = path.join(app.getPath('userData'), 'settings.json');
   try {
     const defaults = defaultSettings();
-    const saved = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+    let saved = {};
+    try {
+      saved = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+      if (!saved || typeof saved !== 'object' || Array.isArray(saved)) saved = {};
+    } catch (error) {
+      if (error.code !== 'ENOENT') console.warn(`[settings] Could not load settings.json: ${error.message}`);
+    }
+    if (process.platform !== 'win32') {
+      try {
+        const stat = fs.lstatSync(settingsPath);
+        if (stat.isFile() && !stat.isSymbolicLink()) fs.chmodSync(settingsPath, 0o600);
+      } catch (_) {}
+    }
+    const storedCredentials = loadCredentialSettings(saved);
     if (!saved.secret && defaults.secret) delete saved.secret;
-    const merged = { ...defaults, ...saved };
+    const merged = { ...defaults, ...saved, ...storedCredentials };
     // Migrate older configs that predate hubMode: infer from hubUrl.
     if (saved.hubMode === undefined) {
       merged.hubMode = (saved.hubUrl && String(saved.hubUrl).trim()) ? 'client' : 'local';
@@ -1374,6 +1846,8 @@ function readSettings() {
       merged.hiddenHomeModules = normalizeHiddenHomeModules(saved.hiddenHomeModules, DEFAULT_HOME_MODULE_LIST);
     }
     merged.showHomeLimitBars = parseBoolean(merged.showHomeLimitBars, false);
+    merged.showHomeLimitProviderNames = parseBoolean(merged.showHomeLimitProviderNames, false);
+    merged.automaticAppUpdates = parseBoolean(merged.automaticAppUpdates, false);
     if (saved.homeLimitProviderOrder !== undefined) {
       merged.homeLimitProviderOrder = migrateHomeLimitProviderOrder(saved.homeLimitProviderOrder);
     }
@@ -1396,6 +1870,8 @@ function readSettings() {
     merged.collectionMode = normalizeCollectionMode(merged.collectionMode);
     merged.collectionIntervalMs = normalizeCollectionIntervalMs(merged.collectionIntervalMs);
     merged.syncUploadIntervalMs = normalizeSyncUploadIntervalMs(merged.syncUploadIntervalMs);
+    merged.heatmapMetric = normalizeHeatmapMetric(merged.heatmapMetric);
+    merged.homeActiveDaysWindow = normalizeHomeActiveDaysWindow(merged.homeActiveDaysWindow);
     merged.reduceMotion = motionPreferenceApi.normalize(merged.reduceMotion);
     if (saved.serviceProviderDisplayOrder !== undefined) {
       merged.serviceProviderDisplayOrder = String(saved.serviceProviderDisplayOrder || '');
@@ -1425,12 +1901,15 @@ function readSettings() {
     delete merged.edgeDrawerEnabled;
     merged.floatingBubbleTrigger = merged.floatingBubbleTrigger === 'hover' ? 'hover' : 'click';
     merged.floatingBubbleContent = normalizeTrayContent(merged.floatingBubbleContent, 'icon');
+    merged.floatingBubbleCustomLayout = normalizeTrayLayout(merged.floatingBubbleCustomLayout);
+    merged.trayCustomLayout = normalizeTrayLayout(merged.trayCustomLayout);
     merged.showTrayProviderBadge = parseBoolean(merged.showTrayProviderBadge, false);
     merged.windowToggleShortcut = normalizeWindowToggleShortcut(merged.windowToggleShortcut);
     // 如果设置了 opencodeCookie 但没有 profiles，自动迁移
     if (merged.opencodeCookie && Object.keys(merged.opencodeProfiles || {}).length === 0) {
       merged.opencodeProfiles = { default: { cookie: merged.opencodeCookie, enabled: true } };
     }
+    migrateLegacyMimoCredentialFiles(merged.mimoManagedAccounts);
     Object.assign(merged, normalizeTrayModeSettings(merged));
     return normalizeWindowBehaviorSettings(merged);
   }
@@ -1441,9 +1920,27 @@ function readSettings() {
   }
 }
 
-function saveSettings() {
-  fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
-  fs.writeFileSync(settingsPath, `${JSON.stringify(settings, null, 2)}\n`, 'utf8');
+function cloneSettingsSnapshot(value) {
+  return JSON.parse(JSON.stringify(value || {}));
+}
+
+function saveSettings(options = {}) {
+  const previousSettings = cloneSettingsSnapshot(persistedSettingsSnapshot || settings);
+  try {
+    persistSettingsAndCredentials({
+      store: ensureCredentialStore(),
+      settingsPath,
+      settings,
+      previousSettings
+    });
+    persistedSettingsSnapshot = cloneSettingsSnapshot(settings);
+    return true;
+  } catch (error) {
+    settings = previousSettings;
+    reportCredentialStorageError('could not persist settings', error);
+    if (options.throwOnError) throw error;
+    return false;
+  }
 }
 
 function loginItemEnabledHere() {
@@ -1562,6 +2059,32 @@ function applyMacActivationPolicy(state = {}) {
   else app.dock.show();
 }
 
+function applyMacSpaceBehavior(trayMode = Boolean(settings?.trayMode)) {
+  if (process.platform !== 'darwin' || !mainWindow || mainWindow.isDestroyed()) return;
+  if (trayMode) {
+    setMoveToActiveSpace(mainWindow, false);
+    if (typeof mainWindow.setVisibleOnAllWorkspaces === 'function') {
+      mainWindow.setVisibleOnAllWorkspaces(true, {
+        visibleOnFullScreen: true,
+        skipTransformProcessType: true
+      });
+    }
+    if (typeof mainWindow.setHiddenInMissionControl === 'function') {
+      mainWindow.setHiddenInMissionControl(true);
+    }
+  } else {
+    if (typeof mainWindow.setVisibleOnAllWorkspaces === 'function') {
+      mainWindow.setVisibleOnAllWorkspaces(false);
+    }
+    if (typeof mainWindow.setHiddenInMissionControl === 'function') {
+      mainWindow.setHiddenInMissionControl(false);
+    }
+    // Apply this last because Electron's workspace/Mission Control setters also
+    // update NSWindow.collectionBehavior.
+    setMoveToActiveSpace(mainWindow, true);
+  }
+}
+
 function applyWindowSettings() {
   if (!mainWindow) return;
   if (floatingBubbleState.collapsed) {
@@ -1614,14 +2137,13 @@ function withHistoryPreview(stats, devices) {
 }
 
 let mode = 'idle';
-let localCollectorHandle = null;
+let deviceRuntimeHandle = null;
 let localDevice = null;
 let localStats = null;
 let sseAbortController = null;
 let sseRetryTimer = null;
 let streamConnected = false;
 let streamFailure = null;
-let syncCollectorHandle = null;
 let lastCollectedDevice = null;
 let latestHubStats = null;
 let tray = null;
@@ -1656,6 +2178,82 @@ let embeddedHub = null;
 let embeddedHubError = null;
 let embeddedHubUnsub = null;
 let modeQueue = Promise.resolve();
+const pendingLimitInvalidations = new Map();
+const pendingUsageClientRefreshes = new Map();
+
+function limitInvalidationKey(scope) {
+  const provider = String(scope?.provider || '').trim().toLowerCase();
+  const account = String(
+    scope?.accountKey
+    || scope?.accountId
+    || scope?.id
+    || scope?.accountName
+    || scope?.accountEmail
+    || scope?.accountLabel
+    || ''
+  ).trim();
+  return account ? `${provider}:${account}` : `${provider}:*`;
+}
+
+function rememberPendingLimitInvalidation(scope, reason, clear = false, refresh = true) {
+  const normalized = { ...scope, provider: String(scope?.provider || '').trim().toLowerCase() };
+  const key = limitInvalidationKey(normalized);
+  if (key.endsWith(':*')) {
+    for (const pendingKey of pendingLimitInvalidations.keys()) {
+      if (pendingKey.startsWith(`${normalized.provider}:`)) pendingLimitInvalidations.delete(pendingKey);
+    }
+  }
+  pendingLimitInvalidations.set(key, { scope: normalized, reason, clear, refresh });
+}
+
+function queueLimitInvalidation(scope, reason = 'credential-change', options = {}) {
+  const clear = options.clear === true;
+  const refresh = options.refresh !== false;
+  if (!deviceRuntimeHandle) {
+    rememberPendingLimitInvalidation(scope, reason, clear, refresh);
+    return Promise.resolve({ queued: true });
+  }
+  if (clear) deviceRuntimeHandle.clearLimits(scope, reason);
+  if (!refresh) return Promise.resolve({ cleared: true });
+  return Promise.resolve(deviceRuntimeHandle.refreshLimits(scope, reason));
+}
+
+function drainPendingLimitInvalidations(runtime) {
+  const pending = [...pendingLimitInvalidations.values()];
+  pendingLimitInvalidations.clear();
+  for (const entry of pending) {
+    if (entry.clear) runtime.clearLimits(entry.scope, entry.reason);
+    if (entry.refresh) {
+      void Promise.resolve(runtime.refreshLimits(entry.scope, entry.reason)).catch((error) => {
+        console.log(`[limits-runtime] pending refresh failed: ${error.message}`);
+      });
+    }
+  }
+}
+
+function refreshUsageClient(clientId, options = {}) {
+  const client = String(clientId || '').trim().toLowerCase();
+  if (!deviceRuntimeHandle) {
+    pendingUsageClientRefreshes.set(client, { clientId: client, options: { ...options } });
+    return Promise.resolve({ queued: true });
+  }
+  return Promise.resolve(deviceRuntimeHandle.refreshClient(client, options));
+}
+
+function drainPendingUsageClientRefreshes(runtime) {
+  const pending = [...pendingUsageClientRefreshes.values()];
+  pendingUsageClientRefreshes.clear();
+  for (const entry of pending) {
+    void Promise.resolve(runtime.refreshClient(entry.clientId, entry.options)).catch((error) => {
+      console.log(`[usage-runtime] pending client refresh failed: ${error.message}`);
+    });
+  }
+}
+
+function drainPendingRuntimeActions(runtime) {
+  drainPendingLimitInvalidations(runtime);
+  drainPendingUsageClientRefreshes(runtime);
+}
 
 function effectiveHubConfig() {
   if (settings?.hubMode === 'host') {
@@ -1775,8 +2373,8 @@ async function postToHub(summary) {
 }
 
 function stopSyncCollector() {
-  if (syncCollectorHandle) { try { syncCollectorHandle.stop(); } catch (_) {} }
-  syncCollectorHandle = null;
+  if (deviceRuntimeHandle) { try { deviceRuntimeHandle.stop(); } catch (_) {} }
+  deviceRuntimeHandle = null;
 }
 
 function startSyncCollector() {
@@ -1787,50 +2385,11 @@ function startSyncCollector() {
     upload: postToHub,
     onError: (error) => console.log(`[sync-collector] post failed: ${error.message}`)
   });
-  const collectorHandle = startCollector({
-    clients: clientsCsvForSetting(settings.clients),
-    allTimeSince: settings.allTimeSince || '2024-01-01',
-    commandTimeoutMs: 120 * 1000,
-    deviceId: settings.deviceId || defaultDeviceId(),
-    agentVersion: appVersion(),
-    agentRuntime: 'electron-widget',
-    intervalMs: collectorIntervalMs(),
-    historyEnabled: settings.historyEnabled !== false,
-    dailyHistoryArchiveEnabled: settings.sessionUsageArchiveEnabled !== false,
-    dailyHistoryArchiveWriteEnabled: () => !isExternalAgentActive(),
-    projectsEnabled: settings.projectsEnabled !== false,
-    historyIntervalMs: normalizeHistoryIntervalMs(settings.historyIntervalMs),
-    watchEnabled: collectorWatchEnabled(),
-    watchDebounceMs: 1500,
-    limitsEnabled: settings.limitsEnabled !== false,
-    wslScanEnabled: settings.wslScanEnabled !== false,
-    limitProviders: settings.limitProviders ?? defaultLimitProviders(),
-    limitsRefreshMs: normalizeLimitsRefreshMs(settings.limitsRefreshMs),
-    previousLimits: lastCollectedDevice?.limits,
-    opencodeCookie: settings.opencodeCookie || process.env.TOKEN_MONITOR_OPENCODE_COOKIE || '',
-    opencodeProfiles: settings.opencodeProfiles || {},
-    deepseekApiKey: settings.deepseekApiKey || '',
-    minimaxApiKey: settings.minimaxApiKey || '',
-    copilotApiToken: settings.copilotApiToken || '',
-    copilotEnterpriseHost: settings.copilotEnterpriseHost || '',
-    zaiApiKey: settings.zaiApiKey || '',
-    zaiApiRegion: settings.zaiApiRegion || 'global',
-    zaiTeamApiKey: settings.zaiTeamApiKey || '',
-    zaiTeamOrganizationId: settings.zaiTeamOrganizationId || '',
-    zaiTeamProjectId: settings.zaiTeamProjectId || '',
-    volcengineAccessKeyId: settings.volcengineAccessKeyId || '',
-    volcengineSecretAccessKey: settings.volcengineSecretAccessKey || '',
-    volcengineRegion: settings.volcengineRegion || '',
-    qoderCookie: settings.qoderCookie || '',
-    qoderSite: settings.qoderSite || 'global',
-    kimiApiKey: settings.kimiApiKey || '',
-    ollamaCookie: settings.ollamaCookie || '',
-    codexManagedAccounts: codexManagedAccountsForCollector(),
-    mimoManagedAccounts: mimoManagedAccountsForCollector(),
-    onUpdate: async (summary) => {
+  const sink = {
+    async enqueue(summary, revision) {
       if (isExternalAgentActive()) { sessionUsageArchive = null; return; }
       const visibleSummary = {
-        ...summaryWithArchivedClientUsage(summary),
+        ...summary,
         syncUploadIntervalMs: syncUploadIntervalMs()
       };
       lastCollectedDevice = { ...visibleSummary, receivedAt: new Date().toISOString() };
@@ -1839,22 +2398,23 @@ function startSyncCollector() {
         updateDiscordRpc(displayStats, settings.currency);
         sendPush({ event: 'stats', data: { type: 'stats', reason: 'local', stats: displayStats, at: new Date().toISOString() } });
       }
-      try {
-        await syncUploadScheduler.enqueue(visibleSummary);
-      } catch (error) {
-        console.log(`[sync-collector] post failed: ${error.message}`);
-      }
+      await syncUploadScheduler.enqueue(visibleSummary, revision);
     },
-    onError: (error, reason) => console.log(`[sync-collector] ${reason}: ${error.message}`),
-    logger: (msg) => console.log(`[sync-collector] ${msg}`)
-  });
-  syncCollectorHandle = {
-    stop() {
-      syncUploadScheduler.stop();
-      collectorHandle.stop();
-    },
-    tick: collectorHandle.tick
+    flush: () => syncUploadScheduler.flush(),
+    stop: () => syncUploadScheduler.stop()
   };
+  deviceRuntimeHandle = createDeviceRuntime({
+    envelope: electronDeviceEnvelope(),
+    initialLimits: lastCollectedDevice?.limits,
+    limitsOptions: electronLimitsConfig(),
+    transformUsage: summaryWithArchivedClientUsage,
+    usageOptions: electronUsageConfig('sync-collector'),
+    sink,
+    onError: (error, reason) => console.log(`[sync-collector] ${reason}: ${error.message}`)
+  }, {
+    limitsDeps: { resolveConfigSnapshot: () => electronLimitsConfig() }
+  });
+  drainPendingRuntimeActions(deviceRuntimeHandle);
 }
 
 // Host mode: this device's own usage goes straight into the embedded hub's store
@@ -1862,49 +2422,10 @@ function startSyncCollector() {
 // Monitor's own outbound connections can't zero out the widget's own usage (#17).
 function startHostCollector() {
   stopSyncCollector();
-  syncCollectorHandle = startCollector({
-    clients: clientsCsvForSetting(settings.clients),
-    allTimeSince: settings.allTimeSince || '2024-01-01',
-    commandTimeoutMs: 120 * 1000,
-    deviceId: settings.deviceId || defaultDeviceId(),
-    agentVersion: appVersion(),
-    agentRuntime: 'electron-widget',
-    intervalMs: collectorIntervalMs(),
-    historyEnabled: settings.historyEnabled !== false,
-    dailyHistoryArchiveEnabled: settings.sessionUsageArchiveEnabled !== false,
-    dailyHistoryArchiveWriteEnabled: () => !isExternalAgentActive(),
-    projectsEnabled: settings.projectsEnabled !== false,
-    historyIntervalMs: normalizeHistoryIntervalMs(settings.historyIntervalMs),
-    watchEnabled: collectorWatchEnabled(),
-    watchDebounceMs: 1500,
-    limitsEnabled: settings.limitsEnabled !== false,
-    wslScanEnabled: settings.wslScanEnabled !== false,
-    limitProviders: settings.limitProviders ?? defaultLimitProviders(),
-    limitsRefreshMs: normalizeLimitsRefreshMs(settings.limitsRefreshMs),
-    previousLimits: lastCollectedDevice?.limits,
-    opencodeCookie: settings.opencodeCookie || process.env.TOKEN_MONITOR_OPENCODE_COOKIE || '',
-    opencodeProfiles: settings.opencodeProfiles || {},
-    deepseekApiKey: settings.deepseekApiKey || '',
-    minimaxApiKey: settings.minimaxApiKey || '',
-    copilotApiToken: settings.copilotApiToken || '',
-    copilotEnterpriseHost: settings.copilotEnterpriseHost || '',
-    zaiApiKey: settings.zaiApiKey || '',
-    zaiApiRegion: settings.zaiApiRegion || 'global',
-    zaiTeamApiKey: settings.zaiTeamApiKey || '',
-    zaiTeamOrganizationId: settings.zaiTeamOrganizationId || '',
-    zaiTeamProjectId: settings.zaiTeamProjectId || '',
-    volcengineAccessKeyId: settings.volcengineAccessKeyId || '',
-    volcengineSecretAccessKey: settings.volcengineSecretAccessKey || '',
-    volcengineRegion: settings.volcengineRegion || '',
-    qoderCookie: settings.qoderCookie || '',
-    qoderSite: settings.qoderSite || 'global',
-    kimiApiKey: settings.kimiApiKey || '',
-    ollamaCookie: settings.ollamaCookie || '',
-    codexManagedAccounts: codexManagedAccountsForCollector(),
-    mimoManagedAccounts: mimoManagedAccountsForCollector(),
-    onUpdate: async (summary) => {
+  const sink = {
+    async enqueue(summary) {
       if (isExternalAgentActive()) { sessionUsageArchive = null; return; }
-      const visibleSummary = summaryWithArchivedClientUsage(summary);
+      const visibleSummary = summary;
       lastCollectedDevice = { ...visibleSummary, receivedAt: new Date().toISOString() };
       if (!embeddedHub) return;
       try {
@@ -1924,10 +2445,20 @@ function startHostCollector() {
       } catch (error) {
         console.log(`[host-ingest] failed: ${error.message}`);
       }
-    },
-    onError: (error, reason) => console.log(`[host-collector] ${reason}: ${error.message}`),
-    logger: (msg) => console.log(`[host-collector] ${msg}`)
+    }
+  };
+  deviceRuntimeHandle = createDeviceRuntime({
+    envelope: electronDeviceEnvelope(),
+    initialLimits: lastCollectedDevice?.limits,
+    limitsOptions: electronLimitsConfig(),
+    transformUsage: summaryWithArchivedClientUsage,
+    usageOptions: electronUsageConfig('host-collector'),
+    sink,
+    onError: (error, reason) => console.log(`[host-collector] ${reason}: ${error.message}`)
+  }, {
+    limitsDeps: { resolveConfigSnapshot: () => electronLimitsConfig() }
   });
+  drainPendingRuntimeActions(deviceRuntimeHandle);
 }
 
 function stopHostStats() {
@@ -2067,14 +2598,15 @@ function updateTrayDisplay() {
   // while the current stats still have quota text; otherwise it can outlive
   // the provider data that generated it.
   const trayImageMode = mode === 'limitsAllSessions' && Boolean(limitText) && providerTrayIcons[mode];
-  const text = trayImageMode ? '' : limitText;
+  const customImageMode = mode === 'custom' && providerTrayIcons.custom;
+  const text = trayImageMode || customImageMode ? '' : limitText;
   if (process.platform === 'darwin') tray.setTitle(text);
   // Tooltip always shows a useful summary, even in icon-only mode where setTitle is blank.
   const tip = formatTrayText(latestStats, 'both', currency);
   tray.setToolTip(`Token Monitor - ${tip}`);
   // Icon: rendered bars image in bar modes, otherwise the app icon.
   let icon = null;
-  if (barsImageMode || trayImageMode) {
+  if (barsImageMode || trayImageMode || customImageMode) {
     icon = providerTrayIcons[mode];
   } else {
     const usageIconId = pickUsageTrayIconId(latestStats, mode, Object.keys(providerTrayIcons));
@@ -2090,8 +2622,8 @@ function sendStatus(connected, extra) {
 }
 
 function stopLocalCollector() {
-  if (localCollectorHandle) { try { localCollectorHandle.stop(); } catch (_) {} }
-  localCollectorHandle = null;
+  if (deviceRuntimeHandle) { try { deviceRuntimeHandle.stop(); } catch (_) {} }
+  deviceRuntimeHandle = null;
   localDevice = null;
   localStats = null;
 }
@@ -2100,105 +2632,28 @@ function startLocalCollector() {
   stopLocalCollector();
   mode = 'local';
   sendStatus(false, { reason: 'collecting' });
-  localCollectorHandle = startCollector({
-    clients: clientsCsvForSetting(settings.clients),
-    allTimeSince: settings.allTimeSince || '2024-01-01',
-    commandTimeoutMs: 120 * 1000,
-    deviceId: settings.deviceId || defaultDeviceId(),
-    agentVersion: appVersion(),
-    agentRuntime: 'electron-widget',
-    intervalMs: collectorIntervalMs(),
-    historyEnabled: settings.historyEnabled !== false,
-    dailyHistoryArchiveEnabled: settings.sessionUsageArchiveEnabled !== false,
-    dailyHistoryArchiveWriteEnabled: () => !isExternalAgentActive(),
-    projectsEnabled: settings.projectsEnabled !== false,
-    historyIntervalMs: normalizeHistoryIntervalMs(settings.historyIntervalMs),
-    watchEnabled: collectorWatchEnabled(),
-    watchDebounceMs: 1500,
-    limitsEnabled: settings.limitsEnabled !== false,
-    wslScanEnabled: settings.wslScanEnabled !== false,
-    limitProviders: settings.limitProviders ?? defaultLimitProviders(),
-    limitsRefreshMs: normalizeLimitsRefreshMs(settings.limitsRefreshMs),
-    previousLimits: lastCollectedDevice?.limits,
-    opencodeCookie: settings.opencodeCookie || process.env.TOKEN_MONITOR_OPENCODE_COOKIE || '',
-    opencodeProfiles: settings.opencodeProfiles || {},
-    deepseekApiKey: settings.deepseekApiKey || '',
-    minimaxApiKey: settings.minimaxApiKey || '',
-    copilotApiToken: settings.copilotApiToken || '',
-    copilotEnterpriseHost: settings.copilotEnterpriseHost || '',
-    zaiApiKey: settings.zaiApiKey || '',
-    zaiApiRegion: settings.zaiApiRegion || 'global',
-    zaiTeamApiKey: settings.zaiTeamApiKey || '',
-    zaiTeamOrganizationId: settings.zaiTeamOrganizationId || '',
-    zaiTeamProjectId: settings.zaiTeamProjectId || '',
-    volcengineAccessKeyId: settings.volcengineAccessKeyId || '',
-    volcengineSecretAccessKey: settings.volcengineSecretAccessKey || '',
-    volcengineRegion: settings.volcengineRegion || '',
-    qoderCookie: settings.qoderCookie || '',
-    qoderSite: settings.qoderSite || 'global',
-    kimiApiKey: settings.kimiApiKey || '',
-    ollamaCookie: settings.ollamaCookie || '',
-    codexManagedAccounts: codexManagedAccountsForCollector(),
-    mimoManagedAccounts: mimoManagedAccountsForCollector(),
-    onUpdate: (summary, reason) => {
-      const visibleSummary = summaryWithArchivedClientUsage(summary);
-      // History only rides along on gated ticks; carry the last known history
-      // forward so the trends dashboard doesn't blank out between them.
-      localDevice = carryDeviceHistory(localDevice, { ...visibleSummary, receivedAt: new Date().toISOString() });
+  deviceRuntimeHandle = createDeviceRuntime({
+    envelope: electronDeviceEnvelope(),
+    initialLimits: lastCollectedDevice?.limits,
+    limitsOptions: electronLimitsConfig(),
+    transformUsage: summaryWithArchivedClientUsage,
+    usageOptions: electronUsageConfig('collector'),
+    progressive: true,
+    onRecord: (summary, meta) => {
+      const reason = meta.reason;
+      const visibleSummary = summary;
+      localDevice = { ...visibleSummary, receivedAt: new Date().toISOString() };
       lastCollectedDevice = localDevice;
       localStats = withHistoryPreview(aggregateDevices([localDevice], 0), [localDevice]);
       updateDiscordRpc(localStats, settings.currency);
       sendPush({ event: 'stats', data: { type: 'stats', reason, stats: localStats, at: new Date().toISOString() } });
       sendStatus(true, { reason });
     },
-    // Progressive push: mid-tick partial results (today-only / today+month).
-    // Only wired for the local collector; sync/host modes never see these.
-    // History is carried forward by carryDeviceHistory; limits are carried
-    // forward manually so the limits panel doesn't flash empty between scans.
-    // Month/allTime/clientStatus are also carried forward when omitted so
-    // warm full scans stay stable across progressive updates.
-    onPreview: (summary) => {
-      const prevDevice = localDevice;
-      // Capture carry-forward needs before summaryWithArchivedClientUsage,
-      // which fills in empty periods for undefined fields (archived client path).
-      const needsMonth = !summary.month;
-      const needsAllTime = !summary.allTime;
-      const needsClientStatus = !summary.clientStatus;
-      const needsWslStatus = !summary.wslStatus;
-
-      const visible = summaryWithArchivedClientUsage(summary);
-      localDevice = carryDeviceHistory(localDevice, { ...visible, receivedAt: new Date().toISOString() });
-      // Carry forward usage periods omitted from the preview so warm full
-      // scans don't flash month/allTime to empty between tokscale scans.
-      if (needsMonth && prevDevice?.month) {
-        localDevice = { ...localDevice, month: prevDevice.month };
-      }
-      if (needsAllTime && prevDevice?.allTime) {
-        localDevice = { ...localDevice, allTime: prevDevice.allTime };
-      }
-      // Carry forward clientStatus when allTime is not yet available.
-      if (needsClientStatus && prevDevice?.clientStatus) {
-        localDevice = { ...localDevice, clientStatus: prevDevice.clientStatus };
-      }
-      // Carry forward wslStatus — previews never include it, so without this the
-      // WSL detection panel would blank during a warm scan if Settings is open.
-      if (needsWslStatus && prevDevice?.wslStatus) {
-        localDevice = { ...localDevice, wslStatus: prevDevice.wslStatus };
-      }
-      if (!visible.limits && prevDevice?.limits) {
-        localDevice = { ...localDevice, limits: prevDevice.limits };
-      }
-      lastCollectedDevice = localDevice;
-      localStats = withHistoryPreview(aggregateDevices([localDevice], 0), [localDevice]);
-      updateDiscordRpc(localStats, settings.currency);
-      sendPush({ event: 'stats', data: { type: 'stats', reason: 'progress', stats: localStats, at: new Date().toISOString() } });
-      sendStatus(true, { reason: 'progress' });
-    },
-    onError: (error, reason) => {
-      sendStatus(false, { reason: `${reason}:${error.message}` });
-    },
-    logger: (msg) => console.log(`[collector] ${msg}`)
+    onError: (error, reason) => sendStatus(false, { reason: `${reason}:${error.message}` })
+  }, {
+    limitsDeps: { resolveConfigSnapshot: () => electronLimitsConfig() }
   });
+  drainPendingRuntimeActions(deviceRuntimeHandle);
 }
 
 function scheduleStreamRetry(delayMs = 3000) {
@@ -2279,13 +2734,13 @@ async function startStatsStream(options = {}) {
 function showPopover() {
   if (!mainWindow || mainWindow.isDestroyed() || !tray) return;
   applyMacActivationPolicy();
+  applyMacSpaceBehavior(true);
   applyWindowSettings();
   const current = mainWindow.getBounds();
   const target = popoverBounds(tray, current.width, current.height);
   mainWindow.setBounds(target);
   suppressNextBlurHide = true;
   mainWindow.show();
-  mainWindow.focus();
   // The focus event itself may not fire a blur; the suppress flag covers the
   // case where macOS fires blur immediately after show because the click that
   // opened us still has the menu bar as the focused element.
@@ -2311,10 +2766,10 @@ function focusExistingWindow() {
   }
   if (mainWindow.isMinimized()) mainWindow.restore();
   if (settings?.trayMode) showPopover();
-  else if (floatingBubbleState.collapsed) expandFloatingBubble();
   else {
-    mainWindow.show();
-    mainWindow.focus();
+    applyMacSpaceBehavior(false);
+    if (floatingBubbleState.collapsed) expandFloatingBubble();
+    else mainWindow.show();
   }
 }
 
@@ -2331,6 +2786,15 @@ function redactOpencodeProfilesForRenderer(profiles) {
   const out = {};
   for (const [name, profile] of Object.entries(profiles)) {
     out[name] = { ...profile, cookie: profile && profile.cookie ? 'set' : '' };
+  }
+  return out;
+}
+
+function redactOpenRouterProfilesForRenderer(profiles) {
+  if (!profiles || typeof profiles !== 'object') return profiles;
+  const out = {};
+  for (const [name, profile] of Object.entries(profiles)) {
+    out[name] = { enabled: profile?.enabled !== false, apiKey: profile?.apiKey ? 'set' : '' };
   }
   return out;
 }
@@ -2381,20 +2845,25 @@ function settingsForRenderer() {
     : kimiToken(process.env)
       ? 'env'
       : '';
+  const kimiWebAccessTokenSource = settings?.kimiWebAccessToken
+    ? 'settings'
+    : kimiWebToken(process.env)
+      ? 'env'
+      : '';
+  // Default-deny every credential field added to the canonical store. The two
+  // hub secrets remain explicit exceptions because the existing sync UI must
+  // prefill/copy them; provider credentials only cross as blank/configured state.
+  const redactedCredentials = credentialSettingsForRenderer(settings, {
+    expose: ['hubHostSecret', 'secret']
+  });
   return {
     ...settings,
-    deepseekApiKey: '',
-    minimaxApiKey: '',
-    copilotApiToken: '',
-    zaiApiKey: '',
+    ...redactedCredentials,
     zaiApiRegion: normalizeZaiApiRegion(settings?.zaiApiRegion || 'global'),
-    zaiTeamApiKey: '',
     zaiTeamOrganizationId: settings?.zaiTeamOrganizationId ? 'set' : '',
     zaiTeamProjectId: settings?.zaiTeamProjectId ? 'set' : '',
     volcengineAccessKeyId: settings?.volcengineAccessKeyId ? 'set' : '',
-    volcengineSecretAccessKey: '',
     qoderCookie: settings?.qoderCookie ? 'set' : '',
-    kimiApiKey: '',
     ollamaCookie: settings?.ollamaCookie ? 'set' : '',
     // Never ship OpenCode session cookies to the renderer; the UI only needs to
     // know whether a cookie is configured, not its value.
@@ -2402,6 +2871,10 @@ function settingsForRenderer() {
     ...(settings?.opencodeProfiles
       ? { opencodeProfiles: redactOpencodeProfilesForRenderer(settings.opencodeProfiles) }
       : {}),
+    ...(settings?.openrouterProfiles
+      ? { openrouterProfiles: redactOpenRouterProfilesForRenderer(settings.openrouterProfiles) }
+      : {}),
+    openrouterEnvConfigured: Boolean(openrouterLimits.openrouterToken(process.env)),
     codexManagedAccounts: codexAccountsForRenderer(),
     mimoManagedAccounts: mimoAccountsForRenderer(),
     deepseekApiKeyConfigured: Boolean(currentDeepSeekApiKey()),
@@ -2422,6 +2895,10 @@ function settingsForRenderer() {
     ollamaCookieSource,
     kimiApiKeyConfigured: Boolean(currentKimiApiKey()),
     kimiApiKeySource,
+    kimiWebAccessTokenConfigured: Boolean(currentKimiWebAccessToken()),
+    kimiWebAccessTokenSource,
+    kimiCredentialConfigured: Boolean(currentKimiWebAccessToken() || currentKimiApiKey()),
+    kimiCredentialSource: kimiWebAccessTokenSource || kimiApiKeySource,
     currencyRatesEffective: effectiveRates || resolveEffectiveRates(rateCache?.rates || {}, settings?.currencyRates || {}),
     currencyRateInfo: rateCache ? { source: rateCache.source, date: rateCache.date, fetchedAt: rateCache.fetchedAt } : null,
     windowToggleShortcutStatus: currentWindowToggleShortcutStatus()
@@ -2704,11 +3181,7 @@ function enterTrayMode() {
   applyMacActivationPolicy();
   if (mainWindow && !mainWindow.isDestroyed()) {
     if (typeof mainWindow.setSkipTaskbar === 'function') mainWindow.setSkipTaskbar(true);
-    // Without this, .show() yanks the user back to the Space the window was last
-    // shown on instead of popping over the current Space / fullscreen app.
-    if (typeof mainWindow.setVisibleOnAllWorkspaces === 'function') {
-      mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-    }
+    applyMacSpaceBehavior(true);
     mainWindow.hide();
   }
 }
@@ -2717,9 +3190,7 @@ function exitTrayMode() {
   applyMacActivationPolicy({ mainWindowVisible: true });
   if (mainWindow && !mainWindow.isDestroyed()) {
     if (typeof mainWindow.setSkipTaskbar === 'function') mainWindow.setSkipTaskbar(false);
-    if (typeof mainWindow.setVisibleOnAllWorkspaces === 'function') {
-      mainWindow.setVisibleOnAllWorkspaces(false);
-    }
+    applyMacSpaceBehavior(false);
     const restore = restoredBounds() || DEFAULT_WINDOW;
     mainWindow.setBounds({
       width: restore.width,
@@ -2728,7 +3199,6 @@ function exitTrayMode() {
     });
     applyWindowSettings();
     mainWindow.show();
-    mainWindow.focus();
   }
   if (!shouldCreateTray(settings)) destroyTray();
   else ensureTray();
@@ -2774,6 +3244,19 @@ function startMode() {
   }).catch((err) => {
     console.log(`[mode] reconciliation failed: ${err?.message || err}`);
   });
+}
+
+function restartDeviceRuntimeForMode() {
+  if (mode === 'local') {
+    startLocalCollector();
+    return;
+  }
+  if (settings.hubMode === 'host' && embeddedHub) {
+    startHostCollector();
+    return;
+  }
+  if (effectiveHubConfig().url) startSyncCollector();
+  else startLocalCollector();
 }
 
 function stopAll() {
@@ -2852,20 +3335,19 @@ async function fetchStats(options = {}) {
   // sign-ins and limits actions all refresh with { force: true }, so folding the
   // history rescan into it would spawn the expensive `tokscale graph` on each one.
   // Only the manual refresh button opts in.
-  const tickOptions = force ? { forceLimits: true, forceHistory: Boolean(options?.forceHistory) } : {};
+  const canRefreshRuntime = mode === 'local' || !isExternalAgentActive();
+  if (force && deviceRuntimeHandle && canRefreshRuntime) {
+    await runManualDeviceRefresh(deviceRuntimeHandle, {
+      forceHistory: Boolean(options?.forceHistory),
+      onLimitsError: (error) => console.log(`[limits-runtime] manual refresh failed: ${error.message}`)
+    });
+  }
   if (mode === 'local') {
-    if (force && localCollectorHandle) await localCollectorHandle.tick('manual', tickOptions);
     if (localStats) return localStats;
     return withHistoryPreview(aggregateDevices(localDevice ? [localDevice] : [], 0), localDevice ? [localDevice] : []);
   }
   if (settings.hubMode === 'host' && embeddedHub) {
-    if (force && syncCollectorHandle && !isExternalAgentActive()) {
-      await syncCollectorHandle.tick('manual', tickOptions);
-    }
     return injectLocalDeviceStatus(await embeddedHub.hub.getStats());
-  }
-  if (force && syncCollectorHandle && !isExternalAgentActive()) {
-    await syncCollectorHandle.tick('manual', tickOptions);
   }
   const { url: hubUrl, secret } = effectiveHubConfig();
   if (!hubUrl) return withHistoryPreview(aggregateDevices([], 0), []);
@@ -2893,10 +3375,8 @@ function regenerateTokscalePricing() {
 
 async function refreshAfterPricingChange() {
   try {
-    if (mode === 'local') {
-      if (localCollectorHandle) await localCollectorHandle.tick('manual', {});
-    } else if (syncCollectorHandle && !isExternalAgentActive()) {
-      await syncCollectorHandle.tick('manual', {});
+    if (deviceRuntimeHandle && (mode === 'local' || !isExternalAgentActive())) {
+      await deviceRuntimeHandle.tick('manual', {});
     }
   } catch (error) {
     console.warn(`[pricing] refresh after pricing change failed: ${error.message}`);
@@ -3078,7 +3558,7 @@ function sendAppUpdatePush() {
   mainWindow.webContents.send('appUpdate:push', deriveAppUpdateState());
 }
 
-async function runAppUpdateCheck({ force = false } = {}) {
+async function runAppUpdateCheck({ force = false, bypassCooldown = false } = {}) {
   if (appUpdateCheckPromise) {
     if (force) sendAppUpdatePush();
     const activeResult = await appUpdateCheckPromise;
@@ -3091,17 +3571,17 @@ async function runAppUpdateCheck({ force = false } = {}) {
       }
       sendAppUpdatePush();
     }
-    return deriveAppUpdateState();
+    return maybeDownloadAutomaticAppUpdate(deriveAppUpdateState());
   }
   const block = settings?.appUpdate || {};
-  if (shouldSkipAppUpdateCheck({
+  if (!bypassCooldown && shouldSkipAppUpdateCheck({
     force,
     lastCheckedAt: block.lastCheckedAt,
     latest: block.lastKnownLatest,
     dismissedVersion: block.dismissedVersion,
     currentVersion: app.getVersion()
   })) {
-    return deriveAppUpdateState();
+    return maybeDownloadAutomaticAppUpdate(deriveAppUpdateState());
   }
   const checkTask = (async () => {
     appUpdateCheckInFlight = true;
@@ -3135,7 +3615,15 @@ async function runAppUpdateCheck({ force = false } = {}) {
   } finally {
     if (appUpdateCheckPromise === checkTask) appUpdateCheckPromise = null;
   }
-  return deriveAppUpdateState();
+  return maybeDownloadAutomaticAppUpdate(deriveAppUpdateState());
+}
+
+async function maybeDownloadAutomaticAppUpdate(updateState) {
+  if (!shouldDownloadAutomaticAppUpdate({
+    automaticAppUpdates: settings?.automaticAppUpdates,
+    updateState
+  })) return updateState;
+  return downloadAndPrepareAppUpdate();
 }
 
 function maybeRunBackgroundUpdateCheck() {
@@ -3202,7 +3690,9 @@ function installDownloadedAppUpdate() {
     latest
   })) return deriveAppUpdateState();
   quitRequested = true;
-  autoUpdater.quitAndInstall(false, true);
+  // isSilent: skip the NSIS installer UI on Windows so the update feels seamless
+  // (per-user install needs no elevation); isForceRunAfter relaunches the app.
+  autoUpdater.quitAndInstall(true, true);
   return deriveAppUpdateState();
 }
 
@@ -3219,6 +3709,7 @@ function isAllowedExternalUrl(value) {
   if (parsed.hostname === 'github.com' && parsed.pathname.startsWith('/IGNGserver/token-monitor-mysql')) return true;
   if ((parsed.hostname === 'cursor.com' || parsed.hostname === 'www.cursor.com') && parsed.pathname.startsWith('/settings')) return true;
   if (parsed.hostname === 'opencode.ai' || parsed.hostname === 'www.opencode.ai') return true;
+  if (parsed.hostname === 'openrouter.ai' && parsed.pathname.startsWith('/settings/keys')) return true;
   if (parsed.hostname === 'platform.deepseek.com' && parsed.pathname.startsWith('/api_keys')) return true;
   if (parsed.hostname === 'platform.minimaxi.com') return true;
   if (parsed.hostname === 'platform.minimax.io') return true;
@@ -3290,6 +3781,9 @@ function createWindow(boundsOverride, options = {}) {
   ensureSettingsLoaded();
   const collapsedFloatingBubble = options.collapsedFloatingBubble === true;
   const glass = nativeBlurEnabled();
+  const windowsBackdrop = normalizeWindowsBackdropMode(settings?.windowsBackdrop);
+  const windowsAccent = process.platform === 'win32' && glass && isWindowsAccentBackdrop(windowsBackdrop);
+  const windowsMaterial = windowsElectronBackgroundMaterial(windowsBackdrop);
   const bounds = boundsOverride || restoredBounds() || DEFAULT_WINDOW;
   const collapsedSizeLimits = {
     minWidth: bounds.width,
@@ -3312,7 +3806,7 @@ function createWindow(boundsOverride, options = {}) {
     ...(collapsedFloatingBubble ? { fullscreenable: false, maximizable: false, minimizable: false } : {}),
     ...floatingBubbleWindowChrome(process.platform, collapsedFloatingBubble),
     ...(process.platform === 'darwin' && glass ? { vibrancy: 'hud', visualEffectState: 'active' } : {}),
-    ...(process.platform === 'win32' && glass ? { backgroundMaterial: 'acrylic' } : {}),
+    ...(process.platform === 'win32' && glass && !windowsAccent ? { backgroundMaterial: windowsMaterial } : {}),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -3321,7 +3815,17 @@ function createWindow(boundsOverride, options = {}) {
   });
   mainWindow = win;
   mainWindowChrome = { collapsedFloatingBubble };
+  applyMacSpaceBehavior();
   applyWindowsChrome(win, { round: true });
+  let windowsAccentFallback = false;
+  if (windowsAccent && !applyWindowsAccentBlur(win)) {
+    // The Accent API is undocumented and can disappear or reject a window on
+    // a future Windows build. This window is still non-transparent, so the
+    // documented Electron Acrylic material is a safe in-place fallback.
+    windowsAccentFallback = true;
+    console.warn('[window] AccentBlurBehind unavailable; falling back to Acrylic');
+    try { win.setBackgroundMaterial(windowsMaterial || 'acrylic'); } catch (_) {}
+  }
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (isAllowedExternalUrl(url)) shell.openExternal(url);
     return { action: 'deny' };
@@ -3367,7 +3871,8 @@ function createWindow(boundsOverride, options = {}) {
         suppressInitialNumberAnimation: options.suppressInitialNumberAnimation === true,
         viewState: rendererViewState
       }),
-      ...(settings?.systemGlass === false ? { systemGlassDisabled: '1' } : {})
+      ...(settings?.systemGlass === false ? { systemGlassDisabled: '1' } : {}),
+      ...(windowsAccentFallback ? { windowsBackdropFallback: '1' } : {})
     }
   });
 }
@@ -3434,7 +3939,7 @@ function createDashboardWindow() {
     icon: APP_ICON_PATH,
     skipTaskbar: false,
     ...(process.platform === 'darwin' && glass ? { vibrancy: 'hud', visualEffectState: 'active' } : {}),
-    ...(process.platform === 'win32' && glass ? { backgroundMaterial: 'acrylic' } : {}),
+    ...(process.platform === 'win32' && glass ? { backgroundMaterial: windowsElectronBackgroundMaterial(settings?.windowsBackdrop) } : {}),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -3568,6 +4073,7 @@ app.whenReady().then(() => {
   if (settings.trayMode) enterTrayMode();
   regenerateTokscalePricing();
   startMode();
+  void hydrateCodexManagedWorkspaceLabels();
   if (settings.discordRpcEnabled) startDiscordRpc();
   rateCache = readRateCache();
   applyEffectiveRates();                 // use cache/defaults immediately, avoid first-paint gap
@@ -3597,53 +4103,27 @@ app.whenReady().then(() => {
     }
   });
   ipcMain.handle('settings:update', (_event, patch) => {
+    const previousSettingsState = settings;
+    const previousRuntimeSettings = JSON.parse(JSON.stringify(settings));
     const previousNativeMaterial = nativeBlurEnabled();
-    const previousHubMode = settings.hubMode;
-    const previousHubHostPort = settings.hubHostPort;
-    const previousHubHostSecret = settings.hubHostSecret;
-    const previousHubUrl = settings.hubUrl;
-    const previousSecret = settings.secret;
-    const previousDeviceId = settings.deviceId;
+    const previousWindowsBackdrop = normalizeWindowsBackdropMode(settings?.windowsBackdrop);
     const previousClients = settings.clients;
-    const previousLimitsEnabled = settings.limitsEnabled;
-    const previousLimitProviders = settings.limitProviders;
-    const previousLimitsRefreshMs = settings.limitsRefreshMs;
-    const previousHistoryEnabled = settings.historyEnabled;
-    const previousProjectsEnabled = settings.projectsEnabled;
-    const previousSessionUsageArchiveEnabled = settings.sessionUsageArchiveEnabled;
-    const previousHistoryIntervalMs = settings.historyIntervalMs;
-    const previousWslScanEnabled = settings.wslScanEnabled;
-    const previousCollectionMode = settings.collectionMode;
-    const previousCollectionIntervalMs = settings.collectionIntervalMs;
-    const previousSyncUploadIntervalMs = settings.syncUploadIntervalMs;
-    const previousDeepSeekApiKey = settings.deepseekApiKey;
-    const previousMinimaxApiKey = settings.minimaxApiKey;
-    const previousCopilotApiToken = settings.copilotApiToken;
-    const previousCopilotEnterpriseHost = settings.copilotEnterpriseHost;
-    const previousZaiApiKey = settings.zaiApiKey;
-    const previousZaiApiRegion = settings.zaiApiRegion;
-    const previousZaiTeamApiKey = settings.zaiTeamApiKey;
-    const previousZaiTeamOrganizationId = settings.zaiTeamOrganizationId;
-    const previousZaiTeamProjectId = settings.zaiTeamProjectId;
-    const previousVolcengineAccessKeyId = settings.volcengineAccessKeyId;
-    const previousVolcengineSecretAccessKey = settings.volcengineSecretAccessKey;
-    const previousVolcengineRegion = settings.volcengineRegion;
-    const previousQoderCookie = settings.qoderCookie;
-    const previousQoderSite = settings.qoderSite;
-    const previousKimiApiKey = settings.kimiApiKey;
-    const previousOllamaCookie = settings.ollamaCookie;
     const previousDiscordRpcEnabled = settings.discordRpcEnabled;
     const previousShowTrayIcon = settings.showTrayIcon;
     const previousTrayMode = settings.trayMode;
     const previousTrayContent = settings.trayContent;
+    const previousTrayCustomLayout = JSON.stringify(settings.trayCustomLayout || {});
+    const previousFloatingBubbleCustomLayout = JSON.stringify(settings.floatingBubbleCustomLayout || {});
     const previousShowTrayProviderBadge = settings.showTrayProviderBadge;
     const previousCurrency = settings.currency;
     const previousStartAtLogin = settings.startAtLogin;
+    const previousAutomaticAppUpdates = settings.automaticAppUpdates;
     const previousCustomModelPricing = JSON.stringify(settings.customModelPricing || []);
     const normalizedCurrency = patch.currency !== undefined ? normalizeCurrency(patch.currency, settings.currency) : normalizeCurrency(settings.currency);
     const normalizedPatch = { ...patch, currency: normalizedCurrency };
     delete normalizedPatch.codexManagedAccounts;
     delete normalizedPatch.mimoManagedAccounts;
+    delete normalizedPatch.openrouterProfiles;
     delete normalizedPatch.customModelPricing;
     if (patch.clients !== undefined) normalizedPatch.clients = clientsCsvForSetting(patch.clients, '');
     if (patch.deepseekApiKey !== undefined) normalizedPatch.deepseekApiKey = normalizeDeepSeekApiKey(patch.deepseekApiKey);
@@ -3661,10 +4141,13 @@ app.whenReady().then(() => {
     if (patch.qoderCookie !== undefined) normalizedPatch.qoderCookie = normalizeQoderCookie(patch.qoderCookie);
     if (patch.qoderSite !== undefined) normalizedPatch.qoderSite = normalizeQoderSite(patch.qoderSite);
     if (patch.kimiApiKey !== undefined) normalizedPatch.kimiApiKey = normalizeKimiApiKey(patch.kimiApiKey);
+    if (patch.kimiWebAccessToken !== undefined) normalizedPatch.kimiWebAccessToken = normalizeKimiWebAccessToken(patch.kimiWebAccessToken);
     if (patch.ollamaCookie !== undefined) normalizedPatch.ollamaCookie = normalizeOllamaCookie(patch.ollamaCookie);
     if (patch.collectionMode !== undefined) normalizedPatch.collectionMode = normalizeCollectionMode(patch.collectionMode, settings.collectionMode);
     if (patch.collectionIntervalMs !== undefined) normalizedPatch.collectionIntervalMs = normalizeCollectionIntervalMs(patch.collectionIntervalMs, settings.collectionIntervalMs);
     if (patch.syncUploadIntervalMs !== undefined) normalizedPatch.syncUploadIntervalMs = normalizeSyncUploadIntervalMs(patch.syncUploadIntervalMs, settings.syncUploadIntervalMs);
+    if (patch.heatmapMetric !== undefined) normalizedPatch.heatmapMetric = normalizeHeatmapMetric(patch.heatmapMetric, settings.heatmapMetric);
+    if (patch.homeActiveDaysWindow !== undefined) normalizedPatch.homeActiveDaysWindow = normalizeHomeActiveDaysWindow(patch.homeActiveDaysWindow, settings.homeActiveDaysWindow);
     settings = normalizeWindowBehaviorSettings({
       ...settings,
       ...normalizedPatch,
@@ -3677,6 +4160,7 @@ app.whenReady().then(() => {
       glassOpacity: Math.max(0, Math.min(100, Number(patch.glassOpacity ?? settings.glassOpacity ?? 68))),
       glassBlur: Math.max(0, Math.min(100, Number(patch.glassBlur ?? settings.glassBlur ?? 32))),
       systemGlass: patch.systemGlass ?? settings.systemGlass ?? true,
+      windowsBackdrop: normalizeWindowsBackdropMode(patch.windowsBackdrop ?? settings.windowsBackdrop),
       reduceMotion: motionPreferenceApi.normalize(patch.reduceMotion ?? settings.reduceMotion),
       showLiveDot: patch.showLiveDot ?? settings.showLiveDot ?? true,
       showToolIcons: patch.showToolIcons ?? settings.showToolIcons ?? true,
@@ -3695,6 +4179,7 @@ app.whenReady().then(() => {
       homeModuleOrder: patch.homeModuleOrder !== undefined ? normalizeHomeModuleOrder(patch.homeModuleOrder, DEFAULT_HOME_MODULE_LIST).join(',') : normalizeHomeModuleOrder(settings.homeModuleOrder, DEFAULT_HOME_MODULE_LIST).join(','),
       hiddenHomeModules: patch.hiddenHomeModules !== undefined ? normalizeHiddenHomeModules(patch.hiddenHomeModules, DEFAULT_HOME_MODULE_LIST) : normalizeHiddenHomeModules(settings.hiddenHomeModules, DEFAULT_HOME_MODULE_LIST),
       showHomeLimitBars: parseBoolean(patch.showHomeLimitBars ?? settings.showHomeLimitBars, false),
+      showHomeLimitProviderNames: parseBoolean(patch.showHomeLimitProviderNames ?? settings.showHomeLimitProviderNames, false),
       homeLimitProviderOrder: patch.homeLimitProviderOrder !== undefined ? migrateHomeLimitProviderOrder(patch.homeLimitProviderOrder) : (settings.homeLimitProviderOrder || ''),
       hiddenHomeLimitProviders: patch.hiddenHomeLimitProviders !== undefined ? normalizeHiddenLimitProviders(patch.hiddenHomeLimitProviders) : normalizeHiddenLimitProviders(settings.hiddenHomeLimitProviders),
       homeLimitAccountCount: normalizeHomeLimitAccountCount(patch.homeLimitAccountCount ?? settings.homeLimitAccountCount),
@@ -3721,13 +4206,16 @@ app.whenReady().then(() => {
       closeToTray: parseBoolean(patch.closeToTray ?? settings.closeToTray, false),
       startInTray: parseBoolean(patch.startInTray ?? settings.startInTray, false),
       trayContent: normalizeTrayContent(patch.trayContent ?? settings.trayContent),
+      trayCustomLayout: normalizeTrayLayout(patch.trayCustomLayout ?? settings.trayCustomLayout),
       showTrayProviderBadge: parseBoolean(patch.showTrayProviderBadge ?? settings.showTrayProviderBadge, false),
       floatingBubbleContent: normalizeTrayContent(patch.floatingBubbleContent ?? settings.floatingBubbleContent, 'icon'),
+      floatingBubbleCustomLayout: normalizeTrayLayout(patch.floatingBubbleCustomLayout ?? settings.floatingBubbleCustomLayout),
       windowToggleShortcut: normalizeWindowToggleShortcut(patch.windowToggleShortcut ?? settings.windowToggleShortcut),
       currency: normalizedCurrency,
       currencyRates: patch.currencyRates !== undefined ? normalizeCurrencyOverrides(patch.currencyRates) : normalizeCurrencyOverrides(settings.currencyRates),
       language: patch.language !== undefined ? normalizeLanguageSetting(patch.language, settings.language) : normalizeLanguageSetting(settings.language),
       startAtLogin: loginItemEnabledHere() ? parseBoolean(patch.startAtLogin ?? settings.startAtLogin, false) : false,
+      automaticAppUpdates: parseBoolean(patch.automaticAppUpdates ?? settings.automaticAppUpdates, false),
       deepseekApiKey: patch.deepseekApiKey !== undefined ? normalizeDeepSeekApiKey(patch.deepseekApiKey) : (settings.deepseekApiKey || ''),
       minimaxApiKey: patch.minimaxApiKey !== undefined ? normalizeMinimaxApiKey(patch.minimaxApiKey) : (settings.minimaxApiKey || ''),
       copilotApiToken: patch.copilotApiToken !== undefined ? normalizeCopilotApiToken(patch.copilotApiToken) : (settings.copilotApiToken || ''),
@@ -3750,7 +4238,12 @@ app.whenReady().then(() => {
     settings.archivedClientUsage = normalizeArchivedClientUsage(settings.archivedClientUsage);
     if (settings.clients !== previousClients) updateArchivedClientUsage(previousClients, settings.clients);
     delete settings.edgeDrawerEnabled;
-    saveSettings();
+    try {
+      saveSettings({ throwOnError: true });
+    } catch (error) {
+      settings = previousSettingsState;
+      throw error;
+    }
     if (JSON.stringify(settings.customModelPricing || []) !== previousCustomModelPricing) {
       regenerateTokscalePricing();
       refreshAfterPricingChange();
@@ -3758,7 +4251,10 @@ app.whenReady().then(() => {
     configureWindowToggleShortcut();
     if (settings.startAtLogin !== previousStartAtLogin) {
       settings.startAtLogin = applyLoginItem(settings.startAtLogin);
-      saveSettings();
+      saveSettings({ throwOnError: true });
+    }
+    if (settings.automaticAppUpdates && !previousAutomaticAppUpdates) {
+      runAppUpdateCheck({ bypassCooldown: true }).catch(() => {});
     }
     if (patch.zoomFactor !== undefined) applyZoomFactor();
     if (settings.discordRpcEnabled && !previousDiscordRpcEnabled) {
@@ -3770,48 +4266,34 @@ app.whenReady().then(() => {
     applyWindowSettings();
     syncFloatingBubbleAvailability();
     const nextNativeMaterial = nativeBlurEnabled();
-    if (process.platform === 'win32' && previousNativeMaterial !== nextNativeMaterial) {
+    const nextWindowsBackdrop = normalizeWindowsBackdropMode(settings?.windowsBackdrop);
+    const windowsBackdropChanged = previousWindowsBackdrop !== nextWindowsBackdrop
+      && (previousNativeMaterial || nextNativeMaterial);
+    if (process.platform === 'win32' && (previousNativeMaterial !== nextNativeMaterial || windowsBackdropChanged)) {
       rebuildWindow();
     } else {
       applyNativeMaterial();
     }
-    if (
-      settings.hubMode !== previousHubMode ||
-      settings.hubHostPort !== previousHubHostPort ||
-      settings.hubHostSecret !== previousHubHostSecret ||
-      settings.hubUrl !== previousHubUrl ||
-      settings.secret !== previousSecret ||
-      settings.deviceId !== previousDeviceId ||
-      settings.clients !== previousClients ||
-      settings.limitsEnabled !== previousLimitsEnabled ||
-      settings.limitProviders !== previousLimitProviders ||
-      settings.limitsRefreshMs !== previousLimitsRefreshMs ||
-      settings.historyEnabled !== previousHistoryEnabled ||
-      settings.projectsEnabled !== previousProjectsEnabled ||
-      settings.sessionUsageArchiveEnabled !== previousSessionUsageArchiveEnabled ||
-      settings.historyIntervalMs !== previousHistoryIntervalMs ||
-      settings.wslScanEnabled !== previousWslScanEnabled ||
-      settings.collectionMode !== previousCollectionMode ||
-      settings.collectionIntervalMs !== previousCollectionIntervalMs ||
-      (settings.hubMode === 'client' && settings.syncUploadIntervalMs !== previousSyncUploadIntervalMs) ||
-      settings.deepseekApiKey !== previousDeepSeekApiKey ||
-      settings.minimaxApiKey !== previousMinimaxApiKey ||
-      settings.copilotApiToken !== previousCopilotApiToken ||
-      settings.copilotEnterpriseHost !== previousCopilotEnterpriseHost ||
-      settings.zaiApiKey !== previousZaiApiKey ||
-      settings.zaiApiRegion !== previousZaiApiRegion ||
-      settings.zaiTeamApiKey !== previousZaiTeamApiKey ||
-      settings.zaiTeamOrganizationId !== previousZaiTeamOrganizationId ||
-      settings.zaiTeamProjectId !== previousZaiTeamProjectId ||
-      settings.volcengineAccessKeyId !== previousVolcengineAccessKeyId ||
-      settings.volcengineSecretAccessKey !== previousVolcengineSecretAccessKey ||
-      settings.volcengineRegion !== previousVolcengineRegion ||
-      settings.qoderCookie !== previousQoderCookie ||
-      settings.qoderSite !== previousQoderSite ||
-      settings.kimiApiKey !== previousKimiApiKey ||
-      settings.ollamaCookie !== previousOllamaCookie
-    ) {
+    const runtimeChange = classifySettingsChange(previousRuntimeSettings, settings);
+    if (runtimeChange.modeStructural) {
+      for (const scope of runtimeChange.limitScopes) {
+        rememberPendingLimitInvalidation(scope, 'settings-change');
+      }
       startMode();
+    } else if (runtimeChange.usageStructural || runtimeChange.sinkStructural) {
+      for (const scope of runtimeChange.limitScopes) {
+        rememberPendingLimitInvalidation(scope, 'settings-change');
+      }
+      restartDeviceRuntimeForMode();
+    } else {
+      if (runtimeChange.limitsReconfigure && deviceRuntimeHandle) {
+        deviceRuntimeHandle.reconfigureLimits(electronLimitsConfig());
+      }
+      for (const scope of runtimeChange.limitScopes) {
+        void queueLimitInvalidation(scope, 'settings-change').catch((error) => {
+          console.log(`[limits-runtime] settings refresh failed: ${error.message}`);
+        });
+      }
     }
     if (settings.showTrayIcon !== previousShowTrayIcon) {
       if (settings.showTrayIcon) ensureTray();
@@ -3822,6 +4304,8 @@ app.whenReady().then(() => {
       else exitTrayMode();
     } else if (
       settings.trayContent !== previousTrayContent ||
+      JSON.stringify(settings.trayCustomLayout || {}) !== previousTrayCustomLayout ||
+      JSON.stringify(settings.floatingBubbleCustomLayout || {}) !== previousFloatingBubbleCustomLayout ||
       settings.showTrayProviderBadge !== previousShowTrayProviderBadge ||
       settings.currency !== previousCurrency
     ) {
@@ -3833,6 +4317,7 @@ app.whenReady().then(() => {
       if (settings.discordRpcEnabled && latestStats) updateDiscordRpc(latestStats, settings.currency);
       refreshExchangeRates();              // async: fetch if stale, then re-push
     }
+    pushSettingsToRenderer();
     return settingsForRenderer();
   });
   ipcMain.handle('appearance:preview', (_event, patch) => {
@@ -3942,7 +4427,89 @@ app.whenReady().then(() => {
     return true;
   });
   ipcMain.handle('stats:get', (_event, options) => fetchStats(options));
-  ipcMain.handle('stats:getCustomRange', async (_event, range) => {
+  ipcMain.handle('stats:getCustomRange', async (_event, rangeInput) => {
+    const { normalizeCustomRange } = require('../shared/customRange');
+    const range = normalizeCustomRange(rangeInput || {});
+    if (!range.ok) {
+      return { ok: false, error: range.error || 'invalid-range', message: range.error || 'invalid-range' };
+    }
+
+    // Hub modes must use the same /api/usage/range source as mobile so both
+    // surfaces show identical custom-range totals.
+    if (mode !== 'local') {
+      try {
+        let body;
+        if (settings.hubMode === 'host' && embeddedHub?.hub?.getUsageRange) {
+          body = await embeddedHub.hub.getUsageRange({
+            startDate: range.startDate,
+            endDate: range.endDate,
+            startHour: range.startHour,
+            endHour: range.endHour
+          });
+        } else {
+          const { url: hubUrl, secret } = effectiveHubConfig();
+          if (!hubUrl) throw new Error('hub not configured');
+          const params = new URLSearchParams({
+            startDate: range.startDate,
+            endDate: range.endDate,
+            startHour: String(range.startHour),
+            endHour: String(range.endHour)
+          });
+          const url = `${hubUrl.replace(/\/$/, '')}/api/usage/range?${params}`;
+          const response = await fetch(url, { headers: secret ? { authorization: `Bearer ${secret}` } : {} });
+          if (!response.ok) {
+            throw new Error(`Hub ${response.status}: ${(await response.text()).slice(0, 200)}`);
+          }
+          body = await response.json();
+        }
+        const period = {
+          totalTokens: Math.round(Number(body.totalTokens) || 0),
+          costUsd: Number(body.costUsd) || 0,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
+          outputTokens: 0,
+          clients: body.clients || {},
+          clientCosts: body.clientCosts || {},
+          clientCacheReads: {},
+          clientCacheWrites: {},
+          clientOutputs: {},
+          models: body.models || {},
+          modelCosts: body.modelCosts || {},
+          modelCacheReads: {},
+          modelCacheWrites: {},
+          modelOutputs: {},
+          clientModels: body.clientModels || {},
+          clientModelCosts: body.clientModelCosts || {},
+          projects: Object.create(null),
+          sessions: {}
+        };
+        return {
+          ok: true,
+          range: {
+            startDate: range.startDate,
+            endDate: range.endDate,
+            startHour: range.startHour,
+            endHour: range.endHour,
+            startMs: range.startMs,
+            endMs: range.endMs,
+            since: range.since,
+            until: range.until,
+            isSameDay: range.isSameDay,
+            coversFullDays: range.coversFullDays
+          },
+          period,
+          source: body.source || 'history_daily',
+          updatedAt: new Date().toISOString()
+        };
+      } catch (error) {
+        return {
+          ok: false,
+          error: error?.code || 'hub-range-failed',
+          message: error?.message || String(error)
+        };
+      }
+    }
+
     const clients = clientsCsvForSetting(settings.clients, DEFAULT_CLIENTS);
     const commandTimeoutMs = Number(process.env.TOKEN_MONITOR_COMMAND_TIMEOUT_MS) || 120000;
     try {
@@ -3994,7 +4561,7 @@ app.whenReady().then(() => {
   ipcMain.handle('hub:getInfo', () => getHubInfo());
   ipcMain.handle('hub:regenerateSecret', () => {
     settings.hubHostSecret = generateHubSecret();
-    saveSettings();
+    saveSettings({ throwOnError: true });
     if (settings.hubMode === 'host') startMode();
     return getHubInfo();
   });
@@ -4049,6 +4616,8 @@ app.whenReady().then(() => {
       if (!probeResult.ok) return { ok: false, error: probeResult.error?.message || 'Cursor rejected the token' };
       await cursorAuth.runCursorLogin(token);
       cursorStatusCache = { value: null, at: 0 };
+      void queueLimitInvalidation({ provider: 'cursor' }, 'login', { clear: true });
+      void refreshUsageClient('cursor', { forceSync: true });
       return { ok: true, email: probeResult.user.email };
     } catch (err) {
       return { ok: false, error: err.message };
@@ -4066,9 +4635,13 @@ app.whenReady().then(() => {
     if (!cookie) {
       settings.opencodeProfiles = {};
       settings.opencodeCookie = '';
-      saveSettings();
+      try {
+        saveSettings({ throwOnError: true });
+      } catch (error) {
+        return { ok: false, error: error?.message || 'Could not persist OpenCode credentials' };
+      }
       opencodeStatusCache = { value: null, at: 0 };
-      startMode();
+      void queueLimitInvalidation({ provider: 'opencode' }, 'logout', { clear: true });
       return { ok: true, cleared: true };
     }
     try {
@@ -4083,9 +4656,9 @@ app.whenReady().then(() => {
       profiles.default = { cookie, enabled: true };
       settings.opencodeProfiles = profiles;
       settings.opencodeCookie = cookie;
-      saveSettings();
+      saveSettings({ throwOnError: true });
       opencodeStatusCache = { value: null, at: 0 };
-      startMode();
+      void queueLimitInvalidation({ provider: 'opencode' }, 'credential-save', { clear: true });
       return { ok: true };
     } catch (err) {
       return { ok: false, error: err.message };
@@ -4095,6 +4668,8 @@ app.whenReady().then(() => {
     try {
       await cursorAuth.runCursorLogout();
       cursorStatusCache = { value: null, at: 0 };
+      void queueLimitInvalidation({ provider: 'cursor' }, 'logout', { clear: true });
+      void refreshUsageClient('cursor', { forceSync: true });
       return { ok: true };
     } catch (err) {
       return { ok: false, error: err.message };
@@ -4104,9 +4679,9 @@ app.whenReady().then(() => {
     try {
       settings.opencodeProfiles = {};
       settings.opencodeCookie = '';
-      saveSettings();
+      saveSettings({ throwOnError: true });
       opencodeStatusCache = { value: null, at: 0 };
-      startMode();
+      void queueLimitInvalidation({ provider: 'opencode' }, 'logout', { clear: true });
       return { ok: true };
     } catch (err) {
       return { ok: false, error: err.message };
@@ -4200,9 +4775,9 @@ app.whenReady().then(() => {
       const profiles = settings.opencodeProfiles || {};
       profiles[name] = { cookie, enabled: true };
       settings.opencodeProfiles = profiles;
-      saveSettings();
+      saveSettings({ throwOnError: true });
       opencodeStatusCache = { value: null, at: 0 };
-      startMode();
+      void queueLimitInvalidation({ provider: 'opencode', accountName: name }, 'profile-save');
       return { ok: true };
     } catch (err) {
       return { ok: false, error: err.message };
@@ -4216,9 +4791,16 @@ app.whenReady().then(() => {
       settings.opencodeCookie = '';
     }
     settings.opencodeProfiles = profiles;
-    saveSettings();
+    try {
+      saveSettings({ throwOnError: true });
+    } catch (error) {
+      return { ok: false, error: error?.message || 'Could not persist OpenCode profile deletion' };
+    }
     opencodeStatusCache = { value: null, at: 0 };
-    startMode();
+    void queueLimitInvalidation({ provider: 'opencode', accountName: name }, 'profile-delete', {
+      clear: true,
+      refresh: false
+    });
     return { ok: true };
   });
   ipcMain.handle('opencode:renameProfile', async (_event, oldName, newName) => {
@@ -4229,9 +4811,17 @@ app.whenReady().then(() => {
     profiles[newName] = profiles[oldName];
     delete profiles[oldName];
     settings.opencodeProfiles = profiles;
-    saveSettings();
+    try {
+      saveSettings({ throwOnError: true });
+    } catch (error) {
+      return { ok: false, error: error?.message || 'Could not persist OpenCode profile rename' };
+    }
     opencodeStatusCache = { value: null, at: 0 };
-    startMode();
+    void queueLimitInvalidation({ provider: 'opencode', accountName: oldName }, 'profile-rename', {
+      clear: true,
+      refresh: false
+    });
+    void queueLimitInvalidation({ provider: 'opencode', accountName: newName }, 'profile-rename');
     return { ok: true };
   });
   ipcMain.handle('opencode:setProfileEnabled', async (_event, name, enabled) => {
@@ -4239,9 +4829,102 @@ app.whenReady().then(() => {
     if (!profiles[name]) return { ok: false, error: 'Profile not found' };
     profiles[name].enabled = Boolean(enabled);
     settings.opencodeProfiles = profiles;
-    saveSettings();
+    try {
+      saveSettings({ throwOnError: true });
+    } catch (error) {
+      return { ok: false, error: error?.message || 'Could not persist OpenCode profile state' };
+    }
     opencodeStatusCache = { value: null, at: 0 };
-    startMode();
+    void queueLimitInvalidation({ provider: 'opencode', accountName: name }, 'profile-state', {
+      clear: !enabled,
+      refresh: Boolean(enabled)
+    });
+    return { ok: true };
+  });
+  ipcMain.handle('openrouter:getProfiles', async () => {
+    return {
+      profiles: redactOpenRouterProfilesForRenderer(settings.openrouterProfiles || {}),
+      hasEnvVar: Boolean(openrouterLimits.openrouterToken(process.env))
+    };
+  });
+  ipcMain.handle('openrouter:saveProfile', async (_event, rawName, rawApiKey) => {
+    const name = openrouterLimits.openrouterProfileName(rawName);
+    const apiKey = openrouterLimits.openrouterToken({}, rawApiKey);
+    if (!name) return { ok: false, errorCode: 'invalidName' };
+    if (!apiKey) return { ok: false, errorCode: 'missingApiKey' };
+    try {
+      const provider = await openrouterLimits.fetchOpenRouterAccount(name, apiKey, {
+        env: process.env,
+        signal: AbortSignal.timeout(15_000)
+      });
+      if (provider?.status !== 'ok') {
+        return { ok: false, error: provider?.status === 'unauthorized' ? 'OpenRouter rejected the API key' : 'Could not validate the OpenRouter API key' };
+      }
+      settings.openrouterProfiles = {
+        ...(settings.openrouterProfiles || {}),
+        [name]: { apiKey, enabled: true }
+      };
+      saveSettings({ throwOnError: true });
+      void queueLimitInvalidation({ provider: 'openrouter', accountName: name }, 'profile-save');
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, error: error?.message || 'Could not validate the OpenRouter API key' };
+    }
+  });
+  ipcMain.handle('openrouter:deleteProfile', async (_event, rawName) => {
+    const name = String(rawName || '').trim();
+    const profiles = { ...(settings.openrouterProfiles || {}) };
+    if (!profiles[name]) return { ok: false, error: 'Profile not found' };
+    delete profiles[name];
+    settings.openrouterProfiles = profiles;
+    try {
+      saveSettings({ throwOnError: true });
+    } catch (error) {
+      return { ok: false, error: error?.message || 'Could not persist OpenRouter profile deletion' };
+    }
+    void queueLimitInvalidation({ provider: 'openrouter', accountName: name }, 'profile-delete', {
+      clear: true,
+      refresh: false
+    });
+    return { ok: true };
+  });
+  ipcMain.handle('openrouter:renameProfile', async (_event, rawOldName, rawNewName) => {
+    const oldName = String(rawOldName || '').trim();
+    const newName = openrouterLimits.openrouterProfileName(rawNewName);
+    const profiles = { ...(settings.openrouterProfiles || {}) };
+    if (!newName || oldName === newName) return { ok: false, errorCode: 'invalidName' };
+    if (!profiles[oldName]) return { ok: false, error: 'Profile not found' };
+    if (profiles[newName]) return { ok: false, error: 'Profile name already exists' };
+    profiles[newName] = profiles[oldName];
+    delete profiles[oldName];
+    settings.openrouterProfiles = profiles;
+    try {
+      saveSettings({ throwOnError: true });
+    } catch (error) {
+      return { ok: false, error: error?.message || 'Could not persist OpenRouter profile rename' };
+    }
+    void queueLimitInvalidation({ provider: 'openrouter', accountName: oldName }, 'profile-rename', {
+      clear: true,
+      refresh: false
+    });
+    void queueLimitInvalidation({ provider: 'openrouter', accountName: newName }, 'profile-rename');
+    return { ok: true };
+  });
+  ipcMain.handle('openrouter:setProfileEnabled', async (_event, rawName, enabled) => {
+    const name = String(rawName || '').trim();
+    const profiles = { ...(settings.openrouterProfiles || {}) };
+    if (!profiles[name]) return { ok: false, error: 'Profile not found' };
+    profiles[name] = { ...profiles[name], enabled: Boolean(enabled) };
+    settings.openrouterProfiles = profiles;
+    try {
+      saveSettings({ throwOnError: true });
+    } catch (error) {
+      return { ok: false, error: error?.message || 'Could not persist OpenRouter profile state' };
+    }
+    void queueLimitInvalidation({ provider: 'openrouter', accountName: name }, 'profile-state', {
+      clear: !enabled,
+      refresh: Boolean(enabled)
+    });
     return { ok: true };
   });
   ipcMain.handle('codex:accounts', () => codexAccountsForRenderer());
@@ -4273,6 +4956,28 @@ app.whenReady().then(() => {
         });
       }, {
         signal: controller.signal,
+        selectWorkspace: ({ email, currentWorkspaceId, workspaces }) => new Promise((resolve) => {
+          const finish = (workspaceId) => {
+            if (codexWorkspaceSelection?.controller === controller) codexWorkspaceSelection = null;
+            controller.signal.removeEventListener('abort', onAbort);
+            resolve(workspaceId);
+          };
+          const onAbort = () => finish('');
+          codexWorkspaceSelection = {
+            controller,
+            flowId,
+            webContentsId: event.sender.id,
+            workspaceIds: new Set(workspaces.map((workspace) => workspace.id)),
+            finish
+          };
+          controller.signal.addEventListener('abort', onAbort, { once: true });
+          sendStatus({
+            phase: 'workspaceSelection',
+            email,
+            currentWorkspaceId,
+            workspaces: workspaces.map(({ id, label, workspaceKind }) => ({ id, label, workspaceKind }))
+          });
+        }),
         onCommit: () => {
           if (codexLoginController === controller) codexLoginCanCancel = false;
         }
@@ -4283,11 +4988,24 @@ app.whenReady().then(() => {
       return { ...result, flowId };
     } finally {
       if (codexLoginController === controller) {
+        if (codexWorkspaceSelection?.controller === controller) codexWorkspaceSelection.finish('');
         codexLoginController = null;
         codexLoginFlowId = '';
         codexLoginCanCancel = false;
       }
     }
+  });
+  ipcMain.handle('codex:selectWorkspace', (event, request = {}) => {
+    const flowId = String(request?.flowId || '').trim();
+    const workspaceId = normalizeWorkspaceId(request?.workspaceId);
+    const pending = codexWorkspaceSelection;
+    if (!pending || pending.webContentsId !== event.sender.id) return { ok: false, stale: true };
+    if (flowId && pending.flowId && flowId !== pending.flowId) return { ok: false, stale: true };
+    if (!workspaceId || !pending.workspaceIds.has(workspaceId)) {
+      return { ok: false, error: 'Unknown Codex workspace.' };
+    }
+    pending.finish(workspaceId);
+    return { ok: true };
   });
   ipcMain.handle('codex:cancelLogin', (_event, request = {}) => {
     const flowId = String(request?.flowId || '').trim();
@@ -4325,9 +5043,9 @@ app.whenReady().then(() => {
         return { ok: false, error: copilotLoginErrorMessage({ status: 'cancelled' }), flowId };
       }
       settings.copilotApiToken = normalizeCopilotApiToken(result.accessToken);
-      saveSettings();
+      saveSettings({ throwOnError: true });
       pushSettingsToRenderer();
-      startMode();
+      void queueLimitInvalidation({ provider: 'copilot' }, 'login', { clear: true });
       return { ok: true, flowId };
     } catch (error) {
       const message = copilotLoginErrorMessage(error);
@@ -4381,3 +5099,4 @@ app.on('before-quit', () => { quitRequested = true; if (rateRefreshTimer) clearI
 for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
   process.once(signal, requestAppQuit);
 }
+

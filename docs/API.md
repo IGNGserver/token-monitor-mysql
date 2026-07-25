@@ -1,6 +1,7 @@
 # API
 
-The hub exposes a small JSON HTTP API.
+The hub exposes a small JSON HTTP API and serves a same-origin web dashboard (PWA) from the hub root (/). Static UI assets do not require the shared secret; every /api/* route still does.
+
 
 For pricing refreshes, the Hub invokes `tokscale pricing <model> --json` first. If tokscale cannot complete its upstream catalog request, the Hub retries against the configured `TOKSCALE_PRICING_CATALOG_URL` (default `https://models.dev/api.json`), which is a public catalog tokscale also uses. The catalog is cached in the Hub process for six hours; the resulting `model_pricing` row remains durable.
 
@@ -48,6 +49,8 @@ Example payload:
   "deviceId": "macbook",
   "hostname": "macbook.local",
   "platform": "darwin-arm64",
+  "osName": "macOS",
+  "osVersion": "26.0",
   "updatedAt": "2026-05-18T00:00:00.000Z",
   "agentVersion": "0.3.0",
   "agentRuntime": "headless-agent",
@@ -185,11 +188,13 @@ The hub normalizes records before storing them. The Node hub accepts JSON ingest
 
 The MySQL Node hub stores each change between a device's cumulative all-time snapshots in an append-only `usage_events` ledger. A row records the time that the difference was recorded (`recorded_at`), not an individual provider API request time. The synchronized protocol intentionally omits unbounded `allTime.sessions`; in that case the hub uses a `snapshot:<client>:<model>` session id to preserve the client/model aggregate without implying an original conversation id. Counter resets never produce negative events: the newly reported cumulative value is recorded as the start of a new counter cycle.
 
-`projects` is a bounded rollup keyed by a canonicalized workspace-folder label. Each entry carries the deterministic display `label`, token/cost totals, and a per-client token breakdown. Agents upload `allTime.projects` because synchronized payloads intentionally omit the unbounded `allTime.sessions`; `today.projects` and `month.projects` are omitted on upload and rebuilt by the hub from their synchronized sessions. If adding the all-time rollup would exceed the safe ingest budget, the agent drops only that rollup, sets `allTimeProjectsOmitted: true`, and keeps core totals and session data uploadable. A normal later upload clears the diagnostic; limits-only updates preserve it. `projectsEnabled: false` tells the hub that project metadata collection is disabled for this device; sync payloads then remove project rollups plus session `projectId` / `projectLabel` fields.
+`projects` is a bounded rollup keyed by a canonicalized workspace-folder label. Each entry carries the deterministic display `label`, token/cost totals, and a per-client token breakdown. Agents upload `allTime.projects` because synchronized payloads intentionally omit the unbounded `allTime.sessions`; `today.projects` and `month.projects` are normally omitted on upload and rebuilt by the hub from their synchronized sessions. If adding the all-time rollup would exceed the safe ingest budget, the agent drops only that rollup, sets `allTimeProjectsOmitted: true`, and keeps core totals and session data uploadable. If monthly or daily session detail would still exceed the budget, the agent keeps the newest rows that fit, sends the complete project rollup for that period, and sets `sessionDetailsOmitted` to the number of omitted rows per affected period. If that project rollup cannot fit even after all session rows are removed, the agent omits it too and sets `periodProjectsOmitted`; token/cost and client/model totals remain complete while the affected project breakdown is marked incomplete. A normal later upload clears these diagnostics; limits-only updates preserve them. `projectsEnabled: false` tells the hub that project metadata collection is disabled for this device; sync payloads then remove project rollups plus session `projectId` / `projectLabel` fields.
 
 Authenticated stats expose `projectsIncomplete: true` when a device omitted its rollup, disabled project tracking while contributing usage, or could not preserve exact all-time attribution after its tracked-client list changed. Affected device entries expose `allTimeProjectsOmitted`, `allTimeProjectsIncomplete`, or `projectsEnabled: false` as the reason. The public Worker stats endpoint removes the entire `projects` map, including both display labels and canonical keys.
 
 `trackedClients` is optional but recommended for agents and widgets. When it is present, the hub treats omitted clients as intentionally not collected in this payload and preserves their previous usage for that device. This keeps "tracking" as "collect future data" rather than "hide existing history".
+
+Current agents and widgets include `osName` and, when known, `osVersion` so device details can show a user-facing operating-system release. macOS uses the product version from Electron or `sw_vers`; Windows uses the product family and display version from the registry; Linux uses the distribution name and version from `os-release`. Detection failures fall back to an explicitly labelled Windows build or Linux kernel release. The hub continues to accept older payloads without these fields.
 
 `syncUploadIntervalMs` is optional. A remote-hub widget includes `0` for live uploads or the selected fixed interval in milliseconds (`600000`, `1200000`, or `1800000`). The hub uses a positive interval to keep the device and its limits fresh for at least twice the upload interval; omitted or `0` values retain the configured `staleAfterMs` behavior. Local collection and embedded-host ingest remain live.
 
@@ -197,12 +202,12 @@ Authenticated stats expose `projectsIncomplete: true` when a device omitted its 
 
 `limits` is optional. Agents and widgets include it when AI Tool Limits detection is enabled. Raw OAuth credentials, access tokens, refresh tokens, and provider response bodies must never be sent.
 
-`limits.providers[].provider` is one of `claude`, `codex`, `cursor`, `antigravity`, `opencode`, `deepseek`, `minimax`, `mimo`, `grok`, `copilot`, `kiro`, `zai`, `zaiteam`, `volcengine`, `qoder`, `kimi`, or `ollama`.
-`limits.providers[].accountKey` is a stable hashed account identifier (`sha256:…`) used to dedupe the same account across devices. `limits.providers[].accountEmail` and `limits.providers[].accountLabel` (plan, e.g. `Plus`) MAY be sent to the authenticated hub so devices can show which account each limit belongs to — this is why Codex can report multiple accounts. The hub ingest is protected by the shared `secret`; the **public** stats endpoints (`publicLimits`) strip `accountKey`, `accountEmail`, and `accountLabel` so no account identifiers are ever exposed publicly.
-`limits.providers[].source` is one of `oauth`, `cli`, `web`, `rpc`, `local`, or `api`; `local` means the value was read from an on-disk store such as OpenCode Go usage from `opencode.db`, `web` means a browser/session cookie backed web endpoint (Cursor, OpenCode web accounts, Qoder, MiMo, Ollama), and `api` means a provider HTTP API authenticated by an API key or AK/SK credentials (DeepSeek, Minimax, Copilot, GLM/Z.ai, Volcengine, Kimi Code).
+`limits.providers[].provider` is one of `claude`, `codex`, `cursor`, `antigravity`, `opencode`, `openrouter`, `deepseek`, `minimax`, `mimo`, `grok`, `copilot`, `kiro`, `zai`, `zaiteam`, `volcengine`, `qoder`, `kimi`, or `ollama`.
+`limits.providers[].accountKey` is a stable hashed account identifier (`sha256:…`) used to dedupe the same account across devices. `accountEmail` is the account email when available, and `accountName` is a sanitized display/profile name. Codex may additionally send `workspaceKind: "personal"` when the workspace has no provider-supplied name, allowing account-management UI to localize the Personal label without persisting translated text. `accountLabel` is the legacy provider-defined short label retained for mixed-version compatibility: older OpenCode renderers use it as the profile name, while existing providers may use it for the plan. `planLabel` is the explicit plan label (for example `Plus`, `Go`, or `Zen`) when identity and plan must be carried separately; readers fall back to `accountLabel` for payloads produced before `planLabel` existed. These fields MAY be sent to the authenticated hub so devices can identify each account and its plan. The hub ingest is protected by the shared `secret`; the **public** stats endpoints (`publicLimits`) strip `accountKey`, `accountEmail`, `accountName`, `accountLabel`, `planLabel`, and `workspaceKind` so neither account identity nor plan labels are exposed publicly.
+`limits.providers[].source` is one of `oauth`, `cli`, `web`, `rpc`, `local`, or `api`; `local` means the value was read from an on-disk store such as OpenCode Go usage from `opencode.db`, `web` means a browser/session cookie backed web endpoint (Cursor, OpenCode web accounts, Qoder, MiMo, Kimi membership, Ollama), and `api` means a provider HTTP API authenticated by an API key or AK/SK credentials (OpenRouter, DeepSeek, Minimax, Copilot, GLM/Z.ai, Volcengine, Kimi Code).
 `limits.providers[].balanceUsd` is an optional prepaid credit balance in USD (OpenCode Zen); `null` when the provider has no balance concept or none could be read. A genuine `0` (no remaining credit) is distinct from `null`.
-`limits.providers[].balance` is an optional native-currency prepaid balance block. DeepSeek uses `{ amount, currency, todaySpend, monthSpend, monthSinceTracking }`: `amount` is the spendable balance in the account's own currency (e.g. `CNY`/`USD`); `todaySpend`/`monthSpend` are derived from balance history (paid drawdown only); `monthSinceTracking` is `true` until a full month of history has accrued. MiMo may additionally send `giftBalance`, `cashBalance`, Token Plan usage fields, and `planStatus` (`active`, `expired`, `none`, or `null`). An expired MiMo Token Plan has no quota window even when its prepaid balance remains available. `null` when not applicable. DeepSeek uses `source: "api"` with an empty `windows` array (it has no rate-limit windows). GLM/Z.ai, Volcengine, Qoder, Kimi Code, and Ollama report quota/credit windows through the same `windows` array.
-`windows[].kind` is `session`, `weekly`, or `billing`.
+`limits.providers[].balance` is an optional native-currency prepaid balance block. DeepSeek uses `{ amount, currency, todaySpend, monthSpend, allTimeSpend, trackingSince, monthSinceTracking }`: `amount` is the spendable balance in the account's own currency (e.g. `CNY`/`USD`); the spend fields are derived from locally observed paid-balance drawdown, `allTimeSpend` keeps accumulating after old daily buckets are pruned, `trackingSince` records when that local observation began, and `monthSinceTracking` is `true` until a full month of history has accrued. OpenRouter uses USD: `/key` supplies `todaySpend`, `weekSpend`, `monthSpend`, and the provider-reported lifetime `allTimeSpend`; when OpenRouter authorizes `/credits` (officially documented for Management keys), `amount` and the corresponding real Credits meter are also included. Other API keys can still report their own spend and configured key limit without inventing an account balance. MiMo may additionally send `giftBalance`, `cashBalance`, Token Plan usage fields, and `planStatus` (`active`, `expired`, `none`, or `null`). An expired MiMo Token Plan has no quota window even when its prepaid balance remains available. `null` when not applicable. DeepSeek uses `source: "api"` with an empty `windows` array (it has no rate-limit windows). OpenRouter, GLM/Z.ai, Volcengine, Qoder, Kimi, and Ollama report quota/credit windows through the same `windows` array.
+`windows[].kind` is `session`, `weekly`, or `billing`. `windows[].metric` is an optional stable machine-readable role; `credits` identifies the OpenRouter account-credits meter independently of its display label. `windows[].detail` is an optional bounded display-only description for a window, such as the Kimi-vs-Code composition of the single shared monthly membership meter; it must not contain credentials or raw provider response data.
 
 ## `GET /api/stats`
 
@@ -216,11 +221,13 @@ Response includes:
 - `periods.allTime`
 - `periods.*.clientModels` and `periods.*.clientModelCosts` for preserving model breakdowns when a tracked tool is disabled
 - `periods.*.projects` for workspace-level tokens, cost, and client attribution; the same canonical folder label aggregates across devices
-- `periods.today.sessions` / `periods.month.sessions` keyed by `client:sessionId` for session-level usage when tokscale exposes session groups; widgets may use `lastUsedAt` for recent-first sorting and optional `projectId` / `projectLabel` for workspace-level aggregation. Absolute workspace paths stay on the collecting device and are never part of the wire shape. Synchronized clients omit the unbounded `allTime.sessions` collection while preserving all aggregate totals and breakdowns.
+- `periods.today.sessions` / `periods.month.sessions` keyed by `client:sessionId` for session-level usage when tokscale exposes session groups; widgets may use `lastUsedAt` for recent-first sorting and optional `projectId` / `projectLabel` for workspace-level aggregation. Absolute workspace paths stay on the collecting device and are never part of the wire shape. Synchronized clients omit the unbounded `allTime.sessions` collection and may bound `today` / `month` detail when required by the ingest limit while preserving all aggregate totals and breakdowns.
+- `sessionDetailsOmitted`, when one or more synchronized devices omitted session rows to stay within the ingest limit; the aggregate contains summed `today` / `month` counts and each affected device reports its own counts
+- `periodProjectsOmitted`, when a daily or monthly project rollup was itself too large to fit; the aggregate and affected devices expose omitted project counts and the widget marks that period's project breakdown incomplete
 - `projectsIncomplete` plus the corresponding `devices[].allTimeProjectsOmitted`, `devices[].allTimeProjectsIncomplete`, or `devices[].projectsEnabled` diagnostic
 - `historyPreview.daily[].activeTimeMs`, `historyPreview.monthly[].activeTimeMs`, and `historyPreview.summary.activeTimeMs` when tokscale graph exposes session active-time metrics
 - `limits.providers` aggregated by provider account
-- `devices`, including each device's normalized `periods`, `limits`, `receivedAt`, optional `syncUploadIntervalMs`, and optional `periodWindows`
+- `devices`, including each device's normalized `periods`, `limits`, `receivedAt`, `osName` / `osVersion` when reported, optional `syncUploadIntervalMs`, and optional `periodWindows`
 - stale status for devices that have not reported recently
 
 If multiple devices report the same provider account, the hub keeps the freshest valid limits status for that account. Public Worker stats omit account identifiers.
@@ -264,20 +271,31 @@ This is useful after renaming a device id.
 
 ## `GET /api/usage/range`
 
-Query a client/model token & cost aggregate for a half-open time window.
+Query a client/model token & cost aggregate for a custom calendar range. Desktop (hub mode) and Android both call this endpoint so custom-range totals stay aligned.
 
-Query parameters:
+Preferred query parameters (local calendar days, same family as day/month tabs and tokscale `--since`/`--until`):
+
+- `startDate` / `endDate` — inclusive `YYYY-MM-DD` bounds (aliases: `since` / `until`)
+- `startHour` / `endHour` — optional `0–23` (defaults `0` / `23`). Hours are accepted for UI labels and future precision, but **totals are day-rounded**: the hub sums whole local days in `[startDate, endDate]`.
+
+Legacy Instant bounds (still supported):
 
 - `from` — inclusive lower bound (ISO-8601 timestamp)
 - `to` — exclusive upper bound (ISO-8601 timestamp)
+
+When only `from`/`to` are provided, the hub maps them to inclusive local calendar day keys on the hub host (`to` is exclusive, so the last included day is the calendar day of `to - 1ms`).
 
 Response:
 
 ```json
 {
-  "from": "2026-07-20T10:00:00.000Z",
-  "to": "2026-07-20T18:00:00.000Z",
-  "source": "usage_events",
+  "from": "2026-07-20T00:00:00.000Z",
+  "to": "2026-07-21T00:00:00.000Z",
+  "startDate": "2026-07-20",
+  "endDate": "2026-07-20",
+  "startHour": 0,
+  "endHour": 23,
+  "source": "history_daily",
   "totalTokens": 12345,
   "costUsd": 1.23,
   "clients": { "codex": 8000 },
@@ -289,7 +307,10 @@ Response:
 }
 ```
 
-`source` is `usage_events` when the MySQL event ledger has rows in the window. When the ledger is empty for that window the hub falls back to filtering aggregated daily history (`source: "history_daily"`), which is day-granularity only and does not populate `clientModels`.
+`source` preference:
 
-The Android analytics custom range picker treats the selected end hour as inclusive and sends `to` as the start of the next hour so this exclusive bound stays exact.
+1. **`history_daily`** (primary) — sum device `history.daily` rows whose `date` keys fall in the inclusive range. History dates are local `YYYY-MM-DD` keys from the tokscale graph (same scan family as trends / day-month rollups). Do **not** attribute custom-range totals from session timestamps.
+2. **`usage_events`** (fallback only) — used when no overlapping history day exists for the window. The event ledger can mis-date first-ingest / counter-reset dumps via `lastUsedAt`, so it must not win over history.
+
+`clientModels` / `clientModelCosts` are populated for the `usage_events` path; the `history_daily` path fills per-client and per-model maps from daily rollups when present, and may leave nested client→model maps empty.
 

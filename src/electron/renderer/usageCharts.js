@@ -57,6 +57,26 @@
     return addDaysUTC(k, -dayOfWeekMon(k));
   }
 
+  function heatmapIntensity(value, max) {
+    if (max <= 0) return 0;
+    const ratio = n(value) / max;
+    return ratio >= 0.75 ? 4 : ratio >= 0.5 ? 3 : ratio >= 0.25 ? 2 : ratio > 0 ? 1 : 0;
+  }
+
+  // Derive both metrics from the raw values at render time. This keeps preview
+  // payloads, older hubs, and the live-today patched row on the same semantics
+  // without relying on optional wire-level intensity fields.
+  function computeHeatmapIntensities(daily) {
+    const rows = Array.isArray(daily) ? daily : [];
+    const maxTokens = Math.max(0, ...rows.map((row) => n(row?.tokens)));
+    const maxCost = Math.max(0, ...rows.map((row) => n(row?.cost)));
+    return rows.map((row) => {
+      const tokenIntensity = heatmapIntensity(row?.tokens, maxTokens);
+      const costIntensity = heatmapIntensity(row?.cost, maxCost);
+      return { ...row, intensity: costIntensity, costIntensity, tokenIntensity };
+    });
+  }
+
   function dailyBarsChart(series, options) {
     const o = Object.assign(
       { width: 600, height: 180, padTop: 8, padRight: 8, padBottom: 20, padLeft: 40, gap: 0.2, stackBy: 'client', metric: 'tokens', labelKey: 'date' },
@@ -163,7 +183,7 @@
   }
 
   function contribHeatmap(daily, options) {
-    const o = Object.assign({ cell: 11, gap: 2, startDate: null, endDate: null }, options || {});
+    const o = Object.assign({ cell: 11, gap: 2, startDate: null, endDate: null, intensityKey: 'intensity' }, options || {});
     const intensities = new Map();
     const values = new Map();
     // startDate/endDate, when given, fix the window (e.g. a rolling year) so the grid
@@ -172,7 +192,7 @@
     let maxDate = o.endDate ? String(o.endDate).slice(0, 10) : null;
     for (const d of (Array.isArray(daily) ? daily : [])) {
       const key = String(d.date).slice(0, 10);
-      intensities.set(key, n(d.intensity));
+      intensities.set(key, n(d[o.intensityKey]));
       values.set(key, { tokens: n(d.tokens), cost: n(d.cost) });
       if (!o.startDate && (!minDate || key < minDate)) minDate = key;
       if (!o.endDate && (!maxDate || key > maxDate)) maxDate = key;
@@ -326,7 +346,7 @@
 
   const clientColors = {
     claude: '#cc7c5e', codex: '#49a3b0', hermes: '#d4af37', gemini: '#4285f4',
-    antigravity: '#4285f4', cline: '#323B43', kimi: '#16191e', grok: '#000000', copilot: '#000000', deepseek: '#4d6bfe', cursor: '#000000', opencode: '#000000',
+    antigravity: '#4285f4', cline: '#323B43', kimi: '#16191e', grok: '#000000', copilot: '#000000', deepseek: '#4d6bfe', cursor: '#000000', opencode: '#000000', openrouter: '#6566F1',
     openclaw: '#ff4d4d', xai: '#000000', meta: '#1d65c1', mistral: '#fa520f', qwen: '#615ced',
     pi: '#000', zed: '#4173e7', kilocode: '#F8F676', micode: '#000000', zcode: '#000000', kiro: '#9046FF', codebuddy: '#6C4DFF', workbuddy: '#0DC8A5', proma: '#000000',
     moonshot: '#16191e', zai: '#000000', zaiteam: '#000000', cohere: '#39594d', xiaomi: '#ff6700', minimax: '#f23f5d', doubao: '#1E37FC', volcengine: '#006EFF', qoder: '#2ADB5C', ollama: '#888888',
@@ -560,10 +580,11 @@
   }
 
   return {
-    localDayKey, weekStartKey, dailyBarsChart, candleChart, contribHeatmap, rollingYearHeatmap, statsCards, sparklinePreview,
+    localDayKey, weekStartKey, dailyBarsChart, candleChart, computeHeatmapIntensities, contribHeatmap, rollingYearHeatmap, statsCards, sparklinePreview,
     areaLineChart, areaLineSvg,
     selectPreviewSeries, patchTodayBar, sparklineSvg,
     clientColors, fallbackModelColors, modelVendorFor, modelColor, clampDaily,
     barsChartSvg, candleChartSvg, heatmapSvg, statsCardsHtml, statCardColumnWidths
   };
 });
+

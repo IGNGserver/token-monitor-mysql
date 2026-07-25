@@ -13,6 +13,7 @@ const {
   mergeLatestReleaseMetadata,
   parseLatestReleasePayload,
   parseTag,
+  shouldDownloadAutomaticAppUpdate,
   shouldSkipAppUpdateCheck
 } = require('../../src/shared/appUpdater');
 
@@ -105,6 +106,36 @@ test('downloadedAppUpdateMatchesLatest only trusts the downloaded latest version
     downloadedVersion: '0.19.0',
     latest: null
   }), false);
+});
+
+test('shouldDownloadAutomaticAppUpdate covers the automatic-download state matrix', () => {
+  const ready = {
+    hasUpdate: true,
+    installSupported: true,
+    latest: { version: '0.28.1' },
+    dismissedVersion: null,
+    downloaded: false,
+    installBusy: false
+  };
+  const cases = [
+    ['enabled and ready', true, ready, true],
+    ['preference disabled', false, ready, false],
+    ['no update', true, { ...ready, hasUpdate: false }, false],
+    ['unsupported build', true, { ...ready, installSupported: false }, false],
+    ['latest version dismissed', true, { ...ready, dismissedVersion: '0.28.1' }, false],
+    ['older version dismissed', true, { ...ready, dismissedVersion: '0.28.0' }, true],
+    ['already downloaded', true, { ...ready, downloaded: true }, false],
+    ['check or download already in flight', true, { ...ready, installBusy: true }, false],
+    ['missing update state', true, null, false]
+  ];
+
+  for (const [name, automaticAppUpdates, updateState, expected] of cases) {
+    assert.equal(
+      shouldDownloadAutomaticAppUpdate({ automaticAppUpdates, updateState }),
+      expected,
+      name
+    );
+  }
 });
 
 test('deriveAppUpdateAvailability keeps availability separate from notification dismissal', () => {
@@ -269,8 +300,10 @@ test('release template exposes marked English and Chinese app summaries', () => 
   assert.ok(notes.zh.every((group) => group.items.length > 0));
   assert.ok(notes.en.every((group) => group.items.every((item) => !/\(#\d/.test(item))));
   assert.ok(notes.zh.every((group) => group.items.every((item) => !/（#\d/.test(item))));
-  assert.match(template, /\(#\d+(?:, #\d+)*\)/);
-  assert.match(template, /（#\d+(?:、#\d+)*）/);
+  // PR trailers are optional for fork releases that do not cite GitHub PRs; when present
+  // they must use the bilingual trailer forms so extractReleaseNotes can strip them.
+  if (/\(#\d/.test(template)) assert.match(template, /\(#\d+(?:, #\d+)*\)/);
+  if (/（#\d/.test(template)) assert.match(template, /（#\d+(?:、#\d+)*）/);
 });
 
 test('mergeLatestReleaseMetadata preserves notes when native updater metadata omits them', () => {

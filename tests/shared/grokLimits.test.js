@@ -10,8 +10,9 @@ const test = require('node:test');
 
 const {
   GROK_WEB_BILLING_GRPC_URL,
-  GROK_LEGACY_BILLING_URL,
-  resolveGrokHome
+  resolveGrokHome,
+  isRetryableNetworkError,
+  validateGrokGrpcStatus
 } = require('../../src/shared/grokLimits');
 const {
   grokCredential,
@@ -29,6 +30,17 @@ function writeAuthJson(homeDir, entries) {
   fs.writeFileSync(filePath, JSON.stringify(entries));
   return filePath;
 }
+
+test('isRetryableNetworkError classifies transient undici failures only', () => {
+  assert.equal(isRetryableNetworkError({ code: 'ECONNRESET' }), true);
+  assert.equal(isRetryableNetworkError({ cause: { code: 'UND_ERR_CONNECT_TIMEOUT' } }), true);
+  assert.equal(isRetryableNetworkError(new TypeError('fetch failed')), true);
+  assert.equal(isRetryableNetworkError(Object.assign(new TypeError('fetch failed'), {
+    cause: { code: 'ECONNREFUSED' }
+  })), false);
+  assert.equal(isRetryableNetworkError(Object.assign(new Error('rejected'), { status: 'unauthorized' })), false);
+  assert.equal(isRetryableNetworkError(new Error('invalid proxy URL')), false);
+});
 
 function fakeGrokRpcSpawn(assertArgs = ['agent', 'stdio']) {
   return (command, args) => {
@@ -129,6 +141,17 @@ function grpcFrame(payload) {
   return data;
 }
 
+function grpcTrailerFrame(fields) {
+  const payload = Buffer.from(Object.entries(fields)
+    .map(([key, value]) => `${key}: ${value}\r\n`)
+    .join(''));
+  const data = Buffer.alloc(5 + payload.length);
+  data[0] = 0x80;
+  data.writeUInt32BE(payload.length, 1);
+  payload.copy(data, 5);
+  return data;
+}
+
 function arrayBufferFrom(buffer) {
   return buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength);
 }
@@ -145,7 +168,7 @@ function grpcBillingResponse({ usedPercent = 42.5, resetEpoch = 1_800_000_000 } 
 test('parseLimitProviders includes grok and ollama in the default provider set', () => {
   assert.deepEqual(
     parseLimitProviders(),
-    ['claude', 'codex', 'cursor', 'antigravity', 'opencode', 'deepseek', 'minimax', 'mimo', 'grok', 'copilot', 'kiro', 'zai', 'volcengine', 'qoder', 'zaiteam', 'kimi', 'ollama']
+    ['claude', 'codex', 'cursor', 'antigravity', 'opencode', 'openrouter', 'deepseek', 'minimax', 'mimo', 'grok', 'copilot', 'kiro', 'zai', 'volcengine', 'qoder', 'zaiteam', 'kimi', 'ollama']
   );
 });
 
@@ -328,6 +351,69 @@ test('fetchGrokRpcBilling speaks Grok agent stdio x.ai/billing JSON-RPC', async 
   assert.equal(body.usage.totalUsed.val, 4200);
 });
 
+test('fetchGrokRpcBilling kills the CLI when the parent signal aborts', async () => {
+  const controller = new AbortController();
+  let killed = false;
+  const child = new EventEmitter();
+  child.stdout = new PassThrough();
+  child.stderr = new PassThrough();
+  child.stdin = new Writable({ write(_chunk, _encoding, callback) { callback(); } });
+  child.kill = () => { killed = true; };
+
+  const pending = fetchGrokRpcBilling({}, {
+    env: {},
+    signal: controller.signal,
+    spawn: () => child,
+    rpcTimeoutMs: 60_000
+  });
+  controller.abort(new Error('stop grok probe'));
+
+  await assert.rejects(pending, /stop grok probe/);
+  assert.equal(killed, true);
+});
+
+test('fetchGrokLimits does not start web fallback after the RPC parent signal aborts', async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'grok-abort-'));
+  writeAuthJson(home, { 'https://auth.x.ai::client': { key: 'eyJsecret.signature' } });
+  const controller = new AbortController();
+  let webCalls = 0;
+  const pending = fetchGrokLimits({}, {
+    env: {},
+    grokHome: home,
+    signal: controller.signal,
+    fetchRpcBilling: async () => {
+      controller.abort(new Error('grok probe superseded'));
+      throw new Error('RPC aborted');
+    },
+    fetchWebGrpcBilling: async () => {
+      webCalls += 1;
+      return [];
+    }
+  });
+
+  await assert.rejects(pending, /grok probe superseded/);
+  assert.equal(webCalls, 0);
+});
+
+test('fetchGrokLimits preserves cancellation after a successful web billing read', async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'grok-web-abort-'));
+  writeAuthJson(home, { 'https://auth.x.ai::client': { key: 'eyJsecret.signature' } });
+  const controller = new AbortController();
+
+  await assert.rejects(fetchGrokLimits({}, {
+    env: {},
+    grokHome: home,
+    signal: controller.signal,
+    fetchRpcBilling: async () => {
+      throw new Error('RPC unavailable');
+    },
+    fetchWebGrpcBilling: async () => {
+      controller.abort(new Error('web result superseded'));
+      return [];
+    }
+  }), /web result superseded/);
+});
+
 test('fetchGrokLimits prefers Grok CLI RPC billing before bearer web fallback', async () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'grok-rpc-'));
   writeAuthJson(home, {
@@ -444,43 +530,80 @@ test('fetchGrokLimits returns notConfigured when no credential is available', as
   assert.deepEqual(r.windows, []);
 });
 
-test('fetchGrokLimits keeps legacy cli-chat-proxy JSON billing as final fallback', async () => {
-  const body = {
-    config: {
-      monthlyLimit: 100,
-      used: 67,
-      billingPeriodEnd: '2026-07-01T00:00:00Z'
-    }
-  };
-  let capturedAuth = '';
+test('fetchGrokLimits does not fall back to legacy JSON when credits-config fails', async () => {
   const calls = [];
   const r = await fetchGrokLimits(
     { grokBearerToken: 'eyJsecret.signature' },
     {
       env: {},
       now: () => 1_716_350_000_000,
-      fetch: async (url, init) => {
+      fetch: async (url) => {
         calls.push(url);
-        capturedAuth = init.headers.Authorization;
-        if (url === GROK_WEB_BILLING_GRPC_URL) {
-          return { status: 503, ok: false, arrayBuffer: async () => arrayBufferFrom(Buffer.alloc(0)) };
-        }
-        assert.equal(url, GROK_LEGACY_BILLING_URL);
-        return { status: 200, ok: true, json: async () => body };
+        return { status: 503, ok: false, arrayBuffer: async () => arrayBufferFrom(Buffer.alloc(0)) };
       }
     }
   );
-  assert.deepEqual(calls, [GROK_WEB_BILLING_GRPC_URL, GROK_LEGACY_BILLING_URL]);
-  assert.equal(r.provider, 'grok');
-  assert.equal(r.status, 'ok');
-  assert.equal(r.accountLabel, 'SuperGrok');
-  assert.match(r.accountKey, /^sha256:/);
-  assert.equal(capturedAuth, 'Bearer eyJsecret.signature');
-  assert.equal(r.windows.length, 1);
-  assert.equal(r.windows[0].label, 'Monthly');
-  assert.equal(r.windows[0].usedPercent, 67);
-  assert.equal(r.windows[0].resetsAt, '2026-07-01T00:00:00.000Z');
-  assert.ok(!JSON.stringify(r).includes('eyJsecret'));
+  assert.deepEqual(calls, [GROK_WEB_BILLING_GRPC_URL]);
+  assert.equal(r.status, 'unavailable');
+  assert.deepEqual(r.windows, []);
+});
+
+test('validateGrokGrpcStatus maps bad OAuth credentials to unauthorized', () => {
+  assert.throws(
+    () => validateGrokGrpcStatus(new Map([
+      ['grpc-status', '7'],
+      ['grpc-message', 'The%20OAuth2%20access%20token%20could%20not%20be%20validated.%20[WKE=unauthenticated:bad-credentials]']
+    ])),
+    (error) => error.status === 'unauthorized' && /rejected credentials/.test(error.message)
+  );
+});
+
+test('validateGrokGrpcStatus keeps non-auth RPC failures unavailable', () => {
+  assert.throws(
+    () => validateGrokGrpcStatus({ 'grpc-status': '13', 'grpc-message': 'internal' }),
+    (error) => error.status === 'unavailable' && /status 13/.test(error.message)
+  );
+});
+
+test('fetchGrokLimits maps grpc-web auth trailers to unauthorized', async () => {
+  const trailer = grpcTrailerFrame({
+    'grpc-status': '16',
+    'grpc-message': 'Unauthenticated'
+  });
+  const r = await fetchGrokLimits(
+    { grokBearerToken: 'eyJsecret.signature' },
+    {
+      env: {},
+      fetch: async () => ({
+        status: 200,
+        ok: true,
+        headers: { get: () => null },
+        arrayBuffer: async () => arrayBufferFrom(trailer)
+      })
+    }
+  );
+  assert.equal(r.status, 'unauthorized');
+  assert.deepEqual(r.windows, []);
+});
+
+test('parseGrokBilling prefers creditUsagePercent + currentPeriod when present', () => {
+  const windows = parseGrokBilling({
+    config: {
+      creditUsagePercent: 16.5,
+      currentPeriod: {
+        type: 'USAGE_PERIOD_TYPE_WEEKLY',
+        start: '2026-07-14T02:07:01Z',
+        end: '2026-07-21T02:07:01Z'
+      },
+      // Deprecated fields that would compute a different % if preferred first.
+      monthlyLimit: { val: 15000 },
+      used: { val: 8053 }
+    }
+  });
+  assert.equal(windows.length, 1);
+  assert.equal(windows[0].label, 'Weekly');
+  assert.equal(windows[0].usedPercent, 16.5);
+  assert.equal(windows[0].resetsAt, '2026-07-21T02:07:01.000Z');
 });
 
 test('fetchGrokLimits maps HTTP 401 to unauthorized', async () => {

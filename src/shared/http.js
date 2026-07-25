@@ -1,4 +1,4 @@
-﻿'use strict';
+'use strict';
 
 const MAX_JSON_BODY_BYTES = 1024 * 1024;
 
@@ -69,4 +69,5 @@ function isAuthorized(req, expectedSecret) {
   return requestSecret(req) === expectedSecret;
 }
 
-module.exports = { MAX_JSON_BODY_BYTES, isAuthorized, readJsonBody, sendJson, sendText };
+module.exports = { MAX_JSON_BODY_BYTES, corsHeaders, isAuthorized, readJsonBody, sendJson, sendText };
+

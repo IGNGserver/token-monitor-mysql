@@ -6,6 +6,7 @@ const { aggregateDevices, aggregateHistory, mergeDeviceRecord } = require('../sh
 const { historyPreview, historyRevision } = require('../shared/history');
 const { isAuthorized, readJsonBody, sendJson, sendText } = require('../shared/http');
 const { loadDotEnv, parseArgs } = require('../shared/config');
+const { tryServeStatic } = require('./static');
 const { lookupModelPricing, normalizePromaPricing } = require('../shared/collector');
 const { createMySqlPool, createRepository } = require('./repository');
 const { createCatalogPricingLookup, pricingNotFound } = require('./pricing-upstream');
@@ -53,19 +54,34 @@ function addRangeTokenCost(mapTokens, mapCosts, key, tokens, cost) {
   mapCosts[id] = (mapCosts[id] || 0) + cost;
 }
 
-// Day-level fallback when usage_events has no rows for the requested window.
-// Days that overlap [from, to) (UTC day keys) are summed; hour precision is lost.
-function aggregateHistoryRange(history, from, to) {
+// Sum tokscale graph daily history for inclusive calendar day keys.
+// History dates are local calendar days (YYYY-MM-DD), same family as the day/month
+// tabs — never UTC-shift them. Hour precision is intentionally day-rounded so hub
+// custom ranges match desktop tokscale --since/--until totals.
+function aggregateHistoryRange(history, from, to, options = {}) {
   const result = emptyUsageRangePayload();
-  const fromMs = from.getTime();
-  const toMs = to.getTime();
+  let startDate = String(options.startDate || '').slice(0, 10);
+  let endDate = String(options.endDate || '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
+    // Legacy from/to Instant bounds: map to inclusive local calendar days on the hub host.
+    const fromDate = from instanceof Date ? from : new Date(from);
+    const toDate = to instanceof Date ? to : new Date(to);
+    if (Number.isNaN(fromDate.getTime()) || Number.isNaN(toDate.getTime())) return result;
+    const pad = (n) => String(n).padStart(2, '0');
+    const keyOf = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    startDate = keyOf(fromDate);
+    // `to` is exclusive in the ISO API; the last included local day is the calendar
+    // day of (to - 1ms), so a full-day [00:00, next-day 00:00) keeps one day key.
+    const lastInclusive = new Date(Math.max(fromDate.getTime(), toDate.getTime() - 1));
+    endDate = keyOf(lastInclusive);
+    if (startDate > endDate) return result;
+  }
+  result.matchedDays = 0;
   for (const day of history?.daily || []) {
     const dayKey = String(day?.date || '').slice(0, 10);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(dayKey)) continue;
-    const dayStart = Date.parse(`${dayKey}T00:00:00.000Z`);
-    if (!Number.isFinite(dayStart)) continue;
-    const dayEnd = dayStart + 86_400_000;
-    if (dayEnd <= fromMs || dayStart >= toMs) continue;
+    if (dayKey < startDate || dayKey > endDate) continue;
+    result.matchedDays += 1;
     const tokens = Math.round(number(day.tokens));
     const cost = number(day.cost);
     result.totalTokens += tokens;
@@ -177,6 +193,7 @@ function createHub({
   pool = null,
   lookupPricing = lookupModelPricing,
   fallbackPricing = createCatalogPricingLookup(),
+  webRoot,
   logger = console
 } = {}) {
   const ownedPool = !repository && !pool;
@@ -200,14 +217,76 @@ function createHub({
     return aggregateHistory(await store.listDeviceRecords());
   }
 
-  async function getUsageRange(fromRaw, toRaw) {
-    const from = parseRangeBound(fromRaw, 'from');
-    const to = parseRangeBound(toRaw, 'to');
-    if (!(from.getTime() < to.getTime())) {
-      const error = new Error('from_must_be_before_to');
-      error.code = 'invalid_range';
-      throw error;
+  async function getUsageRange(query = {}) {
+    const params = query && typeof query === 'object' && !Array.isArray(query)
+      ? query
+      : {};
+    const { normalizeCustomRange } = require('../shared/customRange');
+    let range;
+    let from;
+    let to;
+
+    if (params.startDate || params.endDate || params.since || params.until) {
+      range = normalizeCustomRange({
+        startDate: params.startDate || params.since,
+        endDate: params.endDate || params.until,
+        startHour: params.startHour ?? 0,
+        endHour: params.endHour ?? 23
+      });
+      if (!range.ok) {
+        const error = new Error(range.error || 'invalid_range');
+        error.code = 'invalid_range';
+        throw error;
+      }
+      from = new Date(range.startMs);
+      to = new Date(range.endMs + 1);
+    } else {
+      from = parseRangeBound(params.from, 'from');
+      to = parseRangeBound(params.to, 'to');
+      if (!(from.getTime() < to.getTime())) {
+        const error = new Error('from_must_be_before_to');
+        error.code = 'invalid_range';
+        throw error;
+      }
+      const pad = (n) => String(n).padStart(2, '0');
+      const keyOf = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+      const startDate = keyOf(from);
+      const lastInclusive = new Date(Math.max(from.getTime(), to.getTime() - 1));
+      const endDate = keyOf(lastInclusive);
+      range = normalizeCustomRange({
+        startDate,
+        endDate,
+        startHour: 0,
+        endHour: 23
+      });
+      if (!range.ok) {
+        const error = new Error(range.error || 'invalid_range');
+        error.code = 'invalid_range';
+        throw error;
+      }
     }
+
+    // Prefer tokscale graph daily history (same scan family as day/month tabs and
+    // Home trends). usage_events attribute deltas by lastUsedAt and can dump
+    // all-time counters into recent windows on first ingest / counter reset.
+    const historyAgg = aggregateHistoryRange(await getHistory(), from, to, {
+      startDate: range.startDate,
+      endDate: range.endDate
+    });
+    if (number(historyAgg.matchedDays) > 0 || number(historyAgg.totalTokens) > 0) {
+      const { matchedDays, ...payload } = historyAgg;
+      return {
+        from: from.toISOString(),
+        to: to.toISOString(),
+        startDate: range.startDate,
+        endDate: range.endDate,
+        startHour: range.startHour,
+        endHour: range.endHour,
+        source: 'history_daily',
+        ...payload
+      };
+    }
+
     const eventsAgg = typeof store.aggregateUsageRange === 'function'
       ? await store.aggregateUsageRange({ from, to })
       : { ...emptyUsageRangePayload(), eventCount: 0 };
@@ -215,6 +294,10 @@ function createHub({
       return {
         from: from.toISOString(),
         to: to.toISOString(),
+        startDate: range.startDate,
+        endDate: range.endDate,
+        startHour: range.startHour,
+        endHour: range.endHour,
         source: 'usage_events',
         totalTokens: Math.round(number(eventsAgg.totalTokens)),
         costUsd: number(eventsAgg.costUsd),
@@ -226,12 +309,16 @@ function createHub({
         clientModelCosts: eventsAgg.clientModelCosts || {}
       };
     }
-    const historyAgg = aggregateHistoryRange(await getHistory(), from, to);
+
     return {
       from: from.toISOString(),
       to: to.toISOString(),
+      startDate: range.startDate,
+      endDate: range.endDate,
+      startHour: range.startHour,
+      endHour: range.endHour,
       source: 'history_daily',
-      ...historyAgg
+      ...emptyUsageRangePayload()
     };
   }
 
@@ -359,6 +446,10 @@ function createHub({
       });
     }
 
+    // Web UI / PWA assets share the hub port so Docker only needs one publish.
+    // Static files stay unauthenticated; every /api/* route still requires the secret.
+    if (await tryServeStatic(req, res, webRoot ? { webRoot } : {})) return;
+
     if (!isAuthorized(req, secret)) return sendJson(res, 401, { error: 'unauthorized' });
 
     if (req.method === 'GET' && url.pathname === '/api/stats') return sendJson(res, 200, await getStats());
@@ -368,7 +459,14 @@ function createHub({
     if (req.method === 'GET' && url.pathname === '/api/history') return sendJson(res, 200, await getHistory());
     if (req.method === 'GET' && url.pathname === '/api/usage/range') {
       try {
-        return sendJson(res, 200, await getUsageRange(url.searchParams.get('from'), url.searchParams.get('to')));
+        return sendJson(res, 200, await getUsageRange({
+          from: url.searchParams.get('from'),
+          to: url.searchParams.get('to'),
+          startDate: url.searchParams.get('startDate') || url.searchParams.get('since'),
+          endDate: url.searchParams.get('endDate') || url.searchParams.get('until'),
+          startHour: url.searchParams.get('startHour'),
+          endHour: url.searchParams.get('endHour')
+        }));
       } catch (error) {
         const status = error.code === 'invalid_range' ? 400 : 500;
         return sendJson(res, status, { error: error.code || 'bad_request', message: error.message });
@@ -467,6 +565,11 @@ function createHub({
   async function stop() {
     for (const res of sseClients) { try { res.end(); } catch (_) {} }
     sseClients.clear();
+    // Drop keep-alive / half-drained sockets so close() cannot hang (e.g. fetch
+    // clients that never read a static body, or browsers that linger).
+    if (typeof server.closeAllConnections === 'function') {
+      server.closeAllConnections();
+    }
     await new Promise((resolve) => server.close(() => resolve()));
     if (ownedPool && activePool) await activePool.end();
   }
@@ -503,3 +606,4 @@ if (require.main === module) {
 }
 
 module.exports = { createHub, normalizePrices, priceSnapshot, resolveBindHost, upstreamPrices, aggregateHistoryRange, emptyUsageRangePayload };
+

@@ -4,14 +4,22 @@ Token Monitor 是一个用来查看 AI 编程工具用量的桌面小组件。�
 
 本仓库 fork 自 [Javis603/token-monitor](https://github.com/Javis603/token-monitor)。它保留了原项目的桌面采集能力，同时增加了 MySQL Hub、Docker Compose 部署和 Android 客户端，并继续使用 [MIT License](LICENSE)。
 
+
+## 支持的工具（节选）
+
+| | 工具 | 数据源 | 用量 | 额度 | Session |
+|---|---|---|---|---|---|
+| <img src=".github/assets/tools-icon/openrouter.png" width="28" alt="OpenRouter" /> | OpenRouter | OpenRouter API key (usage/key limit; balance when credits access is authorized, documented for Management keys) | — | ✅ | — |
+
 ## 直接下载安装
 
 如果你只想使用，不想安装 Node.js 或执行命令，请前往 [GitHub Releases](https://github.com/IGNGserver/token-monitor-mysql/releases) 下载：
 
 - **Windows**：下载 `Token-Monitor-Setup-版本号.exe`，双击安装。
 - **Android**：下载 `Token-Monitor-Android-版本号.apk`，在手机上安装。
+- **Hub（Docker）**：下载 `Token-Monitor-Hub-Compose-版本号.zip`，或直接拉取镜像 `ghcr.io/igngserver/token-monitor-hub:latest`（也可用指定版本标签）。
 
-安装后仍需要先部署一个 Hub，再在 Windows 小组件或 Android 应用中填写 Hub 地址和共享密钥。没有 Hub 时，Windows 小组件也可以选择“仅本机”模式使用。
+安装客户端后仍需要先部署一个 Hub，再在 Windows 小组件或 Android 应用中填写 Hub 地址和共享密钥。没有 Hub 时，Windows 小组件也可以选择“仅本机”模式使用。
 
 ## 你需要准备什么
 
@@ -33,6 +41,13 @@ Token Monitor 是一个用来查看 AI 编程工具用量的桌面小组件。�
 
 这一步只在一台常驻服务器上做一次。服务器可以是 Linux 主机、NAS、云服务器或个人设备，但必须能运行 Docker，并且电脑和手机能够访问它。
 
+Hub 镜像与 Windows / Android 安装包在同一套 GitHub Release 中发布，镜像托管在 GHCR：
+
+```text
+ghcr.io/igngserver/token-monitor-hub:latest
+ghcr.io/igngserver/token-monitor-hub:<version>
+```
+
 ### 1. 安装 Docker
 
 安装 Docker Engine 和 Docker Compose v2，然后确认：
@@ -42,11 +57,19 @@ docker --version
 docker compose version
 ```
 
-### 2. 下载项目并创建配置
+### 2. 获取 Compose 配置
+
+**推荐（拉取正式镜像，无需本地 build）：**
+
+- 从 [GitHub Releases](https://github.com/IGNGserver/token-monitor-mysql/releases) 下载 `Token-Monitor-Hub-Compose-<version>.zip` 并解压；或
+- 克隆仓库后使用根目录的 `docker-compose.yml`：
 
 ```bash
 git clone https://github.com/IGNGserver/token-monitor-mysql.git
 cd token-monitor-mysql
+```
+
+```bash
 cp .env.example .env
 ```
 
@@ -56,6 +79,7 @@ cp .env.example .env
 TOKEN_MONITOR_SECRET=请替换为随机共享密钥
 MYSQL_PASSWORD=请替换为数据库密码
 MYSQL_ROOT_PASSWORD=请替换为数据库管理员密码
+# 可选：TOKEN_MONITOR_VERSION=latest   # 默认 latest；生产可钉死如 0.34.2
 ```
 
 TOKEN_MONITOR_SECRET 是之后连接电脑和手机时要填写的共享密钥。不要把 .env 上传到 GitHub。
@@ -63,15 +87,24 @@ TOKEN_MONITOR_SECRET 是之后连接电脑和手机时要填写的共享密钥�
 ### 3. 启动 Hub
 
 ```bash
-docker compose up -d --build
+docker compose pull
+docker compose up -d
 docker compose ps
 ```
+
+说明：
+
+- 默认 `TOKEN_MONITOR_VERSION=latest`，跟随最新正式版 Hub 镜像。
+- 生产环境建议钉版本：在 `.env` 写 `TOKEN_MONITOR_VERSION=0.34.2`（或 `v0.34.2`）后再 `pull` / `up`。
+- 开发者若要在本机从源码构建镜像：`docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build`。
 
 如果 hub 和 mysql 都在运行，就可以使用了。默认地址是：
 
 ```text
 http://服务器地址:17321
 ```
+
+浏览器直接打开上述地址即可使用 **Hub 网页仪表板**（与 API 同端口，Docker 只需开放一个端口）。网页支持 PWA，可在 iOS / 鸿蒙等无官方客户端的设备上“添加到主屏幕”后离线打开壳层并查看已同步数据。首次进入若 Hub 配置了共享密钥，在页面中填写即可；密钥只保存在本机浏览器。
 
 在服务器本机检查：
 
@@ -200,7 +233,7 @@ Android 客户端包含概览、模型、会话、设备、定价和设置页面
 确认客户端和服务器的共享密钥完全一致。修改 .env 后重新执行：
 
 ```bash
-docker compose up -d --build
+docker compose up -d
 ```
 
 ### 看不到某台电脑
@@ -209,11 +242,26 @@ docker compose up -d --build
 
 ### 升级项目
 
-在服务器执行：
+**镜像部署（推荐）：**
+
+```bash
+# 跟随 latest
+docker compose pull
+docker compose up -d
+
+# 或钉死版本
+# 在 .env 设置 TOKEN_MONITOR_VERSION=0.34.2 后：
+docker compose pull
+docker compose up -d
+```
+
+若你是从 git 维护配置文件，也可先 `git pull` 再执行上面的 `pull` / `up`（一般不必 `--build`）。
+
+开发者本地构建：
 
 ```bash
 git pull
-docker compose up -d --build
+docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 ```
 
 不要使用 docker compose down -v，否则会删除 MySQL 数据卷。

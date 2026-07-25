@@ -23,3 +23,6 @@ worker/.wrangler/
 worker/node_modules/
 worker/.dev.vars
 devlog/
+
+# Hub compose release bundle output
+dist-hub-compose/

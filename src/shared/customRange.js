@@ -52,10 +52,10 @@ function normalizeCustomRange(input = {}) {
   if (!startParts || !endParts) {
     return { ok: false, error: 'invalid-date' };
   }
-  let startDate = startParts.key;
-  let endDate = endParts.key;
-  let startHour = clampHour(input.startHour ?? input.fromHour ?? 0);
-  let endHour = clampHour(input.endHour ?? input.toHour ?? 23);
+  const startDate = startParts.key;
+  const endDate = endParts.key;
+  const startHour = clampHour(input.startHour ?? input.fromHour ?? 0);
+  const endHour = clampHour(input.endHour ?? input.toHour ?? 23);
   if (compareDateHour(startDate, startHour, endDate, endHour) > 0) {
     return { ok: false, error: 'inverted-range' };
   }
@@ -136,45 +136,65 @@ function periodFromSessions(sessions, options = {}) {
   return period;
 }
 
-function filterPeriodByCustomRange(period, rangeInput, options = {}) {
-  const range = rangeInput?.ok === true ? rangeInput : normalizeCustomRange(rangeInput);
-  if (!range.ok) return emptyPeriod();
-  // Full local-day windows already match tokscale --since/--until, so keep the
-  // day-level aggregates as-is (session timestamps can lag or span midnight).
-  if (range.coversFullDays && period && typeof period === 'object') {
-    const copy = periodFromSessions(period.sessions || {}, options);
-    // Prefer original non-session aggregates when present — they include rows that
-    // never formed a session entry.
-    if (Number(period.totalTokens) > 0) {
-      return {
-        ...period,
-        projects: options.projectsEnabled === false
-          ? Object.create(null)
-          : (period.projects && Object.keys(period.projects).length
-            ? period.projects
-            : projectRollupFromSessions(period.sessions || {}))
-      };
-    }
-    return copy;
-  }
-  const sourceSessions = period?.sessions || {};
+function filterSessionsByCustomRange(sessions, range) {
   const kept = Object.create(null);
   let missingTimestamp = 0;
-  for (const [key, session] of Object.entries(sourceSessions)) {
+  let sourceSessions = 0;
+  for (const [key, session] of Object.entries(sessions || {})) {
+    sourceSessions += 1;
     const overlap = sessionOverlapsRange(session, range.startMs, range.endMs);
     if (overlap === null) {
       missingTimestamp += 1;
+      // Keep undated sessions when we only have day-level tokscale totals; dropping
+      // them made multi-day custom ranges undercount vs the month/day tabs.
+      kept[key] = session;
       continue;
     }
     if (overlap) kept[key] = session;
   }
-  const filtered = periodFromSessions(kept, options);
-  filtered._meta = {
-    sourceSessions: Object.keys(sourceSessions).length,
-    keptSessions: Object.keys(kept).length,
-    missingTimestamp
+  return {
+    sessions: kept,
+    meta: {
+      sourceSessions,
+      keptSessions: Object.keys(kept).length,
+      missingTimestamp
+    }
   };
-  return filtered;
+}
+
+function withProjects(period, options = {}) {
+  if (!period || typeof period !== 'object') return emptyPeriod();
+  const projects = options.projectsEnabled === false
+    ? Object.create(null)
+    : (period.projects && Object.keys(period.projects).length
+      ? period.projects
+      : projectRollupFromSessions(period.sessions || {}));
+  return { ...period, projects };
+}
+
+// Custom-range totals must match the day/month tabs: trust tokscale's
+// --since/--until (or hub history daily) aggregates. Session timestamps are only
+// used to narrow the session list for display, never to rebuild totals — many
+// clients lack reliable startedAt/lastUsedAt and that path undercounted badly.
+function filterPeriodByCustomRange(period, rangeInput, options = {}) {
+  const range = rangeInput?.ok === true ? rangeInput : normalizeCustomRange(rangeInput);
+  if (!range.ok) return emptyPeriod();
+  if (!period || typeof period !== 'object') return emptyPeriod();
+
+  if (range.coversFullDays) {
+    return withProjects(period, options);
+  }
+
+  const filtered = filterSessionsByCustomRange(period.sessions || {}, range);
+  const next = withProjects({
+    ...period,
+    sessions: filtered.sessions
+  }, options);
+  next.projects = options.projectsEnabled === false
+    ? Object.create(null)
+    : projectRollupFromSessions(filtered.sessions);
+  next._meta = filtered.meta;
+  return next;
 }
 
 function formatCustomRangeLabel(rangeInput, options = {}) {
@@ -210,6 +230,7 @@ module.exports = {
   compareDateHour,
   defaultCustomRange,
   filterPeriodByCustomRange,
+  filterSessionsByCustomRange,
   formatCustomRangeLabel,
   localDateTimeMs,
   localDayKey,
