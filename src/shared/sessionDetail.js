@@ -259,7 +259,7 @@ function distributeCost(exchanges, sessionCost) {
 }
 
 function parseByClient(client, text) {
-  if (client === 'claude') return parseClaudeTranscript(text);
+  if (client === 'claude' || client === 'claude-desktop') return parseClaudeTranscript(text);
   if (client === 'codex') return parseCodexTranscript(text);
   return [];
 }

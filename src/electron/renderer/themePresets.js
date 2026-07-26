@@ -61,7 +61,7 @@
   // listed here but present in clientColors are appended after these, then the
   // synthetic "default" fallback is shown last.
   const VENDOR_ORDER = [
-    'claude', 'codex', 'hermes', 'opencode', 'openrouter', 'openclaw', 'cline', 'cursor',
+    'claude', 'claude-desktop', 'codex', 'hermes', 'opencode', 'openrouter', 'openclaw', 'cline', 'cursor',
     'gemini', 'antigravity', 'kimi', 'qwen', 'grok', 'copilot', 'pi', 'zed', 'kilocode', 'micode', 'zcode', 'kiro', 'codebuddy', 'workbuddy', 'proma', 'deepseek', 'xai', 'meta', 'mistral',
     'moonshot', 'zai', 'zaiteam', 'cohere', 'xiaomi', 'minimax', 'doubao', 'volcengine', 'qoder', 'ollama'
   ];
@@ -71,6 +71,7 @@
   // so the appearance picker is self-contained.
   const VENDOR_LABELS = {
     claude: 'Claude Code',
+    'claude-desktop': 'Claude Desktop',
     codex: 'Codex',
     hermes: 'Hermes',
     opencode: 'OpenCode',

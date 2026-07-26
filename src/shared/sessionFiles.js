@@ -1,5 +1,7 @@
 'use strict';
 
+const { resolveClaudeDesktopSessionFile } = require('./claudeDesktopUsage');
+
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -39,6 +41,9 @@ function resolveSessionFile(client, sessionId, home) {
   if (!id) return '';
   if (client === 'claude') {
     return findSessionFiles(path.join(home, '.claude', 'projects'), [id]).get(id) || '';
+  }
+  if (client === 'claude-desktop') {
+    return resolveClaudeDesktopSessionFile(id, { homeDir: home }) || '';
   }
   if (client === 'codex') {
     const direct = codexSessionFile(home, id);

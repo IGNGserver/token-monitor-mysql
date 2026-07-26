@@ -7,6 +7,8 @@ Token Monitor 是一个用来查看 AI 编程工具用量的桌面小组件。�
 
 ## 支持的工具（节选）
 
+完整工具表见 [README.zh-CN.md](README.zh-CN.md)。本 fork 额外支持 **Claude Desktop Local Agent / Cowork**（`claude-desktop`）。
+
 | | 工具 | 数据源 | 用量 | 额度 | Session |
 |---|---|---|---|---|---|
 | <img src=".github/assets/tools-icon/openrouter.png" width="28" alt="OpenRouter" /> | OpenRouter | OpenRouter API key (usage/key limit; balance when credits access is authorized, documented for Management keys) | — | ✅ | — |

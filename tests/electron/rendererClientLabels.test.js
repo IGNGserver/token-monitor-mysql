@@ -16,7 +16,7 @@ function rendererStyles() {
 function clientLabelIds(source) {
   const match = source.match(/const clientLabels = \{([^}]+)\};/);
   assert.ok(match, 'clientLabels declaration should exist');
-  return new Set([...match[1].matchAll(/([a-z0-9_-]+)\s*:/g)].map((item) => item[1]));
+  return new Set([...match[1].matchAll(/(?:'([a-z0-9_-]+)'|([a-z0-9_-]+))\s*:/g)].map((item) => item[1] || item[2]));
 }
 
 function knownClientIds(source) {

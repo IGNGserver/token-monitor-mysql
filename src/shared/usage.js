@@ -114,6 +114,8 @@ function emptyPeriod() {
 function normalizeClientName(value) {
   const raw = String(value || '').trim().toLowerCase();
   if (!raw) return null;
+  // Desktop Local Agent / Cowork must stay separate from Claude Code.
+  if (raw === 'claude-desktop' || raw.includes('claude-desktop') || raw.includes('claude desktop')) return 'claude-desktop';
   if (raw.includes('claude')) return 'claude';
   if (raw.includes('codex')) return 'codex';
   if (raw.includes('hermes')) return 'hermes';
@@ -1062,4 +1064,4 @@ function deltaValue(base, fresh, anchor, key) {
   return base ?? fresh;
 }
 
-module.exports = { PERIODS, addPeriodInto, aggregateDevices, aggregateHistory, applyPeriodDelta, applyProjectRollups, canonicalProjectKey, carryDeviceHistory, emptyPeriod, extractUsageFromTokscale, mergeDeviceRecord, mergePeriods, normalizeDeviceRecord, normalizePeriod, projectRollupFromSessions };
+module.exports = { PERIODS, normalizeClientName, addPeriodInto, aggregateDevices, aggregateHistory, applyPeriodDelta, applyProjectRollups, canonicalProjectKey, carryDeviceHistory, emptyPeriod, extractUsageFromTokscale, mergeDeviceRecord, mergePeriods, normalizeDeviceRecord, normalizePeriod, projectRollupFromSessions };

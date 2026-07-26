@@ -35,6 +35,7 @@ Token Monitor は **トークン使用量**、**アカウント制限**、**セ�
 | Logo | ツール | データパス | トークン使用量 | AI ツール制限 | セッション詳細 |
 |:---:|------|-----------|:---:|:---:|:---:|
 | <img src=".github/assets/tools-icon/claude.png" width="28" alt="Claude Code" /> | Claude Code | `~/.claude/projects/`, `~/.claude/transcripts/` | ✅ | ✅ | ✅ |
+| <img src=".github/assets/tools-icon/claude-desktop.png" width="28" alt="Claude Desktop" /> | Claude Desktop | Local Agent / Cowork: `%LOCALAPPDATA%/Claude*/local-agent-mode-sessions/`, `~/Library/Application Support/Claude*/local-agent-mode-sessions/` (regular claude.ai chat not included) | ✅ | ✅ (reuses Claude account limits) | ✅ |
 | <img src=".github/assets/tools-icon/codex.png" width="28" alt="Codex" /> | Codex | `~/.codex/sessions/` | ✅ | ✅ | ✅ |
 | <img src=".github/assets/tools-icon/opencode.png" width="28" alt="OpenCode" /> | OpenCode | `~/.local/share/opencode/` | ✅ | ✅ | ✅ |
 | <img src=".github/assets/tools-icon/hermes-agent.png" width="28" alt="Hermes Agent" /> | Hermes Agent | `$HERMES_HOME/state.db` または `~/.hermes/state.db` | ✅ | — | — |
@@ -68,7 +69,7 @@ Token Monitor は **トークン使用量**、**アカウント制限**、**セ�
 
 ## 機能
 
-- **リアルタイムトークン追跡** — Claude Code、Codex、Hermes Agent、OpenCode、OpenClaw、Cursor、Antigravity、Cline、Kimi、Qwen、Grok Build、GitHub Copilot、Pi、Zed、Kilo Code、MiMo Code、ZCode、Kiro、CodeBuddy、WorkBuddy、Proma（各ターンから数秒以内に UI 更新）
+- **リアルタイムトークン追跡** — Claude Code、Claude Desktop、Codex、Hermes Agent、OpenCode、OpenClaw、Cursor、Antigravity、Cline、Kimi、Qwen、Grok Build、GitHub Copilot、Pi、Zed、Kilo Code、MiMo Code、ZCode、Kiro、CodeBuddy、WorkBuddy、Proma（各ターンから数秒以内に UI 更新）
 - **WSL 使用量 (Windows)** — 実行中の WSL ディストリビューション内の AI ツール使用量を自動検出して合算（約 5 分ごとの定期スキャン）
 - **マルチデバイスリアルタイム同期** — Server-Sent Events
 - **内訳ビュー** — ツール、デバイス、モデル、セッション、アカウント制限別

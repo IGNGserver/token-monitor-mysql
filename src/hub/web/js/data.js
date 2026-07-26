@@ -1,5 +1,6 @@
 export const CLIENT_LABELS = {
   claude: 'Claude Code',
+  'claude-desktop': 'Claude Desktop',
   codex: 'Codex',
   hermes: 'Hermes',
   gemini: 'Gemini',
@@ -41,6 +42,7 @@ export const CLIENT_LABELS = {
 
 export const CLIENT_COLORS = {
   claude: '#cc7c5e',
+  'claude-desktop': '#d4927a',
   codex: '#49a3b0',
   hermes: '#d4af37',
   gemini: '#4285f4',

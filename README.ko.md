@@ -35,6 +35,7 @@ Token Monitor는 **토큰 사용량**, **계정 한도**, **세션 상세**를 �
 | Logo | 도구 | 데이터 경로 | 토큰 사용량 | AI 도구 한도 | 세션 상세 |
 |:---:|------|-----------|:---:|:---:|:---:|
 | <img src=".github/assets/tools-icon/claude.png" width="28" alt="Claude Code" /> | Claude Code | `~/.claude/projects/`, `~/.claude/transcripts/` | ✅ | ✅ | ✅ |
+| <img src=".github/assets/tools-icon/claude-desktop.png" width="28" alt="Claude Desktop" /> | Claude Desktop | Local Agent / Cowork: `%LOCALAPPDATA%/Claude*/local-agent-mode-sessions/`, `~/Library/Application Support/Claude*/local-agent-mode-sessions/` (일반 claude.ai 채팅 제외) | ✅ | ✅ (Claude 계정 한도 재사용) | ✅ |
 | <img src=".github/assets/tools-icon/codex.png" width="28" alt="Codex" /> | Codex | `~/.codex/sessions/` | ✅ | ✅ | ✅ |
 | <img src=".github/assets/tools-icon/opencode.png" width="28" alt="OpenCode" /> | OpenCode | `~/.local/share/opencode/` | ✅ | ✅ | ✅ |
 | <img src=".github/assets/tools-icon/hermes-agent.png" width="28" alt="Hermes Agent" /> | Hermes Agent | `$HERMES_HOME/state.db` 또는 `~/.hermes/state.db` | ✅ | — | — |
@@ -68,7 +69,7 @@ Token Monitor는 **토큰 사용량**, **계정 한도**, **세션 상세**를 �
 
 ## 기능
 
-- **실시간 토큰 추적** — Claude Code, Codex, Hermes Agent, OpenCode, OpenClaw, Cursor, Antigravity, Cline, Kimi, Qwen, Grok Build, GitHub Copilot, Pi, Zed, Kilo Code, MiMo Code, ZCode, Kiro, CodeBuddy, WorkBuddy, Proma (턴당 수 초 내 UI 갱신)
+- **실시간 토큰 추적** — Claude Code, Claude Desktop, Codex, Hermes Agent, OpenCode, OpenClaw, Cursor, Antigravity, Cline, Kimi, Qwen, Grok Build, GitHub Copilot, Pi, Zed, Kilo Code, MiMo Code, ZCode, Kiro, CodeBuddy, WorkBuddy, Proma (턴당 수 초 내 UI 갱신)
 - **WSL 사용량 (Windows)** — 실행 중인 WSL 배포판 안 AI 도구 사용량을 자동 감지해 합산 (약 5분마다 주기 스캔)
 - **멀티 디바이스 실시간 동기화** — Server-Sent Events
 - **분류 보기** — 도구, 기기, 모델, 세션, 계정 한도별

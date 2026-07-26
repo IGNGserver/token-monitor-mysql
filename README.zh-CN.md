@@ -26,7 +26,7 @@
 
 ## Token Monitor 是什么？
 
-一款桌面小部件，实时显示各种 AI 编程工具（包含 Claude Code、Codex、Hermes Agent、OpenCode、OpenClaw、Cursor、Antigravity、Cline、Kimi、Qwen、Grok Build、GitHub Copilot 等）的 Token 用量与 AI 工具额度，具备实时多设备同步与历史使用趋势功能，并支持按工具、设备、模型或 session 分项显示。
+一款桌面小部件，实时显示各种 AI 编程工具（包含 Claude Code、Claude Desktop、Codex、Hermes Agent、OpenCode、OpenClaw、Cursor、Antigravity、Cline、Kimi、Qwen、Grok Build、GitHub Copilot 等）的 Token 用量与 AI 工具额度，具备实时多设备同步与历史使用趋势功能，并支持按工具、设备、模型或 session 分项显示。
 
 ## 支持的工具
 
@@ -35,6 +35,7 @@ Token Monitor 对「Token 用量」「账户额度」和「session 明细」分�
 | Logo | 工具 | 数据路径 | Token 用量 | AI 工具额度 | session 明细 |
 |:---:|------|-----------|:---:|:---:|:---:|
 | <img src=".github/assets/tools-icon/claude.png" width="28" alt="Claude Code" /> | Claude Code | `~/.claude/projects/`、`~/.claude/transcripts/` | ✅ | ✅ | ✅ |
+| <img src=".github/assets/tools-icon/claude-desktop.png" width="28" alt="Claude Desktop" /> | Claude Desktop | Local Agent / Cowork：`%LOCALAPPDATA%/Claude*/local-agent-mode-sessions/`、`~/Library/Application Support/Claude*/local-agent-mode-sessions/`（不含普通 claude.ai 聊天） | ✅ | ✅（复用 Claude 账号额度） | ✅ |
 | <img src=".github/assets/tools-icon/codex.png" width="28" alt="Codex" /> | Codex | `~/.codex/sessions/` | ✅ | ✅ | ✅ |
 | <img src=".github/assets/tools-icon/opencode.png" width="28" alt="OpenCode" /> | OpenCode | `~/.local/share/opencode/` | ✅ | ✅ | ✅ |
 | <img src=".github/assets/tools-icon/hermes-agent.png" width="28" alt="Hermes Agent" /> | Hermes Agent | `$HERMES_HOME/state.db` 或 `~/.hermes/state.db` | ✅ | — | — |
@@ -68,11 +69,11 @@ Token Monitor 对「Token 用量」「账户额度」和「session 明细」分�
 
 ## 功能特性
 
-- **实时 Token 追踪**：覆盖 Claude Code、Codex、Hermes Agent、OpenCode、OpenClaw、Cursor、Antigravity、Cline、Kimi、Qwen、Grok Build、GitHub Copilot、Pi、Zed、Kilo Code、MiMo Code、ZCode、Kiro、CodeBuddy、WorkBuddy、Proma（每轮对话后 UI 在数秒内刷新）
+- **实时 Token 追踪**：覆盖 Claude Code、Claude Desktop、Codex、Hermes Agent、OpenCode、OpenClaw、Cursor、Antigravity、Cline、Kimi、Qwen、Grok Build、GitHub Copilot、Pi、Zed、Kilo Code、MiMo Code、ZCode、Kiro、CodeBuddy、WorkBuddy、Proma（每轮对话后 UI 在数秒内刷新）
 - **WSL 用量（Windows）**：在运行中的 WSL 发行版里使用的 AI 工具用量会自动识别并并入总量（随定期扫描刷新，约每 5 分钟一次）
 - **多设备实时同步**：通过 Server-Sent Events 推送
 - **分组统计视图**：可按工具、设备、模型、session 或账户额度分组
-- **单个 session 明细**：点进 Claude Code、Codex 或 OpenCode 的 session，可看每条提问的 Token 消耗，并展开查看每次回复的 Token 拆分与用到的工具（打开时才实时读取本机 transcript 或数据库，绝不同步）
+- **单个 session 明细**：点进 Claude Code、Claude Desktop、Codex 或 OpenCode 的 session，可看每条提问的 Token 消耗，并展开查看每次回复的 Token 拆分与用到的工具（打开时才实时读取本机 transcript 或数据库，绝不同步）
 - **缓存命中统计**：点击任何工具或模型以展开查看输入 Token（缓存命中与未命中）、输出 Token 的详细分类及命中率百分比
 - **成本分项**：Token 数量旁附带成本统计
 - **以你的币别显示成本**：可用 USD、TWD、HKD 或 CNY 显示成本；汇率每日自动更新，也可在设置中手动覆写

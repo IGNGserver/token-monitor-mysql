@@ -20,6 +20,13 @@ const cursorAuth = require('./cursorAuth');
 const { findSessionFiles, codexSessionFile } = require('./sessionFiles');
 const opencodeSession = require('./opencodeSession');
 const { buildPromaHistoryGraph, buildPromaPeriods, collectPromaRows } = require('./promaUsage');
+const {
+  buildClaudeDesktopHistoryGraph,
+  buildClaudeDesktopPeriods,
+  buildClaudeDesktopRangeJson,
+  collectClaudeDesktopRows,
+  desktopSessionWatchDirs
+} = require('./claudeDesktopUsage');
 const { hashKey } = require('./hashKey');
 const { filterPeriodByCustomRange, normalizeCustomRange } = require('./customRange');
 const { hostOsInfo, normalizeOsInfo } = require('./osVersion');
@@ -228,6 +235,19 @@ async function resolvePromaPricing(rows, options = {}) {
 
 function resetPromaPricingCache() {
   promaPricingCache.clear();
+}
+
+// Clients parsed from local transcripts rather than tokscale --client.
+const LOCAL_PARSED_CLIENTS = new Set(['proma', 'claude-desktop']);
+
+function tokscaleClientsCsv(normalizedClients) {
+  return normalizedClients
+    ? normalizedClients.split(',').filter((c) => !LOCAL_PARSED_CLIENTS.has(c)).join(',')
+    : normalizedClients;
+}
+
+function includesLocalClient(normalizedClients, clientId) {
+  return Boolean(normalizedClients) && normalizedClients.split(',').includes(clientId);
 }
 
 function localTodayKey(date = new Date()) {
@@ -576,6 +596,10 @@ async function collectHistoryOnce(options) {
     rawGraphs.push(options.promaGraph);
     histories.push(normalizeHistory(parseGraphResult(options.promaGraph), { capDays, todayKey }));
   }
+  if (options.claudeDesktopGraph) {
+    rawGraphs.push(options.claudeDesktopGraph);
+    histories.push(normalizeHistory(parseGraphResult(options.claudeDesktopGraph), { capDays, todayKey }));
+  }
   if (options.dailyHistoryArchiveEnabled) {
     try {
       const retainedGraph = retainDailyHistory(rawGraphs, {
@@ -630,11 +654,12 @@ async function collectUsageOnce(options) {
     options.homeDir || os.homedir(),
     { ...localSessionMetadataDeps, retryMisses, resolveProjects: projectsEnabled }
   );
-  // tokscale doesn't know about Proma yet — filter it out of the subprocess
-  // calls so --client doesn't reject an unknown value. Proma is parsed
-  // separately below and merged back in.
-  const tokscaleClients = normalizedClients ? normalizedClients.split(',').filter((c) => c !== 'proma').join(',') : normalizedClients;
-  const includesProma = normalizedClients.split(',').includes('proma');
+  // Local-only clients (Proma, Claude Desktop Local Agent) are not accepted by
+  // tokscale --client. Filter them out of subprocess calls and parse/merge them
+  // separately below.
+  const tokscaleClients = tokscaleClientsCsv(normalizedClients);
+  const includesProma = includesLocalClient(normalizedClients, 'proma');
+  const includesClaudeDesktop = includesLocalClient(normalizedClients, 'claude-desktop');
   let today = emptyPeriod();
   let month = emptyPeriod();
   let allTime = emptyPeriod();
@@ -643,6 +668,9 @@ async function collectUsageOnce(options) {
   let promaPeriods = null;
   let promaRows = null;
   let promaPricing = null;
+  let claudeDesktopPeriods = null;
+  let claudeDesktopRows = null;
+  let claudeDesktopPricing = null;
   if (normalizedClients) {
     await maybeSyncCursor(tokscaleClients, options.logger, { force: options.forceCursorSync === true });
     await maybeSyncAntigravity(tokscaleClients, options.logger, options.homeDir || os.homedir());
@@ -664,6 +692,29 @@ async function collectUsageOnce(options) {
         if (typeof options.logger === 'function') options.logger(`proma parse failed: ${err.message}`);
       }
     }
+    if (includesClaudeDesktop) {
+      try {
+        claudeDesktopRows = collectClaudeDesktopRows({ homeDir: options.homeDir || os.homedir() });
+        claudeDesktopPricing = await resolvePromaPricing(claudeDesktopRows, {
+          lookupModelPricing: options.lookupModelPricing,
+          commandTimeoutMs: options.pricingTimeoutMs ?? Math.min(commandTimeoutMs || PROMA_PRICING_LOOKUP_TIMEOUT_MS, PROMA_PRICING_LOOKUP_TIMEOUT_MS),
+          pricingRevision: options.pricingRevision
+        });
+        const desktopJson = buildClaudeDesktopPeriods({
+          now: collectedAt,
+          allTimeSince,
+          rows: claudeDesktopRows,
+          pricingByModel: claudeDesktopPricing
+        });
+        claudeDesktopPeriods = {
+          today: extractUsageFromTokscale(desktopJson.today),
+          month: extractUsageFromTokscale(desktopJson.month),
+          allTime: extractUsageFromTokscale(desktopJson.allTime)
+        };
+      } catch (err) {
+        if (typeof options.logger === 'function') options.logger(`claude-desktop parse failed: ${err.message}`);
+      }
+    }
     if (anchorUsed) {
       // Anchored tick (watch-triggered): every tokscale period scan costs the
       // same full load + filter, so scan only --today and update the broader
@@ -673,9 +724,10 @@ async function collectUsageOnce(options) {
         today = extractUsageFromTokscale(todayJson);
       }
       // The persisted anchor contains every Windows-side client, including
-      // locally parsed Proma. Include its fresh today usage before deriving
+      // locally parsed clients. Include their fresh today usage before deriving
       // broader windows so base + (fresh today - anchor today) stays exact.
       if (promaPeriods) today = mergePeriods(today, promaPeriods.today);
+      if (claudeDesktopPeriods) today = mergePeriods(today, claudeDesktopPeriods.today);
       month = applyPeriodDelta(anchor.month, today, anchor.today);
       allTime = applyPeriodDelta(anchor.allTime, today, anchor.today);
     } else if (tokscaleClients) {
@@ -712,6 +764,11 @@ async function collectUsageOnce(options) {
       today = mergePeriods(today, promaPeriods.today);
       month = mergePeriods(month, promaPeriods.month);
       allTime = mergePeriods(allTime, promaPeriods.allTime);
+    }
+    if (claudeDesktopPeriods && !anchorUsed) {
+      today = mergePeriods(today, claudeDesktopPeriods.today);
+      month = mergePeriods(month, claudeDesktopPeriods.month);
+      allTime = mergePeriods(allTime, claudeDesktopPeriods.allTime);
     }
   }
 
@@ -829,6 +886,7 @@ async function collectUsageOnce(options) {
     const history = await collectHistoryOnce({
       clients: tokscaleClients,
       promaGraph: includesProma ? buildPromaHistoryGraph({ rows: promaRows || collectPromaRows(), pricingByModel: promaPricing || {} }) : null,
+      claudeDesktopGraph: includesClaudeDesktop ? buildClaudeDesktopHistoryGraph({ rows: claudeDesktopRows || collectClaudeDesktopRows({ homeDir: options.homeDir || os.homedir() }), pricingByModel: claudeDesktopPricing || {} }) : null,
       historyEnabled: options.historyEnabled,
       commandTimeoutMs: options.historyTimeoutMs,
       capDays: options.historyCapDays,
@@ -932,6 +990,8 @@ function clientWatchCandidates(clientsCsv) {
   add('workbuddy', path.join(home, '.workbuddy', 'projects'));
   // Proma — session transcripts at ~/.proma/agent-sessions/*.jsonl
   add('proma', path.join(home, '.proma', 'agent-sessions'));
+  // Claude Desktop Local Agent / Cowork sessions (not regular claude.ai chat)
+  add('claude-desktop', ...desktopSessionWatchDirs({ homeDir: home }));
   // Kiro (AWS): tokscale reads home-relative roots — the sessions tree used by
   // both CLI and IDE, the Kiro IDE globalStorage root (native macOS / Linux /
   // Windows), and the kiro-cli sqlite dir. None falls back to a host-absolute
@@ -1406,18 +1466,61 @@ async function collectCustomRangeOnce(options = {}) {
   const projectsEnabled = options.projectsEnabled !== false;
   const runTokscaleFn = options.runTokscale || runTokscale;
   const normalizedClients = normalizeClientsCsv(clients);
-  const tokscaleClients = normalizedClients
-    ? normalizedClients.split(',').filter((c) => c !== 'proma').join(',')
-    : normalizedClients;
-  if (!tokscaleClients) {
+  const tokscaleClients = tokscaleClientsCsv(normalizedClients);
+  const includesProma = includesLocalClient(normalizedClients, 'proma');
+  const includesClaudeDesktop = includesLocalClient(normalizedClients, 'claude-desktop');
+  const homeDir = options.homeDir || os.homedir();
+  let period = emptyPeriod();
+
+  if (tokscaleClients) {
+    const flags = ['--since', range.since, '--until', range.until];
+    const json = await runTokscaleFn({ clients: tokscaleClients, flags, commandTimeoutMs });
+    period = extractUsageFromTokscale(json);
+  }
+
+  if (includesProma) {
+    try {
+      const { buildTokscaleJson } = require('./promaUsage');
+      const promaRows = collectPromaRows();
+      const promaPricing = await resolvePromaPricing(promaRows, {
+        lookupModelPricing: options.lookupModelPricing,
+        commandTimeoutMs: options.pricingTimeoutMs ?? Math.min(commandTimeoutMs || PROMA_PRICING_LOOKUP_TIMEOUT_MS, PROMA_PRICING_LOOKUP_TIMEOUT_MS),
+        pricingRevision: options.pricingRevision
+      });
+      const rangedRows = promaRows.filter((row) => {
+        if (!row.createdAt) return false;
+        return row.createdAt >= range.startMs && row.createdAt <= range.endMs;
+      });
+      const promaPeriod = extractUsageFromTokscale(buildTokscaleJson({}, {
+        rows: rangedRows,
+        pricingByModel: promaPricing,
+        includeUndated: false
+      }));
+      period = mergePeriods(period, promaPeriod);
+    } catch (err) {
+      if (typeof options.logger === 'function') options.logger(`proma custom-range parse failed: ${err.message}`);
+    }
+  }
+
+  if (includesClaudeDesktop) {
+    try {
+      const desktopRows = collectClaudeDesktopRows({ homeDir });
+      const desktopPricing = await resolvePromaPricing(desktopRows, {
+        lookupModelPricing: options.lookupModelPricing,
+        commandTimeoutMs: options.pricingTimeoutMs ?? Math.min(commandTimeoutMs || PROMA_PRICING_LOOKUP_TIMEOUT_MS, PROMA_PRICING_LOOKUP_TIMEOUT_MS),
+        pricingRevision: options.pricingRevision
+      });
+      const desktopJson = buildClaudeDesktopRangeJson(range, { rows: desktopRows, pricingByModel: desktopPricing });
+      period = mergePeriods(period, extractUsageFromTokscale(desktopJson));
+    } catch (err) {
+      if (typeof options.logger === 'function') options.logger(`claude-desktop custom-range parse failed: ${err.message}`);
+    }
+  }
+
+  if (!tokscaleClients && !includesProma && !includesClaudeDesktop) {
     return { range, period: emptyPeriod(), updatedAt: new Date().toISOString() };
   }
 
-  const flags = ['--since', range.since, '--until', range.until];
-  const json = await runTokscaleFn({ clients: tokscaleClients, flags, commandTimeoutMs });
-  let period = extractUsageFromTokscale(json);
-
-  const homeDir = options.homeDir || os.homedir();
   const localSessionMetadataDeps = {
     ...(options.sessionMetadataDeps || {}),
     metadataCache: new Map(),

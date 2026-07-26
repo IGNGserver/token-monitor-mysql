@@ -23,6 +23,7 @@ import kotlin.math.abs
 object ClientBranding {
   val labels: Map<String, String> = mapOf(
     "claude" to "Claude Code",
+    "claude-desktop" to "Claude Desktop",
     "codex" to "Codex",
     "hermes" to "Hermes",
     "gemini" to "Gemini",
@@ -64,6 +65,7 @@ object ClientBranding {
 
   private val colors: Map<String, Color> = mapOf(
     "claude" to Color(0xFFCC7C5E),
+    "claude-desktop" to Color(0xFFD4927A),
     "codex" to Color(0xFF49A3B0),
     "hermes" to Color(0xFFD4AF37),
     "gemini" to Color(0xFF4285F4),
