@@ -5,12 +5,9 @@
 ## What's changed
 
 <!-- app-update-notes:en:start -->
-### Added
-- **Claude Desktop Local Agent / Cowork tracking:** New default-tracked client `claude-desktop` (separate from Claude Code). Reads real Local Agent transcript `message.usage` under Desktop app data, with today/month/all-time totals, history, custom date ranges, project labels, costs, and session detail — same feature set as other tools. Regular claude.ai chat remains out of scope.
-- **Android More-page haptics:** Every action button on the Android “More” page now provides vibration feedback.
-
 ### Fixed
-- **Windows custom date range empty results:** Restores data after selecting a custom date range on desktop (Windows).
+- **Claude Desktop usage missing after upgrade:** Existing installs that already had a saved tools list now one-time auto-enable the new default client `claude-desktop` (Local Agent / Cowork). Later manual disable is preserved.
+- **Hub URL without scheme:** Entering a bare domain or IP on desktop/agent/Android now defaults to `http://` (existing `http://` / `https://` values are left unchanged).
 <!-- app-update-notes:en:end -->
 
 ## Download
@@ -58,12 +55,9 @@ open-source: https://github.com/junhoyeo/tokscale
 ## 更新内容
 
 <!-- app-update-notes:zh:start -->
-### 新增
-- **Claude Desktop Local Agent / Cowork 监测：** 新增默认跟踪客户端 `claude-desktop`（与 Claude Code 分离）。从 Desktop 本地 Local Agent 会话 transcript 读取真实 `message.usage`，支持今日/本月/全部、历史曲线、自定义日期、项目标签、费用估算与 session 明细，功能类别与其他工具一致。普通 claude.ai 聊天仍不在监测范围。
-- **Android「更多」页振动反馈：** 「更多」页面各操作按钮均提供振动反馈。
-
 ### 修复
-- **Windows 自定义日期选择后无数据：** 修复桌面端（Windows）选择自定义日期后不显示数据的问题。
+- **升级后 Claude Desktop 用量不显示：** 已有安装若持久化了旧的工具列表，会一次性自动启用新增的默认客户端 `claude-desktop`（Local Agent / Cowork）；之后用户手动关闭会保持关闭。
+- **Hub 地址未写协议：** 桌面端 / Agent / Android 填写裸域名或 IP 时默认补全为 `http://`（已有 `http://` / `https://` 不变）。
 <!-- app-update-notes:zh:end -->
 
 ## 下载
