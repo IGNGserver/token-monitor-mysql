@@ -6,19 +6,12 @@
 
 <!-- app-update-notes:en:start -->
 ### Added
-- **Hub web dashboard + PWA:** The MySQL Hub now serves a same-port SaaS-style web UI (`http://host:17321`) with PWA install support for iOS / HarmonyOS and other devices without a native client.
-- **Hub Docker image on GHCR:** Releases publish `ghcr.io/igngserver/token-monitor-hub` (`latest`, `<version>`, `v<version>`) plus `Token-Monitor-Hub-Compose-<version>.zip`. Deploy with `docker compose pull && docker compose up -d` (no local image build required).
-- **OpenRouter multi-account limits:** Track OpenRouter usage/limits alongside other providers.
-- **Windows glass modes:** Acrylic, Mica, Mica Alt, and Accent backdrop options for the desktop widget.
-- **Tray composer / layout:** Richer tray text composition and layout controls.
-- **Device runtime & breakdown:** Clearer per-device runtime status and usage breakdown presentation.
-- **Automatic app updates UI:** In-app update presentation for desktop releases.
-- **SignPath Windows packaging pipeline:** Release workflow prepares/signs Windows artifacts via SignPath-compatible steps when configured.
-- **Credential store isolation:** Provider credentials are isolated more safely across accounts/providers.
+- **Hub Web / Android analytics parity:** Port more desktop analytics surfaces to the Hub web dashboard and Android app — client/provider status, plan & workspace identity, OpenRouter branding, contribution heatmap, active days, session 200, incomplete projects, home return navigation, stacked trend charts, tool→model drilldown, custom hour ranges, limit tone cues, home limit account counts, WSL/device runtime breakdown, and full `/api/history` support.
+- **Optional Hub HTTPS/TLS:** `TOKEN_MONITOR_TLS_CERT` / `TOKEN_MONITOR_TLS_KEY` / `TOKEN_MONITOR_TLS_CA` enable same-port HTTPS so true PWA install works for phones opening the hub by LAN IP.
+- **PWA maskable icons:** Add maskable 192/512 icons for better home-screen install on mobile.
 
 ### Changed
-- **Upstream v0.35 parity:** Ports core desktop/shared improvements from token-monitor v0.35 while keeping fork-only MySQL Hub, Android, custom hour ranges, and IGNGserver release metadata.
-- **Compose default path:** Root `docker-compose.yml` pulls the published Hub image by default; local source builds use `docker-compose.build.yml`.
+- **Portable multi-surface experience:** Hub web and Android stay aligned with desktop analytics workflows while preserving fork-only MySQL Hub, custom hour ranges, tray/desktop glass, and IGNGserver release packaging.
 <!-- app-update-notes:en:end -->
 
 ## Download
@@ -67,19 +60,12 @@ open-source: https://github.com/junhoyeo/tokscale
 
 <!-- app-update-notes:zh:start -->
 ### 新增
-- **Hub 网页仪表板 + PWA：** MySQL Hub 在同一端口提供 SaaS 风格网页（`http://主机:17321`），支持 PWA，方便 iOS / 鸿蒙等无官方客户端的设备查看数据。
-- **Hub Docker 镜像（GHCR）：** 随 Release 发布 `ghcr.io/igngserver/token-monitor-hub`（`latest` / `<version>` / `v<version>`）以及 `Token-Monitor-Hub-Compose-<version>.zip`。部署使用 `docker compose pull && docker compose up -d`，无需本机构建镜像。
-- **OpenRouter 多账号额度：** 可与其他供应商一样查看 OpenRouter 用量/额度。
-- **Windows 毛玻璃模式：** 桌面小组件支持 Acrylic、Mica、Mica Alt、Accent。
-- **托盘文案编排 / 布局：** 更丰富的托盘文本组合与布局控制。
-- **设备运行时与拆分展示：** 更清晰的设备状态与用量拆分。
-- **自动更新界面：** 桌面端应用内更新展示。
-- **SignPath Windows 打包流水线：** 在配置密钥后，Release 可走 SignPath 兼容的签名步骤。
-- **凭据隔离：** 供应商账号凭据隔离更安全。
+- **Hub 网页 / Android 分析能力对齐：** 将更多桌面端分析能力移植到 Hub 网页与 Android —— 客户端/供应商状态、套餐与工作区身份、OpenRouter 品牌、贡献热力图、活跃天数、会话 200、未完成项目、返回首页导航、堆叠趋势图、工具→模型下钻、自定义小时范围、额度色阶提示、首页额度账号数、WSL/设备运行时拆分，以及完整 `/api/history` 支持。
+- **可选 Hub HTTPS/TLS：** 通过 `TOKEN_MONITOR_TLS_CERT` / `TOKEN_MONITOR_TLS_KEY` / `TOKEN_MONITOR_TLS_CA` 启用同端口 HTTPS，便于手机用局域网 IP 打开时真正安装 PWA。
+- **PWA maskable 图标：** 补充 192/512 maskable 图标，改善移动端主屏安装效果。
 
 ### 变更
-- **对齐上游 v0.35：** 合入 token-monitor v0.35 的桌面/共享能力，同时保留本 fork 的 MySQL Hub、Android、自定义小时范围与 IGNGserver 发布元数据。
-- **Compose 默认拉镜像：** 根目录 `docker-compose.yml` 默认拉取已发布 Hub 镜像；本地源码构建使用 `docker-compose.build.yml`。
+- **多端便携体验：** Hub 网页与 Android 更贴近桌面端分析工作流，同时保留本 fork 的 MySQL Hub、自定义小时范围、桌面毛玻璃/托盘，以及 IGNGserver 发布打包链路。
 <!-- app-update-notes:zh:end -->
 
 ## 下载
