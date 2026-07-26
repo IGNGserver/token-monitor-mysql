@@ -1,6 +1,19 @@
 package com.igng.tokenmonitor.android.ui.components
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import com.igng.tokenmonitor.android.data.model.HistoryBreakdownDto
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -323,4 +336,118 @@ private fun shortDayLabel(date: String): String {
 private fun shortMonthLabel(month: String): String {
   val parts = month.split("-")
   return if (parts.size >= 2) "${parts[0].takeLast(2)}/${parts[1]}" else month
+}
+
+
+enum class TrendStackMode { Client, Model }
+
+private val stackPalette = listOf(
+  Color(0xFF4C6EF5),
+  Color(0xFF12B886),
+  Color(0xFFF59F00),
+  Color(0xFFE64980),
+  Color(0xFF7950F2),
+  Color(0xFF15AABF),
+  Color(0xFF82C91E),
+  Color(0xFFFF922B)
+)
+
+@Composable
+fun StackedDailyTrendChart(
+  days: List<HistoryDayDto>,
+  stackMode: TrendStackMode,
+  modifier: Modifier = Modifier,
+  maxKeys: Int = 6
+) {
+  if (days.isEmpty()) return
+  val hasBreakdown = days.any {
+    if (stackMode == TrendStackMode.Model) it.perModel.isNotEmpty() else it.perClient.isNotEmpty()
+  }
+  if (!hasBreakdown) {
+    Text(
+      "完整历史尚未包含 client/model 堆叠（将回退到总量趋势）。连接 Hub 后会自动拉取 /api/history。",
+      style = MaterialTheme.typography.bodySmall,
+      color = MaterialTheme.colorScheme.onSurfaceVariant,
+      modifier = modifier
+    )
+    return
+  }
+
+  val totals = linkedMapOf<String, Double>()
+  for (day in days) {
+    val map = if (stackMode == TrendStackMode.Model) day.perModel else day.perClient
+    for ((key, value) in map) {
+      totals[key] = (totals[key] ?: 0.0) + value.tokens
+    }
+  }
+  val topKeys = totals.entries.sortedByDescending { it.value }.take(maxKeys).map { it.key }
+  if (topKeys.isEmpty()) return
+  val colorMap = topKeys.mapIndexed { index, key -> key to stackPalette[index % stackPalette.size] }.toMap()
+  val maxTotal = days.maxOf { day ->
+    val map = if (stackMode == TrendStackMode.Model) day.perModel else day.perClient
+    topKeys.sumOf { key -> map[key]?.tokens ?: 0.0 }.coerceAtLeast(day.tokens)
+  }.coerceAtLeast(1.0)
+
+  Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Text(
+      if (stackMode == TrendStackMode.Model) "按模型堆叠" else "按客户端堆叠",
+      style = MaterialTheme.typography.titleSmall
+    )
+    Canvas(
+      modifier = Modifier
+        .fillMaxWidth()
+        .height(160.dp)
+    ) {
+      val barCount = days.size.coerceAtLeast(1)
+      val slot = size.width / barCount
+      val barW = (slot * 0.62f).coerceAtLeast(2f)
+      days.forEachIndexed { index, day ->
+        val map = if (stackMode == TrendStackMode.Model) day.perModel else day.perClient
+        var y = size.height
+        val x = index * slot + (slot - barW) / 2f
+        for (key in topKeys) {
+          val tokens = map[key]?.tokens ?: 0.0
+          if (tokens <= 0.0) continue
+          val h = ((tokens / maxTotal) * size.height).toFloat().coerceAtLeast(1f)
+          y -= h
+          drawRect(
+            color = colorMap.getValue(key),
+            topLeft = Offset(x, y),
+            size = Size(barW, h)
+          )
+        }
+      }
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+      topKeys.forEach { key ->
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+          Canvas(Modifier.width(10.dp).height(10.dp)) {
+            drawRect(colorMap.getValue(key))
+          }
+          Text(
+            key,
+            style = MaterialTheme.typography.labelMedium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f)
+          )
+          Text(
+            formatCompact(totals[key] ?: 0.0),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+          )
+        }
+      }
+    }
+  }
+}
+
+private fun formatCompact(value: Double): String {
+  val n = value
+  return when {
+    n >= 1_000_000_000 -> String.format("%.1fB", n / 1_000_000_000.0)
+    n >= 1_000_000 -> String.format("%.1fM", n / 1_000_000.0)
+    n >= 1_000 -> String.format("%.1fK", n / 1_000.0)
+    else -> n.toLong().toString()
+  }
 }

@@ -41,8 +41,10 @@ import com.igng.tokenmonitor.android.ui.devices.DeviceDetailScreen
 import com.igng.tokenmonitor.android.ui.devices.DevicesScreen
 import com.igng.tokenmonitor.android.ui.more.MoreHubScreen
 import com.igng.tokenmonitor.android.ui.more.PricingScreen
+import com.igng.tokenmonitor.android.ui.more.ProjectsScreen
 import com.igng.tokenmonitor.android.ui.more.SessionDetailScreen
 import com.igng.tokenmonitor.android.ui.more.SessionsScreen
+import com.igng.tokenmonitor.android.ui.more.StatusScreen
 import com.igng.tokenmonitor.android.ui.more.SettingsScreen
 import com.igng.tokenmonitor.android.ui.overview.OverviewScreen
 import android.net.Uri
@@ -96,6 +98,16 @@ fun TokenMonitorApp(
     }
   }
 
+  val navigateHome: () -> Unit = {
+    navController.navigate("overview") {
+      popUpTo(navController.graph.findStartDestination().id) {
+        saveState = true
+      }
+      launchSingleTop = true
+      restoreState = true
+    }
+  }
+
   Surface(color = MaterialTheme.colorScheme.background) {
     Scaffold(
       snackbarHost = { SnackbarHost(snackbarHost) },
@@ -141,13 +153,28 @@ fun TokenMonitorApp(
           MoreHubScreen(navController)
         }
         composable("sessions") {
-          SessionsScreen(hubState.stats, navController)
+          SessionsScreen(hubState.stats, navController, onHome = navigateHome)
+        }
+        composable("status") {
+          StatusScreen(
+            stats = hubState.stats,
+            onBack = { navController.popBackStack() },
+            onHome = navigateHome
+          )
+        }
+        composable("projects") {
+          ProjectsScreen(
+            stats = hubState.stats,
+            onBack = { navController.popBackStack() },
+            onHome = navigateHome
+          )
         }
         composable("pricing") {
           PricingScreen(
             state = hubState,
             viewModel = hubViewModel,
-            onBack = { navController.popBackStack() }
+            onBack = { navController.popBackStack() },
+            onHome = navigateHome
           )
         }
         composable("settings") {
@@ -155,6 +182,7 @@ fun TokenMonitorApp(
             state = connectionState,
             viewModel = connectionViewModel,
             restartRealtime = hubViewModel::restartRealtime,
+            onHome = navigateHome,
             onBack = {
               if (!navController.popBackStack()) {
                 navController.navigate("overview") {
@@ -168,14 +196,16 @@ fun TokenMonitorApp(
           SessionDetailScreen(
             stats = hubState.stats,
             key = Uri.decode(backStack.arguments?.getString("key").orEmpty()),
-            onBack = { navController.popBackStack() }
+            onBack = { navController.popBackStack() },
+            onHome = navigateHome
           )
         }
         composable("device/{id}") { backStack ->
           val id = Uri.decode(backStack.arguments?.getString("id").orEmpty())
           DeviceDetailScreen(
             device = hubState.devices.firstOrNull { it.deviceId == id },
-            onBack = { navController.popBackStack() }
+            onBack = { navController.popBackStack() },
+            onHome = navigateHome
           )
         }
         composable("client/{id}") { backStack ->
@@ -183,7 +213,8 @@ fun TokenMonitorApp(
           ClientDetailScreen(
             clientId = id,
             state = hubState,
-            onBack = { navController.popBackStack() }
+            onBack = { navController.popBackStack() },
+            onHome = navigateHome
           )
         }
         composable("model/{id}") { backStack ->
@@ -191,7 +222,8 @@ fun TokenMonitorApp(
           ModelDetailScreen(
             modelId = id,
             state = hubState,
-            onBack = { navController.popBackStack() }
+            onBack = { navController.popBackStack() },
+            onHome = navigateHome
           )
         }
       }

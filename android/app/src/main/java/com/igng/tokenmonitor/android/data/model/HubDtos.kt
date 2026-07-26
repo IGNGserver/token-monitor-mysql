@@ -18,15 +18,15 @@ data class StatsDto(
   val periods: PeriodsDto = PeriodsDto(),
   val devices: List<DeviceDto> = emptyList(),
   val projectsIncomplete: Boolean? = null,
-  val historyPreview: HistoryPreviewDto? = null,
+  val historyPreview: HistoryDto? = null,
   val limits: LimitsDto? = null
 )
 
 @Serializable
-data class HistoryPreviewDto(
-  val daily: List<HistoryDayDto> = emptyList(),
-  val monthly: List<HistoryMonthDto> = emptyList(),
-  val summary: HistorySummaryDto = HistorySummaryDto()
+data class HistoryBreakdownDto(
+  val tokens: Double = 0.0,
+  val cost: Double = 0.0,
+  val messages: Double = 0.0
 )
 
 @Serializable
@@ -34,7 +34,9 @@ data class HistoryDayDto(
   val date: String = "",
   val tokens: Double = 0.0,
   val cost: Double = 0.0,
-  val activeTimeMs: Double = 0.0
+  val activeTimeMs: Double = 0.0,
+  val perClient: Map<String, HistoryBreakdownDto> = emptyMap(),
+  val perModel: Map<String, HistoryBreakdownDto> = emptyMap()
 )
 
 @Serializable
@@ -42,8 +44,20 @@ data class HistoryMonthDto(
   val month: String = "",
   val tokens: Double = 0.0,
   val cost: Double = 0.0,
-  val activeTimeMs: Double = 0.0
+  val activeTimeMs: Double = 0.0,
+  val perClient: Map<String, HistoryBreakdownDto> = emptyMap(),
+  val perModel: Map<String, HistoryBreakdownDto> = emptyMap()
 )
+
+/** Full /api/history payload (includes perClient/perModel stacks). */
+@Serializable
+data class HistoryDto(
+  val daily: List<HistoryDayDto> = emptyList(),
+  val monthly: List<HistoryMonthDto> = emptyList(),
+  val summary: HistorySummaryDto = HistorySummaryDto()
+)
+
+typealias HistoryPreviewDto = HistoryDto
 
 @Serializable
 data class HistorySummaryDto(
@@ -71,19 +85,40 @@ data class LimitProviderDto(
   val accountKey: String? = null,
   val accountEmail: String? = null,
   val accountLabel: String? = null,
+  val accountName: String? = null,
+  val plan: String? = null,
+  val planType: String? = null,
+  val planLabel: String? = null,
+  val workspaceKind: String? = null,
   val status: String? = null,
   val source: String? = null,
   val updatedAt: String? = null,
   val balanceUsd: Double? = null,
   val balance: BalanceDto? = null,
+  val resetCredits: ResetCreditsDto? = null,
   val windows: List<LimitWindowDto> = emptyList()
 )
 
 @Serializable
 data class BalanceDto(
   val amount: Double? = null,
-  val currency: String? = null
+  val currency: String? = null,
+  val todaySpend: Double? = null,
+  val weekSpend: Double? = null,
+  val monthSpend: Double? = null,
+  val allTimeSpend: Double? = null
 )
+
+@Serializable
+data class ResetCreditsDto(
+  val availableCount: Double? = null,
+  val totalCount: Double? = null,
+  val available: Double? = null,
+  val total: Double? = null,
+  val remaining: Double? = null,
+  val limit: Double? = null
+)
+
 @Serializable
 data class LimitWindowDto(
   val kind: String = "",
@@ -96,6 +131,8 @@ data class LimitWindowDto(
   val resetsAt: String? = null,
   val windowMinutes: Double? = null,
   val resetDescription: String? = null,
+  val metric: String? = null,
+  val detail: String? = null,
   val showMeter: Boolean = true
 )
 
@@ -114,13 +151,26 @@ data class PeriodDto(
   val clientCosts: Map<String, Double> = emptyMap(),
   val models: Map<String, Long> = emptyMap(),
   val modelCosts: Map<String, Double> = emptyMap(),
+  val clientModels: Map<String, Map<String, Long>> = emptyMap(),
+  val clientModelCosts: Map<String, Map<String, Double>> = emptyMap(),
+  val projects: Map<String, ProjectDto> = emptyMap(),
   val sessions: Map<String, SessionDto> = emptyMap()
+)
+
+@Serializable
+data class ProjectDto(
+  val label: String? = null,
+  val tokens: Long = 0,
+  val costUsd: Double = 0.0,
+  val clients: Map<String, Long> = emptyMap()
 )
 
 @Serializable
 data class SessionDto(
   val client: String? = null,
   val sessionId: String? = null,
+  val projectId: String? = null,
+  val projectLabel: String? = null,
   val totalTokens: Long = 0,
   val costUsd: Double = 0.0,
   val messageCount: Long = 0,
@@ -139,11 +189,23 @@ data class DeviceDto(
   val deviceId: String? = null,
   val hostname: String? = null,
   val platform: String? = null,
+  val osName: String? = null,
+  val osVersion: String? = null,
+  val agentRuntime: String? = null,
   val updatedAt: String? = null,
   val receivedAt: String? = null,
   val stale: Boolean = false,
+  val clientStatus: Map<String, String> = emptyMap(),
+  val wslStatus: WslStatusDto? = null,
   val periods: PeriodsDto = PeriodsDto(),
   val limits: LimitsDto? = null
+)
+
+@Serializable
+data class WslStatusDto(
+  val state: String? = null,
+  val detected: List<String> = emptyList(),
+  val withData: List<String> = emptyList()
 )
 
 @Serializable

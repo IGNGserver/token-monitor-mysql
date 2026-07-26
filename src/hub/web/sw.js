@@ -1,5 +1,5 @@
 /* Token Monitor hub web shell — cache app shell for offline reopen on mobile. */
-const CACHE = 'token-monitor-web-v2';
+const CACHE = 'token-monitor-web-v3';
 const PRECACHE = [
   '/',
   '/index.html',
@@ -13,7 +13,9 @@ const PRECACHE = [
   '/favicon.png',
   '/icons/icon-192.png',
   '/icons/icon-512.png',
-  '/icons/apple-touch-icon.png'
+  '/icons/apple-touch-icon.png',
+  '/icons/icon-192-maskable.png',
+  '/icons/icon-512-maskable.png'
 ];
 
 self.addEventListener('install', (event) => {

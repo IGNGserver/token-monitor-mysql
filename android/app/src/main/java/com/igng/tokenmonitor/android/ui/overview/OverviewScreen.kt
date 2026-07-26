@@ -22,9 +22,12 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -35,6 +38,9 @@ import androidx.compose.ui.unit.dp
 import com.igng.tokenmonitor.android.data.model.DeviceDto
 import com.igng.tokenmonitor.android.ui.HubUiState
 import com.igng.tokenmonitor.android.ui.components.AppCard
+import com.igng.tokenmonitor.android.ui.components.countActiveDays
+import com.igng.tokenmonitor.android.ui.components.HeatmapMetric
+import com.igng.tokenmonitor.android.ui.components.ContributionHeatmap
 import com.igng.tokenmonitor.android.ui.components.CompactMetricCard
 import com.igng.tokenmonitor.android.ui.components.DailyTrendChart
 import com.igng.tokenmonitor.android.ui.components.DeviceComparisonChart
@@ -53,6 +59,7 @@ import com.igng.tokenmonitor.android.ui.components.formatTokensShort
 import com.igng.tokenmonitor.android.ui.components.formatUsd
 import com.igng.tokenmonitor.android.ui.components.takeRange
 import com.igng.tokenmonitor.android.ui.components.topShareEntries
+import com.igng.tokenmonitor.android.ui.PreferencesViewModel
 import com.igng.tokenmonitor.android.ui.haptics.HapticEvent
 import com.igng.tokenmonitor.android.ui.haptics.rememberAppHaptics
 
@@ -63,8 +70,10 @@ fun OverviewScreen(
   onRefresh: () -> Unit,
   onOpenAnalytics: () -> Unit,
   onOpenDevices: () -> Unit,
-  onOpenSettings: () -> Unit
+  onOpenSettings: () -> Unit,
+  preferencesViewModel: PreferencesViewModel = hiltViewModel()
 ) {
+  val prefs by preferencesViewModel.preferences.collectAsStateWithLifecycle()
   val haptics = rememberAppHaptics()
   val refreshState = rememberPullRefreshState(refreshing = state.isLoading, onRefresh = {
     haptics.perform(HapticEvent.Refresh)
@@ -77,13 +86,27 @@ fun OverviewScreen(
   val devices = state.devices.sortedWith(
     compareBy<DeviceDto> { it.stale }.thenByDescending { it.periods.today.totalTokens }
   )
-  val historyDays = state.stats?.historyPreview?.daily.orEmpty().takeRange(TrendRange.Days7)
-  val summary = state.stats?.historyPreview?.summary
+  val historySource = state.history ?: state.stats?.historyPreview
+  val historyDays = historySource?.daily.orEmpty().takeRange(TrendRange.Days7)
+  val summary = historySource?.summary
   var trendMetricIndex by rememberSaveable { mutableIntStateOf(0) }
   val trendMetric = when (trendMetricIndex) {
     1 -> TrendMetric.Cost
     2 -> TrendMetric.Dual
     else -> TrendMetric.Tokens
+  }
+  var activeDaysWindow by rememberSaveable { mutableStateOf("all") }
+  var heatmapMetric by rememberSaveable { mutableStateOf("cost") }
+  val heatMetric = if (heatmapMetric == "tokens") HeatmapMetric.Tokens else HeatmapMetric.Cost
+  val historyDailyAll = historySource?.daily.orEmpty()
+  val displayActiveDays = countActiveDays(historyDailyAll, activeDaysWindow)
+  val summaryActiveDays = summary?.activeDays
+  val activeDaysValue = if (activeDaysWindow == "year") {
+    displayActiveDays.toString()
+  } else if (summaryActiveDays != null && summaryActiveDays.isFinite()) {
+    summaryActiveDays.toLong().toString()
+  } else {
+    displayActiveDays.toString()
   }
 
   Box(
@@ -170,9 +193,46 @@ fun OverviewScreen(
                 Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
               ) {
-                SummaryChip("活跃天", summary.activeDays.toLong().toString(), Modifier.weight(1f))
+                SummaryChip("活跃天", activeDaysValue, Modifier.weight(1f))
                 SummaryChip("连胜", "${summary.currentStreak.toLong()} 天", Modifier.weight(1f))
                 SummaryChip("峰值日", formatTokensShort(summary.peakDayTokens.toLong()), Modifier.weight(1f))
+              }
+            }
+          }
+
+          item {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+              listOf("all" to "全部活跃天", "year" to "近一年").forEach { (key, label) ->
+                FilterChip(
+                  selected = activeDaysWindow == key,
+                  onClick = {
+                    haptics.perform(HapticEvent.Selection)
+                    activeDaysWindow = key
+                  },
+                  label = { Text(label) }
+                )
+              }
+            }
+          }
+
+          if (historyDailyAll.isNotEmpty()) {
+            item {
+              AppCard {
+                SectionHeader(
+                  title = "贡献热力图",
+                  subtitle = "近 90 天",
+                  actionLabel = "分析",
+                  onAction = onOpenAnalytics
+                )
+                Spacer(Modifier.height(8.dp))
+                ContributionHeatmap(
+                  daily = historyDailyAll,
+                  metric = heatMetric,
+                  onMetricChange = { next ->
+                    haptics.perform(HapticEvent.Selection)
+                    heatmapMetric = if (next == HeatmapMetric.Tokens) "tokens" else "cost"
+                  }
+                )
               }
             }
           }
@@ -207,7 +267,7 @@ fun OverviewScreen(
           }
 
           // —— Screen 2: limits ——
-          item { LimitsSection(state.stats?.limits) }
+          item { LimitsSection(state.stats?.limits, maxAccounts = prefs.homeLimitAccountCount) }
 
           // —— Screen 3: share + devices ——
           if (clientShares.isNotEmpty()) {

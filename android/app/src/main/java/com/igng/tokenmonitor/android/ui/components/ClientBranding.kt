@@ -58,7 +58,8 @@ object ClientBranding {
     "zaiteam" to "Z.ai Team",
     "cohere" to "Cohere",
     "volcengine" to "Volcengine",
-    "qoder" to "Qoder"
+    "qoder" to "Qoder",
+    "openrouter" to "OpenRouter"
   )
 
   private val colors: Map<String, Color> = mapOf(
@@ -99,6 +100,7 @@ object ClientBranding {
     "cohere" to Color(0xFF39594D),
     "volcengine" to Color(0xFF006EFF),
     "qoder" to Color(0xFF2ADB5C),
+    "openrouter" to Color(0xFF6B57FF),
     "default" to Color(0xFF6AB4F0)
   )
 

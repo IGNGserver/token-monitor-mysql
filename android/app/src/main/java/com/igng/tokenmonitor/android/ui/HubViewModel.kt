@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.igng.tokenmonitor.android.data.model.BatchPricingResponseDto
 import com.igng.tokenmonitor.android.data.model.DeviceDto
+import com.igng.tokenmonitor.android.data.model.HistoryDto
 import com.igng.tokenmonitor.android.data.model.PeriodDto
 import com.igng.tokenmonitor.android.data.model.PricingDto
 import com.igng.tokenmonitor.android.data.model.PricingRequestDto
@@ -35,6 +36,7 @@ data class CustomRangeSelection(
 
 data class HubUiState(
   val stats: StatsDto? = null,
+  val history: HistoryDto? = null,
   val devices: List<DeviceDto> = emptyList(),
   val pricing: List<PricingDto> = emptyList(),
   val isLoading: Boolean = false,
@@ -58,12 +60,23 @@ class HubViewModel @Inject constructor(private val repository: HubRepository) : 
 
   fun refreshAll() {
     refreshStats()
+    refreshHistory()
     refreshDevices()
     refreshPricing()
     val current = _state.value
     if (current.analyticsPeriod == AnalyticsPeriodKind.Custom && current.customRange != null) {
       val range = current.customRange
       loadCustomRange(range.startDate, range.endDate, range.startHour, range.endHour, range.label)
+    }
+  }
+
+  
+  fun refreshHistory() = viewModelScope.launch {
+    when (val result = repository.history()) {
+      is HubResult.Success -> _state.value = _state.value.copy(history = result.value)
+      is HubResult.Failure -> {
+        // Non-fatal: trends can still use historyPreview totals.
+      }
     }
   }
 
@@ -172,7 +185,7 @@ class HubViewModel @Inject constructor(private val repository: HubRepository) : 
     val state = _state.value
     return when (state.analyticsPeriod) {
       AnalyticsPeriodKind.Custom -> state.customRangeResult?.clientModels?.get(clientId).orEmpty()
-      else -> emptyMap()
+      else -> currentSharePeriod()?.clientModels?.get(clientId).orEmpty()
     }
   }
 
@@ -180,7 +193,7 @@ class HubViewModel @Inject constructor(private val repository: HubRepository) : 
     val state = _state.value
     return when (state.analyticsPeriod) {
       AnalyticsPeriodKind.Custom -> state.customRangeResult?.clientModelCosts?.get(clientId).orEmpty()
-      else -> emptyMap()
+      else -> currentSharePeriod()?.clientModelCosts?.get(clientId).orEmpty()
     }
   }
 
@@ -229,7 +242,9 @@ private fun UsageRangeDto.toPeriodDto(): PeriodDto = PeriodDto(
   clients = clients,
   clientCosts = clientCosts,
   models = models,
-  modelCosts = modelCosts
+  modelCosts = modelCosts,
+  clientModels = clientModels,
+  clientModelCosts = clientModelCosts
 )
 
 fun formatRangeLabel(startDate: String, endDate: String, startHour: Int, endHour: Int): String {

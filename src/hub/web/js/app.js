@@ -18,16 +18,27 @@ import {
   toDatetimeLocalValue
 } from './format.js';
 import {
-  clientIconPath,
-  clientLabel,
-  deviceRows,
-  historyDaily,
-  limitCards,
+  toolRows,
+  mapRows,
   modelRows,
-  platformLabel,
   projectRows,
   sessionRows,
-  toolRows
+  deviceRows,
+  limitCards,
+  historyDaily,
+  clientLabel,
+  clientIconPath,
+  devicePlatformLabel,
+  countActiveDays,
+  heatmapValue,
+  deviceBreakdownRows,
+  agentRuntimeLabel,
+  clientStatusEntries,
+  wslStatusSummary,
+  statusRows,
+  limitRemainingTone,
+  clampHomeLimitAccountCount,
+  modelColor
 } from './data.js';
 
 const VIEWS = [
@@ -38,6 +49,7 @@ const VIEWS = [
   { id: 'project', icon: '◫' },
   { id: 'session', icon: '☰' },
   { id: 'limits', icon: '◔' },
+  { id: 'status', icon: '◉' },
   { id: 'trends', icon: '∿' }
 ];
 
@@ -49,9 +61,15 @@ const els = {
   streamStatus: document.getElementById('streamStatus'),
   streamStatusText: document.getElementById('streamStatusText'),
   settingsOpen: document.getElementById('settingsOpen'),
+  settingsOpenTop: document.getElementById('settingsOpenTop'),
   menuToggle: document.getElementById('menuToggle'),
+  pwaBanner: document.getElementById('pwaBanner'),
+  pwaBannerText: document.getElementById('pwaBannerText'),
+  pwaInstallBtn: document.getElementById('pwaInstallBtn'),
+  pwaDismissBtn: document.getElementById('pwaDismissBtn'),
   pageTitle: document.getElementById('pageTitle'),
   pageMeta: document.getElementById('pageMeta'),
+  homeReturnBtn: document.getElementById('homeReturnBtn'),
   periodTabs: document.getElementById('periodTabs'),
   customRangeBtn: document.getElementById('customRangeBtn'),
   refreshBtn: document.getElementById('refreshBtn'),
@@ -69,6 +87,7 @@ const els = {
   languageSelect: document.getElementById('languageSelect'),
   themeSelect: document.getElementById('themeSelect'),
   currencySelect: document.getElementById('currencySelect'),
+  homeLimitAccountCount: document.getElementById('homeLimitAccountCount'),
   settingsSecret: document.getElementById('settingsSecret'),
   saveSettingsBtn: document.getElementById('saveSettingsBtn'),
   signOutBtn: document.getElementById('signOutBtn'),
@@ -94,6 +113,12 @@ const state = {
     period: 'today',
     trendsRange: '30',
     trendsStack: 'client',
+    heatmapMetric: 'cost',
+    activeDaysWindow: 'all',
+    homeLimitAccountCount: 3,
+    selectedDeviceId: '',
+    selectedToolId: '',
+    deviceDetailPeriod: 'today',
     ...loadPrefs()
   },
   secret: loadSecret(),
@@ -105,7 +130,10 @@ const state = {
   customPeriod: null,
   stream: 'offline',
   stopStream: null,
-  toastTimer: null
+  toastTimer: null,
+  navOpen: false,
+  deferredInstall: null,
+  pwaDismissed: localStorage.getItem('token-monitor.hub.pwaDismissed') === '1'
 };
 
 function tr(key, params) {
@@ -184,7 +212,57 @@ function openSettings(open) {
     els.languageSelect.value = state.prefs.language || 'auto';
     els.themeSelect.value = state.prefs.theme || 'system';
     els.currencySelect.value = state.prefs.currency || 'USD';
+    if (els.homeLimitAccountCount) {
+      els.homeLimitAccountCount.value = String(clampHomeLimitAccountCount(state.prefs.homeLimitAccountCount, 3));
+    }
     els.settingsSecret.value = state.secret || '';
+  }
+}
+
+
+function isMobileNav() {
+  return window.matchMedia('(max-width: 860px)').matches;
+}
+
+function openNav(open) {
+  state.navOpen = Boolean(open) && isMobileNav();
+  els.app.classList.toggle('nav-open', state.navOpen);
+  document.body.classList.toggle('nav-open', state.navOpen);
+  if (els.navScrim) els.navScrim.classList.toggle('hidden', !state.navOpen);
+  if (els.menuToggle) els.menuToggle.setAttribute('aria-expanded', state.navOpen ? 'true' : 'false');
+}
+
+function isStandaloneDisplay() {
+  return window.matchMedia('(display-mode: standalone)').matches
+    || window.navigator.standalone === true;
+}
+
+function pwaStatusText() {
+  if (isStandaloneDisplay()) return tr('pwa.status.installed');
+  if (!window.isSecureContext) return tr('pwa.status.insecure');
+  if (!('serviceWorker' in navigator)) return tr('pwa.status.unsupported');
+  if (state.deferredInstall) return tr('pwa.status.ready');
+  return tr('pwa.status.hint');
+}
+
+function refreshPwaUi() {
+  if (els.aboutLine) {
+    const base = `Token Monitor hub web · ${state.health?.now ? new Date(state.health.now).toLocaleString(state.locale) : 'ready'}`;
+    els.aboutLine.textContent = `${base} · ${pwaStatusText()}`;
+  }
+  if (!els.pwaBanner) return;
+  const canPrompt = Boolean(state.deferredInstall) && !state.pwaDismissed && !isStandaloneDisplay();
+  const showInsecureHint = !window.isSecureContext && !state.pwaDismissed && !isStandaloneDisplay() && isMobileNav();
+  if (canPrompt) {
+    if (els.pwaBannerText) els.pwaBannerText.textContent = tr('pwa.hint');
+    if (els.pwaInstallBtn) els.pwaInstallBtn.classList.remove('hidden');
+    els.pwaBanner.classList.remove('hidden');
+  } else if (showInsecureHint) {
+    if (els.pwaBannerText) els.pwaBannerText.textContent = tr('pwa.insecure');
+    if (els.pwaInstallBtn) els.pwaInstallBtn.classList.add('hidden');
+    els.pwaBanner.classList.remove('hidden');
+  } else {
+    els.pwaBanner.classList.add('hidden');
   }
 }
 
@@ -225,7 +303,13 @@ function renderChrome() {
     ? tr('period.custom')
     : tr(`period.${state.prefs.period}`);
   els.pageMeta.textContent = `${periodLabel} · ${devices} ${tr('stats.devices').toLowerCase()}`;
-  els.aboutLine.textContent = `Token Monitor hub web · ${state.health?.now ? new Date(state.health.now).toLocaleString(state.locale) : 'ready'}`;
+  if (els.homeReturnBtn) {
+    const onHome = state.prefs.view === 'home';
+    els.homeReturnBtn.classList.toggle('hidden', onHome);
+    els.homeReturnBtn.title = tr('home.return');
+    els.homeReturnBtn.setAttribute('aria-label', tr('home.return'));
+  }
+  refreshPwaUi();
 }
 
 function rowHtml(row, { showIcon = false, sub } = {}) {
@@ -273,6 +357,36 @@ function escapeHtml(value) {
     .replaceAll('<', '&lt;')
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;');
+}
+
+function segButtons(options, current, dataAttr) {
+  return options.map(([value, label]) => `
+    <button type="button" class="seg-btn ${String(current) === String(value) ? 'active' : ''}" data-${dataAttr}="${value}">${label}</button>
+  `).join('');
+}
+
+function shareBarHtml(rows) {
+  if (!rows.length) return emptyHtml('empty.usage');
+  return `<div class="stack">${rows.map((row) => `
+    <div class="share-row">
+      <div class="row">
+        <div class="row-main">
+          ${row.client || row.key
+            ? `<img class="client-icon" src="${clientIconPath(row.client || row.key)}" alt="" onerror="this.style.display='none'" />`
+            : `<span class="swatch" style="background:${row.color}"></span>`}
+          <div class="row-copy">
+            <div class="row-name">${escapeHtml(row.name)}</div>
+            <div class="row-sub">${Math.round(row.percent || 0)}%</div>
+          </div>
+        </div>
+        <div class="row-metrics">
+          <div class="row-value">${formatNumber(row.value)}</div>
+          <div class="row-cost">${formatCost(row.cost, state.prefs.currency)}</div>
+        </div>
+      </div>
+      <div class="share-meter"><span style="width:${Math.max(0, Math.min(100, row.percent || 0))}%; background:${row.color}"></span></div>
+    </div>
+  `).join('')}</div>`;
 }
 
 function renderHero() {
@@ -333,8 +447,18 @@ function renderHome() {
   const tools = toolRows(period).slice(0, 5);
   const models = modelRows(period).slice(0, 5);
   const devices = deviceRows(state.stats, state.customPeriod ? 'today' : state.prefs.period).slice(0, 5);
-  const limits = limitCards(state.stats).slice(0, 4);
-  const daily = historyDaily(historySource(), 14);
+  const limits = limitCards(state.stats, state.locale).slice(0, clampHomeLimitAccountCount(state.prefs.homeLimitAccountCount, 3));
+  const history = historySource();
+  const daily = historyDaily(history, 14);
+  const heatDaily = historyDaily(history, 90);
+  const heatMetric = state.prefs.heatmapMetric === 'tokens' ? 'tokens' : 'cost';
+  const activeDaysWindow = state.prefs.activeDaysWindow === 'year' ? 'year' : 'all';
+  const summary = history?.summary || null;
+  const displayActiveDays = countActiveDays(history?.daily || [], activeDaysWindow);
+  const summaryActiveDays = Number(summary?.activeDays);
+  const activeDaysValue = activeDaysWindow === 'year'
+    ? displayActiveDays
+    : (Number.isFinite(summaryActiveDays) ? summaryActiveDays : displayActiveDays);
 
   const toolsBody = tools.length
     ? `<div class="stack">${tools.map((row) => rowHtml({ ...row, client: row.key }, { showIcon: true, sub: `${Math.round((row.value / Math.max(1, period.totalTokens || 0)) * 100)}%` })).join('')}</div>`
@@ -343,25 +467,44 @@ function renderHome() {
     ? `<div class="stack">${models.map((row) => rowHtml(row, { sub: `${Math.round((row.value / Math.max(1, period.totalTokens || 0)) * 100)}%` })).join('')}</div>`
     : emptyHtml('empty.usage');
   const devicesBody = devices.length
-    ? `<div class="stack">${devices.map((row) => rowHtml(row, { sub: `${platformLabel(row.platform)}${row.stale ? ` · ${tr('devices.stale')}` : ''}` })).join('')}</div>`
+    ? `<div class="stack">${devices.map((row) => rowHtml(row, { sub: `${row.platformDisplay || devicePlatformLabel(row.platform, row.osName, row.osVersion)}${row.stale ? ` · ${tr('devices.stale')}` : ''}` })).join('')}</div>`
     : emptyHtml('empty.usage');
   const limitsBody = limits.length
     ? `<div class="stack">${limits.map((card) => `
         <div class="row">
           <div class="row-main">
-            <span class="swatch" style="background:${card.color}"></span>
+            <img class="client-icon" src="${clientIconPath(card.provider)}" alt="" onerror="this.style.display='none'" />
             <div class="row-copy">
               <div class="row-name">${escapeHtml(card.name)}</div>
-              <div class="row-sub">${escapeHtml(clientLabel(card.provider))}${card.plan ? ` · ${escapeHtml(card.plan)}` : ''}</div>
+              <div class="row-sub">${escapeHtml(clientLabel(card.provider))}${card.plan ? ` · ${escapeHtml(card.plan)}` : ''}${card.accountEmail && card.name !== card.accountEmail ? ` · ${escapeHtml(card.accountEmail)}` : ''}</div>
             </div>
           </div>
           <div class="row-metrics">
-            <div class="row-value">${card.lowestRemaining == null ? '—' : `${Math.round(card.lowestRemaining)}%`}</div>
+            <div class="row-value remaining-tone remaining-tone-${card.lowestRemaining == null ? 'unknown' : limitRemainingTone(card.lowestRemaining)}">${card.lowestRemaining == null ? '—' : `${Math.round(card.lowestRemaining)}%`}</div>
             <div class="row-cost">${card.stale ? tr('devices.stale') : tr('devices.live')}</div>
           </div>
         </div>
       `).join('')}</div>`
     : emptyHtml('empty.limits');
+
+  const summaryBody = (summary || heatDaily.length)
+    ? `
+      <div class="summary-grid">
+        <div class="summary-chip"><span class="summary-label">${tr('home.activeDays')}</span><strong>${formatNumber(activeDaysValue)}</strong></div>
+        <div class="summary-chip"><span class="summary-label">${tr('home.streak')}</span><strong>${formatNumber(summary?.currentStreak || 0)}</strong></div>
+        <div class="summary-chip"><span class="summary-label">${tr('home.peakDay')}</span><strong>${formatCompact(summary?.peakDayTokens || 0)}</strong></div>
+      </div>
+      <div class="toolbar-row">
+        <div class="seg" role="group" aria-label="${tr('home.heatmapMetric')}">
+          ${segButtons([['tokens', tr('stats.tokens')], ['cost', tr('stats.cost')]], heatMetric, 'heatmap-metric')}
+        </div>
+        <div class="seg" role="group" aria-label="${tr('home.activeDaysWindow')}">
+          ${segButtons([['all', tr('home.activeDaysWindow.all')], ['year', tr('home.activeDaysWindow.year')]], activeDaysWindow, 'active-days-window')}
+        </div>
+      </div>
+      ${renderHeatmap(heatDaily, heatMetric)}
+    `
+    : emptyHtml('empty.history');
 
   return `
     <div class="grid-2">
@@ -370,7 +513,56 @@ function renderHome() {
       ${panel(tr('home.devices'), devicesBody)}
       ${panel(tr('home.limits'), limitsBody)}
     </div>
+    ${panel(tr('home.summary'), summaryBody)}
     ${panel(tr('home.activity'), renderSparkline(daily), daily.length ? `${daily.length}d` : '')}
+  `;
+}
+
+
+function renderTools() {
+  const period = activePeriod();
+  const tools = toolRows(period).map((row) => ({ ...row, client: row.key }));
+  if (!tools.length) return emptyHtml('empty.usage');
+  const selectedId = state.prefs.selectedToolId || tools[0].key;
+  const selected = tools.find((row) => row.key === selectedId) || tools[0];
+  const modelMap = period?.clientModels?.[selected.key] || {};
+  const modelCostMap = period?.clientModelCosts?.[selected.key] || {};
+  const models = mapRows(modelMap, modelCostMap, {
+    labelFor: (key) => key,
+    colorFor: (key) => modelColor(key)
+  });
+  const toolList = tools.map((row) => {
+    const active = row.key === selected.key ? ' selected' : '';
+    return `
+      <button type="button" class="tool-select-row${active}" data-select-tool="${escapeHtml(row.key)}">
+        <div class="row-main">
+          <img class="client-icon" src="${clientIconPath(row.key)}" alt="" onerror="this.style.display='none'" />
+          <div class="row-copy">
+            <div class="row-name">${escapeHtml(row.name)}</div>
+            <div class="row-sub">${Math.round((row.value / Math.max(1, period.totalTokens || 0)) * 100)}%</div>
+          </div>
+        </div>
+        <div class="row-side">
+          <div class="row-value">${formatNumber(row.value)}</div>
+          <div class="row-cost">${formatCost(row.cost, state.prefs.currency)}</div>
+        </div>
+      </button>`;
+  }).join('');
+
+  return `
+    <div class="grid-2 tools-layout">
+      <section class="panel">
+        <div class="panel-head"><h2 class="panel-title">${tr('nav.tool')}</h2></div>
+        <div class="stack tool-select-list">${toolList}</div>
+      </section>
+      <section class="panel">
+        <div class="panel-head">
+          <h2 class="panel-title">${escapeHtml(selected.name)}</h2>
+          <div class="panel-meta tiny">${tr('tools.models')}</div>
+        </div>
+        ${models.length ? shareBarHtml(models.slice(0, 16)) : emptyHtml('empty.usage')}
+      </section>
+    </div>
   `;
 }
 
@@ -382,86 +574,178 @@ function renderListView(rows, emptyKey, { showIcon = false } = {}) {
   })).join('')}</div>`;
 }
 
+
+function renderDeviceStatusBlocks(device) {
+  const clientEntries = clientStatusEntries(device?.clientStatus || device?.raw?.clientStatus);
+  const wsl = wslStatusSummary(device?.wslStatus || device?.raw?.wslStatus);
+  const parts = [];
+  if (clientEntries.length) {
+    const tags = clientEntries.map((entry) => {
+      const tone = entry.state === 'active' ? 'ok' : (entry.state === 'waiting' ? 'warn' : 'stale');
+      const label = tr(`devices.status.${entry.state}`);
+      return `<span class="badge ${tone}">${escapeHtml(clientLabel(entry.client))} · ${escapeHtml(label)}</span>`;
+    }).join('');
+    parts.push(`<div class="status-block"><div class="row-sub">${tr('devices.clientStatus')}</div><div class="status-tags">${tags}</div></div>`);
+  }
+  if (wsl) {
+    const stateLabel = tr(`devices.wsl.${wsl.state}`);
+    const detail = [
+      wsl.detected.length ? `${tr('devices.wsl.detected')}: ${wsl.detected.map(clientLabel).join(', ')}` : '',
+      wsl.withData.length ? `${tr('devices.wsl.withData')}: ${wsl.withData.map(clientLabel).join(', ')}` : ''
+    ].filter(Boolean).join(' · ');
+    parts.push(`<div class="status-block"><div class="row-sub">${tr('devices.wslStatus')}</div><div class="status-tags"><span class="badge ${wsl.state === 'active' ? 'ok' : 'warn'}">${escapeHtml(stateLabel)}</span></div>${detail ? `<div class="row-sub" style="margin-top:6px">${escapeHtml(detail)}</div>` : ''}</div>`);
+  }
+  return parts.length ? `<div class="device-status-stack">${parts.join('')}</div>` : '';
+}
+
 function renderDevices() {
-  const rows = deviceRows(state.stats, state.customPeriod ? 'today' : state.prefs.period);
+  const periodKey = state.customPeriod ? 'today' : (state.prefs.deviceDetailPeriod || state.prefs.period || 'today');
+  const rows = deviceRows(state.stats, periodKey);
   if (!rows.length) return emptyHtml('empty.usage');
+  const selectedId = state.prefs.selectedDeviceId || rows[0].key;
+  const selected = rows.find((row) => row.key === selectedId) || rows[0];
+  const breakdown = deviceBreakdownRows(selected.raw || selected, periodKey);
+  const detailPeriod = state.prefs.deviceDetailPeriod || 'today';
+
   return `
-    <section class="panel">
-      <div class="panel-head"><h2 class="panel-title">${tr('devices.title')}</h2></div>
-      <div style="overflow:auto">
-        <table class="device-table">
-          <thead>
-            <tr>
-              <th>${tr('devices.id')}</th>
-              <th>${tr('devices.platform')}</th>
-              <th>${tr('devices.updated')}</th>
-              <th>${tr('devices.tokens')}</th>
-              <th>${tr('devices.actions')}</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${rows.map((row) => `
+    <div class="grid-2 devices-layout">
+      <section class="panel">
+        <div class="panel-head"><h2 class="panel-title">${tr('devices.title')}</h2></div>
+        <div style="overflow:auto">
+          <table class="device-table">
+            <thead>
               <tr>
-                <td>
-                  <div class="row-name">${escapeHtml(row.name)}</div>
-                  <div class="row-sub">${row.stale ? tr('devices.stale') : tr('devices.live')}${row.hostname ? ` · ${escapeHtml(row.hostname)}` : ''}</div>
-                </td>
-                <td>${escapeHtml(platformLabel(row.platform))}</td>
-                <td>${escapeHtml(formatRelative(row.updatedAt, state.locale))}</td>
-                <td>
-                  <div class="row-value">${formatNumber(row.value)}</div>
-                  <div class="row-cost">${formatCost(row.cost, state.prefs.currency)}</div>
-                </td>
-                <td>
-                  <div class="device-actions">
-                    <button type="button" class="danger-btn" data-delete-device="${escapeHtml(row.key)}">${tr('devices.delete')}</button>
-                  </div>
-                </td>
+                <th>${tr('devices.id')}</th>
+                <th>${tr('devices.platform')}</th>
+                <th>${tr('devices.updated')}</th>
+                <th>${tr('devices.tokens')}</th>
+                <th>${tr('devices.actions')}</th>
               </tr>
-            `).join('')}
-          </tbody>
-        </table>
-      </div>
-    </section>
+            </thead>
+            <tbody>
+              ${rows.map((row) => `
+                <tr class="${row.key === selected.key ? 'selected' : ''}" data-select-device="${escapeHtml(row.key)}">
+                  <td>
+                    <div class="row-name">${escapeHtml(row.name)}</div>
+                    <div class="row-sub">${row.stale ? tr('devices.stale') : tr('devices.live')}${(row.agentRuntimeLabel || agentRuntimeLabel(row.agentRuntime)) ? ` · ${escapeHtml(row.agentRuntimeLabel || agentRuntimeLabel(row.agentRuntime))}` : ''}${row.deviceId && row.deviceId !== row.name ? ` · ${escapeHtml(row.deviceId)}` : ''}</div>
+                  </td>
+                  <td>${escapeHtml(row.platformDisplay || devicePlatformLabel(row.platform, row.osName, row.osVersion))}</td>
+                  <td>${escapeHtml(formatRelative(row.updatedAt, state.locale))}</td>
+                  <td>
+                    <div class="row-value">${formatNumber(row.value)}</div>
+                    <div class="row-cost">${formatCost(row.cost, state.prefs.currency)}</div>
+                  </td>
+                  <td>
+                    <div class="device-actions">
+                      <button type="button" class="danger-btn" data-delete-device="${escapeHtml(row.key)}">${tr('devices.delete')}</button>
+                    </div>
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      </section>
+      <section class="panel">
+        <div class="panel-head">
+          <h2 class="panel-title">${escapeHtml(selected.name)}</h2>
+          <div class="panel-meta tiny">${escapeHtml([
+            selected.platformDisplay || devicePlatformLabel(selected.platform, selected.osName, selected.osVersion),
+            selected.agentRuntimeLabel || agentRuntimeLabel(selected.agentRuntime),
+            selected.stale ? tr('devices.stale') : tr('devices.live')
+          ].filter(Boolean).join(' · '))}</div>
+        </div>
+        <div class="toolbar-row">
+          <div class="seg" role="group" aria-label="${tr('devices.period')}">
+            ${segButtons([['today', tr('period.today')], ['month', tr('period.month')], ['allTime', tr('period.allTime')]], detailPeriod, 'device-period')}
+          </div>
+        </div>
+        <div class="summary-grid" style="margin:12px 0 16px">
+          <div class="summary-chip"><span class="summary-label">${tr('stats.tokens')}</span><strong>${formatNumber(breakdown.totalTokens)}</strong></div>
+          <div class="summary-chip"><span class="summary-label">${tr('stats.cost')}</span><strong>${formatCost(breakdown.totalCost, state.prefs.currency)}</strong></div>
+        </div>
+        ${renderDeviceStatusBlocks(selected)}
+        ${panel(tr('devices.tools'), shareBarHtml(breakdown.tools.slice(0, 12)) + (breakdown.tools.some((t) => t.models?.length) ? `<div class="device-tool-models">${breakdown.tools.filter((t) => t.models?.length).slice(0, 6).map((tool) => `<div class="status-block" style="margin-top:12px"><div class="row-sub">${escapeHtml(tool.name)}</div>${shareBarHtml(tool.models.slice(0, 6))}</div>`).join('')}</div>` : ''))}
+        ${panel(tr('devices.models'), shareBarHtml(breakdown.models.slice(0, 12)))}
+      </section>
+    </div>
+  `;
+}
+
+function localizeWindowLabel(window) {
+  if (window?.kind === 'balanceUsd') return tr('limits.balanceUsd');
+  if (window?.kind === 'balance') return tr('limits.balance');
+  if (window?.kind === 'resetCredits') return tr('limits.resetCredits');
+  return window?.label || '—';
+}
+
+function renderLimitCards(cards, { compact = false } = {}) {
+  if (!cards.length) return emptyHtml('empty.limits');
+  return `
+    <div class="grid-2">
+      ${cards.map((card) => {
+        const sub = [
+          clientLabel(card.provider),
+          card.plan || '',
+          card.source ? String(card.source).toUpperCase() : '',
+          card.accountEmail && card.name !== card.accountEmail ? card.accountEmail : ''
+        ].filter(Boolean).join(' · ');
+        return `
+        <article class="limit-card${compact ? ' limit-card-compact' : ''}">
+          <div class="limit-head">
+            <div class="row-main">
+              <img class="client-icon" src="${clientIconPath(card.provider)}" alt="" onerror="this.style.display='none'" />
+              <div class="row-copy">
+                <div class="row-name">${escapeHtml(card.name)}</div>
+                <div class="row-sub">${escapeHtml(sub)}</div>
+              </div>
+            </div>
+            <span class="badge ${card.stale ? 'stale' : (String(card.status).toLowerCase() === 'ok' ? 'ok' : 'warn')}">${card.stale ? tr('devices.stale') : escapeHtml(card.status)}</span>
+          </div>
+          <div class="limit-windows">
+            ${(card.windows.length ? card.windows : [{ label: '—', remaining: null, showMeter: false }]).map((window) => {
+              const showMeter = window.showMeter !== false && window.remaining != null;
+              const tone = showMeter ? limitRemainingTone(window.remaining) : 'unknown';
+              const primary = showMeter
+                ? `${Math.round(window.remaining)}%`
+                : (window.value || '—');
+              const metricHint = window.metric === 'credits' ? tr('limits.credits') : '';
+              const label = localizeWindowLabel(window);
+              return `
+              <div class="limit-window">
+                <div class="limit-window-label">
+                  <span>${escapeHtml(label)}${metricHint ? ` · ${escapeHtml(metricHint)}` : ''}</span>
+                  <strong class="remaining-tone remaining-tone-${tone}">${escapeHtml(String(primary))}</strong>
+                </div>
+                ${showMeter ? `<div class="meter meter-${limitRemainingTone(window.remaining)}"><span style="width:${Math.max(0, Math.min(100, window.remaining))}%"></span></div>` : '<div class="limit-balance-line"></div>'}
+                <div class="row-sub" style="margin-top:8px">
+                  ${window.value && showMeter ? escapeHtml(window.value) : ''}
+                  ${window.detail ? escapeHtml(window.detail) : ''}
+                  ${window.resetsAt ? `${tr('limits.reset')} ${escapeHtml(formatReset(window.resetsAt, state.locale))}` : ''}
+                </div>
+              </div>`;
+            }).join('')}
+          </div>
+        </article>`;
+      }).join('')}
+    </div>
   `;
 }
 
 function renderLimits() {
-  const cards = limitCards(state.stats);
-  if (!cards.length) return emptyHtml('empty.limits');
-  return `
-    <div class="grid-2">
-      ${cards.map((card) => `
-        <article class="limit-card">
-          <div class="limit-head">
-            <div class="row-main">
-              <span class="swatch" style="background:${card.color}"></span>
-              <div class="row-copy">
-                <div class="row-name">${escapeHtml(card.name)}</div>
-                <div class="row-sub">${escapeHtml(clientLabel(card.provider))}${card.plan ? ` · ${escapeHtml(card.plan)}` : ''}</div>
-              </div>
-            </div>
-            <span class="badge ${card.stale ? 'stale' : 'ok'}">${card.stale ? tr('devices.stale') : card.status}</span>
-          </div>
-          <div class="limit-windows">
-            ${(card.windows.length ? card.windows : [{ label: '—', remaining: null }]).map((window) => `
-              <div class="limit-window">
-                <div class="limit-window-label">
-                  <span>${escapeHtml(window.label)}</span>
-                  <strong>${window.remaining == null ? (window.value || '—') : `${Math.round(window.remaining)}%`}</strong>
-                </div>
-                <div class="meter"><span style="width:${window.remaining == null ? 0 : Math.max(0, Math.min(100, window.remaining))}%; background:${card.color}"></span></div>
-                <div class="row-sub" style="margin-top:8px">
-                  ${window.value && window.remaining != null ? escapeHtml(window.value) : ''}
-                  ${window.resetsAt ? `${tr('limits.reset')} ${escapeHtml(formatReset(window.resetsAt, state.locale))}` : ''}
-                </div>
-              </div>
-            `).join('')}
-          </div>
-        </article>
-      `).join('')}
-    </div>
-  `;
+  return renderLimitCards(limitCards(state.stats, state.locale));
+}
+
+function renderStatus() {
+  const rows = statusRows(state.stats, state.locale);
+  if (!rows.length) return emptyHtml('empty.status');
+  const summary = `
+    <div class="summary-grid" style="margin-bottom:16px">
+      <div class="summary-chip"><span class="summary-label">${tr('status.accounts')}</span><strong>${rows.length}</strong></div>
+      <div class="summary-chip"><span class="summary-label">${tr('status.okCount')}</span><strong>${rows.filter((r) => r.health === 'ok').length}</strong></div>
+      <div class="summary-chip"><span class="summary-label">${tr('status.warnCount')}</span><strong>${rows.filter((r) => r.health !== 'ok').length}</strong></div>
+    </div>`;
+  return panel(tr('nav.status'), summary + renderLimitCards(rows, { compact: true }));
 }
 
 function renderSparkline(daily) {
@@ -506,9 +790,10 @@ function renderSparkline(daily) {
   `;
 }
 
-function renderHeatmap(daily) {
+function renderHeatmap(daily, metric = 'tokens') {
   if (!daily.length) return emptyHtml('empty.history');
-  const values = daily.map((day) => Number(day.tokens || 0));
+  const heatMetric = metric === 'cost' ? 'cost' : 'tokens';
+  const values = daily.map((day) => heatmapValue(day, heatMetric));
   const max = Math.max(1, ...values);
   const cell = 12;
   const gap = 3;
@@ -528,8 +813,9 @@ function renderHeatmap(daily) {
     const dow = pos % 7;
     const tokens = Number(day.tokens || 0);
     const cost = Number(day.cost || 0);
-    const ratio = tokens / max;
-    const level = tokens <= 0 ? 0 : ratio < 0.25 ? 1 : ratio < 0.5 ? 2 : ratio < 0.75 ? 3 : 4;
+    const value = heatmapValue(day, heatMetric);
+    const ratio = value / max;
+    const level = value <= 0 ? 0 : ratio < 0.25 ? 1 : ratio < 0.5 ? 2 : ratio < 0.75 ? 3 : 4;
     const x = left + week * (cell + gap);
     const y = top + dow * (cell + gap);
     const tip = tipText([
@@ -537,7 +823,7 @@ function renderHeatmap(daily) {
       `${formatNumber(tokens)} ${tr('stats.tokens')}`,
       cost ? formatCost(cost, state.prefs.currency) : ''
     ]);
-    return `<rect class="heat lvl-${level} chart-hit" x="${x}" y="${y}" width="${cell}" height="${cell}" rx="3" data-tip="${escapeHtml(tip)}"></rect>`;
+    return `<rect class="heat heat-${heatMetric} lvl-${level} chart-hit" x="${x}" y="${y}" width="${cell}" height="${cell}" rx="3" data-tip="${escapeHtml(tip)}"></rect>`;
   }).join('');
   return `
     <div class="chart-wrap chart-wrap-heat">
@@ -650,29 +936,25 @@ function renderStackedBars(daily, stackBy) {
 }
 
 function renderTrends() {
+  const heatMetric = state.prefs.heatmapMetric === 'tokens' ? 'tokens' : 'cost';
   const daily = historyDaily(historySource(), state.prefs.trendsRange === 'all' ? 0 : state.prefs.trendsRange);
   return `
-    <section class="panel">
-      <div class="panel-head">
-        <h2 class="panel-title">${tr('nav.trends')}</h2>
-        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
-          <div class="seg" data-control="stack">
-            <button type="button" class="seg-btn ${state.prefs.trendsStack === 'client' ? 'active' : ''}" data-stack="client">${tr('trends.stack.client')}</button>
-            <button type="button" class="seg-btn ${state.prefs.trendsStack === 'model' ? 'active' : ''}" data-stack="model">${tr('trends.stack.model')}</button>
-          </div>
-          <div class="seg" data-control="range">
-            ${['7', '30', '90', '365', 'all'].map((range) => `
-              <button type="button" class="seg-btn ${String(state.prefs.trendsRange) === range ? 'active' : ''}" data-range="${range}">${range === 'all' ? 'All' : range}</button>
-            `).join('')}
-          </div>
-        </div>
+    <div class="toolbar-row">
+      <div class="seg">
+        <button type="button" class="seg-btn ${state.prefs.trendsStack === 'client' ? 'active' : ''}" data-stack="client">${tr('trends.stack.client')}</button>
+        <button type="button" class="seg-btn ${state.prefs.trendsStack === 'model' ? 'active' : ''}" data-stack="model">${tr('trends.stack.model')}</button>
       </div>
-      ${renderStackedBars(daily, state.prefs.trendsStack)}
-    </section>
-    <section class="panel">
-      <div class="panel-head"><h2 class="panel-title">${tr('home.activity')}</h2></div>
-      ${renderHeatmap(historyDaily(historySource(), 90))}
-    </section>
+      <div class="seg">
+        ${['7', '30', '90', 'all'].map((range) => `
+          <button type="button" class="seg-btn ${String(state.prefs.trendsRange) === range ? 'active' : ''}" data-range="${range}">${range === 'all' ? 'All' : range}</button>
+        `).join('')}
+      </div>
+      <div class="seg" role="group" aria-label="${tr('home.heatmapMetric')}">
+        ${segButtons([['tokens', tr('stats.tokens')], ['cost', tr('stats.cost')]], heatMetric, 'heatmap-metric')}
+      </div>
+    </div>
+    ${panel(tr('nav.trends'), renderStackedBars(daily, state.prefs.trendsStack))}
+    ${panel(tr('home.heatmap'), renderHeatmap(historyDaily(historySource(), 90), heatMetric))}
   `;
 }
 
@@ -683,7 +965,7 @@ function render() {
   let html;
   switch (state.prefs.view) {
     case 'tool':
-      html = panel(tr('nav.tool'), renderListView(toolRows(period).map((row) => ({ ...row, client: row.key })), 'empty.usage', { showIcon: true }));
+      html = renderTools();
       break;
     case 'device':
       html = renderDevices();
@@ -691,14 +973,37 @@ function render() {
     case 'model':
       html = panel(tr('nav.model'), renderListView(modelRows(period), 'empty.usage'));
       break;
-    case 'project':
-      html = panel(tr('nav.project'), renderListView(projectRows(period), 'empty.projects'));
+    case 'project': {
+      const projectData = projectRows(period, { incomplete: Boolean(state.stats?.projectsIncomplete) && state.prefs.period === 'allTime' });
+      const incompleteBanner = projectData.incomplete
+        ? `<div class="notice warn" style="margin-bottom:12px">${escapeHtml(tr('projects.incomplete'))}</div>`
+        : '';
+      html = panel(tr('nav.project'), incompleteBanner + renderListView(projectData.rows, 'empty.projects'));
       break;
-    case 'session':
-      html = panel(tr('nav.session'), renderListView(sessionRows(period).map((row) => ({ ...row, sub: `${row.sub || ''}${row.lastUsedAt ? ` · ${formatRelative(row.lastUsedAt, state.locale)}` : ''}` })), 'empty.sessions', { showIcon: true }));
+    }
+    case 'session': {
+      const sessionData = sessionRows(period);
+      const truncated = sessionData.truncated
+        ? `<div class="notice" style="margin-bottom:12px">${escapeHtml(tr('sessions.truncated', { shown: sessionData.rows.length, total: sessionData.total }))}</div>`
+        : '';
+      html = panel(
+        tr('nav.session'),
+        truncated + renderListView(
+          sessionData.rows.map((row) => ({
+            ...row,
+            sub: `${row.sub || ''}${row.lastUsedAt ? ` · ${formatRelative(row.lastUsedAt, state.locale)}` : ''}`
+          })),
+          'empty.sessions',
+          { showIcon: true }
+        )
+      );
       break;
+    }
     case 'limits':
       html = renderLimits();
+      break;
+    case 'status':
+      html = renderStatus();
       break;
     case 'trends':
       html = renderTrends();
@@ -827,11 +1132,21 @@ function clearCustomRange() {
 }
 
 function bindEvents() {
+  if (els.homeReturnBtn) {
+    els.homeReturnBtn.addEventListener('click', () => {
+      if (state.prefs.view === 'home') return;
+      state.prefs.view = 'home';
+      savePrefs({ view: 'home' });
+      openNav(false);
+      void ensureHistory().then(() => render());
+    });
+  }
   els.primaryNav.addEventListener('click', (event) => {
     const btn = event.target.closest('[data-view]');
     if (!btn) return;
     state.prefs.view = btn.dataset.view;
     savePrefs({ view: state.prefs.view });
+    openNav(false);
     if (state.prefs.view === 'trends' || state.prefs.view === 'home') {
       void ensureHistory().then(() => render());
       return;
@@ -904,6 +1219,41 @@ function bindEvents() {
       void deleteDevice(del.getAttribute('data-delete-device'));
       return;
     }
+    const heatmapMetric = event.target.closest('[data-heatmap-metric]');
+    if (heatmapMetric) {
+      state.prefs.heatmapMetric = heatmapMetric.dataset.heatmapMetric === 'tokens' ? 'tokens' : 'cost';
+      savePrefs({ heatmapMetric: state.prefs.heatmapMetric });
+      render();
+      return;
+    }
+    const activeDaysWindow = event.target.closest('[data-active-days-window]');
+    if (activeDaysWindow) {
+      state.prefs.activeDaysWindow = activeDaysWindow.dataset.activeDaysWindow === 'year' ? 'year' : 'all';
+      savePrefs({ activeDaysWindow: state.prefs.activeDaysWindow });
+      render();
+      return;
+    }
+    const selectTool = event.target.closest('[data-select-tool]');
+    if (selectTool) {
+      state.prefs.selectedToolId = selectTool.dataset.selectTool || '';
+      savePrefs({ selectedToolId: state.prefs.selectedToolId });
+      render();
+      return;
+    }
+    const selectDevice = event.target.closest('[data-select-device]');
+    if (selectDevice && !event.target.closest('[data-delete-device]')) {
+      state.prefs.selectedDeviceId = selectDevice.dataset.selectDevice || '';
+      savePrefs({ selectedDeviceId: state.prefs.selectedDeviceId });
+      render();
+      return;
+    }
+    const devicePeriod = event.target.closest('[data-device-period]');
+    if (devicePeriod) {
+      state.prefs.deviceDetailPeriod = devicePeriod.dataset.devicePeriod || 'today';
+      savePrefs({ deviceDetailPeriod: state.prefs.deviceDetailPeriod });
+      render();
+      return;
+    }
     const stack = event.target.closest('[data-stack]');
     if (stack) {
       state.prefs.trendsStack = stack.dataset.stack;
@@ -938,18 +1288,78 @@ function bindEvents() {
     if (event.target === els.rangePopover) openRange(false);
   });
 
-  els.settingsOpen.addEventListener('click', () => openSettings(true));
+  if (els.menuToggle) {
+    els.menuToggle.addEventListener('click', () => openNav(!state.navOpen));
+  }
+  if (els.navScrim) {
+    els.navScrim.addEventListener('click', () => openNav(false));
+  }
+  window.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') openNav(false);
+  });
+  window.addEventListener('resize', () => {
+    if (!isMobileNav()) openNav(false);
+    refreshPwaUi();
+  });
+
+  const openSettingsAndCloseNav = () => {
+    openNav(false);
+    openSettings(true);
+  };
+  els.settingsOpen.addEventListener('click', openSettingsAndCloseNav);
+  if (els.settingsOpenTop) {
+    els.settingsOpenTop.addEventListener('click', openSettingsAndCloseNav);
+  }
   els.settingsDrawer.querySelectorAll('[data-close-settings]').forEach((el) => {
     el.addEventListener('click', () => openSettings(false));
   });
+
+  window.addEventListener('beforeinstallprompt', (event) => {
+    event.preventDefault();
+    state.deferredInstall = event;
+    refreshPwaUi();
+  });
+  window.addEventListener('appinstalled', () => {
+    state.deferredInstall = null;
+    state.pwaDismissed = true;
+    localStorage.setItem('token-monitor.hub.pwaDismissed', '1');
+    refreshPwaUi();
+    showToast(tr('pwa.installed'));
+  });
+  if (els.pwaInstallBtn) {
+    els.pwaInstallBtn.addEventListener('click', async () => {
+      if (!state.deferredInstall) return;
+      const promptEvent = state.deferredInstall;
+      state.deferredInstall = null;
+      try {
+        await promptEvent.prompt();
+        await promptEvent.userChoice;
+      } catch {
+        /* user dismissed native sheet */
+      }
+      refreshPwaUi();
+    });
+  }
+  if (els.pwaDismissBtn) {
+    els.pwaDismissBtn.addEventListener('click', () => {
+      state.pwaDismissed = true;
+      localStorage.setItem('token-monitor.hub.pwaDismissed', '1');
+      refreshPwaUi();
+    });
+  }
   els.saveSettingsBtn.addEventListener('click', async () => {
     state.prefs.language = els.languageSelect.value;
     state.prefs.theme = els.themeSelect.value;
     state.prefs.currency = els.currencySelect.value;
+    if (els.homeLimitAccountCount) {
+      state.prefs.homeLimitAccountCount = clampHomeLimitAccountCount(els.homeLimitAccountCount.value, 3);
+      els.homeLimitAccountCount.value = String(state.prefs.homeLimitAccountCount);
+    }
     savePrefs({
       language: state.prefs.language,
       theme: state.prefs.theme,
-      currency: state.prefs.currency
+      currency: state.prefs.currency,
+      homeLimitAccountCount: state.prefs.homeLimitAccountCount
     });
     const nextSecret = els.settingsSecret.value.trim();
     const secretChanged = nextSecret !== state.secret;
@@ -987,10 +1397,15 @@ async function init() {
   bindEvents();
   renderChrome();
 
-  if ('serviceWorker' in navigator) {
-    try { await navigator.serviceWorker.register('/sw.js', { scope: '/' }); }
-    catch { /* optional on insecure origins */ }
+  if ('serviceWorker' in navigator && window.isSecureContext) {
+    try {
+      const reg = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
+      if (reg?.update) void reg.update();
+    } catch {
+      /* optional when the browser rejects the worker */
+    }
   }
+  refreshPwaUi();
 
   try {
     state.health = await fetchHealth();

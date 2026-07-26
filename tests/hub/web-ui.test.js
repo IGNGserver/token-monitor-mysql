@@ -85,7 +85,17 @@ test('hub serves the web UI on the same port without a secret', async () => {
 
     const appJs = await fetch(`${base}/js/app.js`);
     assert.equal(appJs.status, 200);
-    assert.match(await appJs.text(), /openStatsStream|serviceWorker/);
+    const appSource = await appJs.text();
+    assert.match(appSource, /openStatsStream|serviceWorker/);
+    assert.match(appSource, /function openNav\(/);
+    assert.match(appSource, /menuToggle/);
+    assert.match(appSource, /beforeinstallprompt/);
+
+    const manifestBody = body;
+    assert.equal(manifestBody.display, 'standalone');
+    assert.ok(Array.isArray(manifestBody.icons));
+    assert.ok(manifestBody.icons.some((icon) => String(icon.purpose || '').includes('maskable')));
+    assert.ok(manifestBody.icons.some((icon) => String(icon.purpose || '').includes('any')));
 
     // API routes remain JSON and still work beside the UI.
     const health = await (await fetch(`${base}/api/health`)).json();

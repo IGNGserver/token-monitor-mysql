@@ -47,6 +47,7 @@ private val providerLabels = mapOf(
   "zaiteam" to "Z.ai Team",
   "volcengine" to "Volcengine",
   "qoder" to "Qoder",
+  "openrouter" to "OpenRouter",
   "kimi" to "Kimi",
   "ollama" to "Ollama"
 )
@@ -67,13 +68,23 @@ fun windowKindLabel(kind: String): String = when (kind.lowercase(Locale.US)) {
 fun LimitsSection(
   limits: LimitsDto?,
   modifier: Modifier = Modifier,
-  title: String = "AI 工具限额"
+  title: String = "AI 工具限额",
+  includeAllProviders: Boolean = false,
+  maxAccounts: Int? = null
 ) {
-  val providers = limits?.providers.orEmpty().filter { provider ->
-    provider.windows.any { it.showMeter && windowUsedPercent(it) != null } ||
-      provider.balanceUsd != null ||
-      provider.balance?.amount != null
+  val raw = limits?.providers.orEmpty()
+  val filtered = if (includeAllProviders) {
+    raw
+  } else {
+    raw.filter { provider ->
+      provider.windows.any { it.showMeter && windowUsedPercent(it) != null } ||
+        provider.balanceUsd != null ||
+        provider.balance?.amount != null ||
+        provider.resetCredits != null ||
+        !provider.status.isNullOrBlank()
+    }
   }
+  val providers = if (maxAccounts != null) filtered.take(maxAccounts.coerceIn(1, 12)) else filtered
   if (providers.isEmpty()) return
 
   AppCard(modifier = modifier) {
@@ -84,13 +95,19 @@ fun LimitsSection(
     Spacer(Modifier.height(12.dp))
     providers.forEachIndexed { index, provider ->
       if (index > 0) Spacer(Modifier.height(14.dp))
-      LimitProviderCard(provider)
+      val peers = providers.filter {
+        it.provider.trim().equals(provider.provider.trim(), ignoreCase = true)
+      }
+      LimitProviderCard(provider, peers = peers)
     }
   }
 }
 
 @Composable
-private fun LimitProviderCard(provider: LimitProviderDto) {
+private fun LimitProviderCard(
+  provider: LimitProviderDto,
+  peers: List<LimitProviderDto> = emptyList()
+) {
   Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
     Row(
       Modifier.fillMaxWidth(),
@@ -98,49 +115,83 @@ private fun LimitProviderCard(provider: LimitProviderDto) {
       verticalAlignment = Alignment.CenterVertically
     ) {
       Column(Modifier.weight(1f)) {
+        val displayName = limitAccountDisplayName(provider, peers)
         Text(
-          providerDisplayName(provider.provider),
+          displayName,
           style = MaterialTheme.typography.titleSmall,
           fontWeight = FontWeight.SemiBold
         )
         val meta = buildList {
-          provider.accountLabel?.takeIf { it.isNotBlank() }?.let { add(it) }
-          provider.accountEmail?.takeIf { it.isNotBlank() }?.let { add(it) }
+          add(providerDisplayName(provider.provider))
+          limitPlanLabel(provider).takeIf { it.isNotBlank() }?.let { add(it) }
+          provider.source?.takeIf { it.isNotBlank() }?.let { add(it.uppercase(Locale.US)) }
+          provider.accountEmail
+            ?.takeIf { it.isNotBlank() && it != displayName }
+            ?.let { add(it) }
           provider.status?.takeIf { it.isNotBlank() }?.let { add(it) }
         }.joinToString(" · ")
         if (meta.isNotBlank()) {
           Text(
             meta,
-            style = MaterialTheme.typography.bodySmall,
+            style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1,
+            maxLines = 2,
             overflow = TextOverflow.Ellipsis
           )
         }
       }
-      val balanceLabel = provider.balanceUsd?.let { formatUsd(it, compact = true) }
-        ?: provider.balance?.let { bal ->
-          val amount = bal.amount ?: return@let null
-          val currency = bal.currency?.takeIf { it.isNotBlank() } ?: ""
-          if (currency.isNotEmpty()) "$currency ${String.format(java.util.Locale.US, "%.2f", amount)}"
-          else String.format(java.util.Locale.US, "%.2f", amount)
-        }
-      balanceLabel?.let { label ->
-        Text(
-          label,
-          style = MaterialTheme.typography.labelLarge,
-          color = MaterialTheme.colorScheme.primary
-        )
-      }
     }
 
-    val windows = provider.windows.filter { it.showMeter && windowUsedPercent(it) != null }
-    if (windows.isNotEmpty()) {
+    val balanceLines = buildList {
+      provider.balanceUsd?.let { add("USD 余额 " + formatMoneyAmount(it, "USD")) }
+      provider.balance?.let { balance ->
+        balance.amount?.let { amount ->
+          add("余额 " + formatMoneyAmount(amount, balance.currency))
+        }
+        balance.todaySpend?.let { spend ->
+          add("今日消耗 " + formatMoneyAmount(spend, balance.currency))
+        }
+        balance.weekSpend?.let { spend ->
+          add("本周消耗 " + formatMoneyAmount(spend, balance.currency))
+        }
+        balance.monthSpend?.let { spend ->
+          add("本月消耗 " + formatMoneyAmount(spend, balance.currency))
+        }
+        balance.allTimeSpend?.let { spend ->
+          add("累计消耗 " + formatMoneyAmount(spend, balance.currency))
+        }
+      }
+      val credits = provider.resetCredits
+      if (credits != null) {
+        val available = credits.availableCount ?: credits.available ?: credits.remaining
+        val total = credits.totalCount ?: credits.total ?: credits.limit
+        if (available != null || total != null) {
+          val body = buildString {
+            if (available != null) append(available.toInt())
+            if (total != null) {
+              if (isNotEmpty()) append(" / ")
+              append(total.toInt())
+            }
+          }
+          add("重置额度 $body")
+        }
+      }
+    }
+    balanceLines.forEach { line ->
+      Text(
+        line,
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+      )
+    }
+
+    val meterWindows = provider.windows.filter { it.showMeter && windowUsedPercent(it) != null }
+    if (meterWindows.isNotEmpty()) {
       Row(
         Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
       ) {
-        windows.take(3).forEach { window ->
+        meterWindows.take(3).forEach { window ->
           LimitWindowMeter(
             window = window,
             modifier = Modifier.weight(1f)
@@ -148,8 +199,18 @@ private fun LimitProviderCard(provider: LimitProviderDto) {
         }
       }
     }
+    provider.windows.mapNotNull { window -> window.detail?.takeIf { it.isNotBlank() } }.distinct().forEach { detail ->
+      Text(
+        detail,
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        maxLines = 2,
+        overflow = TextOverflow.Ellipsis
+      )
+    }
   }
 }
+
 
 @Composable
 private fun LimitWindowMeter(
@@ -171,7 +232,10 @@ private fun LimitWindowMeter(
     )
     Spacer(Modifier.height(6.dp))
     Text(
-      window.label?.takeIf { it.isNotBlank() } ?: windowKindLabel(window.kind),
+      buildString {
+        append(window.label?.takeIf { it.isNotBlank() } ?: windowKindLabel(window.kind))
+        if (window.metric?.equals("credits", ignoreCase = true) == true) append(" · 积分")
+      },
       style = MaterialTheme.typography.labelMedium,
       maxLines = 1,
       overflow = TextOverflow.Ellipsis
@@ -246,10 +310,25 @@ fun QuotaRing(
 
 @Composable
 private fun limitColor(usedPercent: Double): Color {
+  val remaining = (100.0 - usedPercent).coerceIn(0.0, 100.0)
+  return when (limitRemainingTone(remaining)) {
+    LimitRemainingTone.Critical -> MaterialTheme.colorScheme.error
+    LimitRemainingTone.Warn -> MaterialTheme.colorScheme.tertiary
+    LimitRemainingTone.Ok -> MaterialTheme.colorScheme.primary
+    LimitRemainingTone.Unknown -> MaterialTheme.colorScheme.primary
+  }
+}
+
+enum class LimitRemainingTone { Ok, Warn, Critical, Unknown }
+
+/** Desktop-aligned remaining thresholds: <20 critical, <50 warn. */
+fun limitRemainingTone(remainingPercent: Double?): LimitRemainingTone {
+  if (remainingPercent == null || remainingPercent.isNaN()) return LimitRemainingTone.Unknown
+  val value = remainingPercent
   return when {
-    usedPercent >= 90 -> MaterialTheme.colorScheme.error
-    usedPercent >= 70 -> MaterialTheme.colorScheme.tertiary
-    else -> MaterialTheme.colorScheme.primary
+    value < 20.0 -> LimitRemainingTone.Critical
+    value < 50.0 -> LimitRemainingTone.Warn
+    else -> LimitRemainingTone.Ok
   }
 }
 

@@ -133,11 +133,18 @@ val runHistoryLimitsTests = registerJunitCoreTask(
   "com.igng.tokenmonitor.android.data.model.HubDtosHistoryLimitsTest"
 )
 
+val runFormattersHelpersTests = registerJunitCoreTask(
+  "runFormattersHelpersTests",
+  "Runs Formatters helper unit tests without Gradle's Windows argfile worker.",
+  "com.igng.tokenmonitor.android.ui.components.FormattersHelpersTest"
+)
+
 val runUnitTests = registerJunitCoreTask(
   "runUnitTests",
   "Runs all local unit tests via JUnitCore (Windows argfile workaround).",
   "com.igng.tokenmonitor.android.data.repository.HubRepositoryTest",
-  "com.igng.tokenmonitor.android.data.model.HubDtosHistoryLimitsTest"
+  "com.igng.tokenmonitor.android.data.model.HubDtosHistoryLimitsTest",
+  "com.igng.tokenmonitor.android.ui.components.FormattersHelpersTest"
 )
 
 tasks.withType<Test>().configureEach { enabled = false }

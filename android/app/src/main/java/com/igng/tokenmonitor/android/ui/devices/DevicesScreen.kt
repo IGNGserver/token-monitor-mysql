@@ -17,8 +17,20 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.outlined.Devices
 import androidx.compose.material3.ExperimentalMaterial3Api
+import com.igng.tokenmonitor.android.ui.components.agentRuntimeLabel
+import com.igng.tokenmonitor.android.ui.components.clientStatusLabel
+import com.igng.tokenmonitor.android.ui.components.devicePlatformLabel
+import com.igng.tokenmonitor.android.ui.components.wslStatusLabel
+import com.igng.tokenmonitor.android.ui.components.ClientBranding
+import com.igng.tokenmonitor.android.data.model.PeriodDto
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -111,12 +123,18 @@ fun DevicesScreen(
                   )
                   Text(
                     buildString {
-                      append(device.platform.orEmpty())
+                      append(devicePlatformLabel(device.platform, device.osName, device.osVersion))
                       append(" · ")
                       append(if (device.stale) "离线" else "在线")
+                      agentRuntimeLabel(device.agentRuntime).takeIf { it.isNotBlank() }?.let {
+                        append(" · ")
+                        append(it)
+                      }
                     },
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                   )
                 }
               }
@@ -160,8 +178,10 @@ fun DevicesScreen(
 @Composable
 fun DeviceDetailScreen(
   device: DeviceDto?,
-  onBack: () -> Unit
+  onBack: () -> Unit,
+  onHome: (() -> Unit)? = null
 ) {
+  var periodKey by rememberSaveable { mutableStateOf("today") }
   Column(Modifier.fillMaxSize()) {
     TopAppBar(
       title = { Text("设备详情") },
@@ -169,11 +189,28 @@ fun DeviceDetailScreen(
         IconButton(onClick = onBack) {
           Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
         }
+      },
+      actions = {
+        if (onHome != null) {
+          IconButton(onClick = onHome) {
+            Icon(Icons.Filled.Home, contentDescription = "首页")
+          }
+        }
       }
     )
     if (device == null) {
       EmptyState(text = "设备已从当前 Hub 快照中移除。")
       return
+    }
+    val selectedPeriod: PeriodDto = when (periodKey) {
+      "month" -> device.periods.month
+      "allTime" -> device.periods.allTime
+      else -> device.periods.today
+    }
+    val periodLabel = when (periodKey) {
+      "month" -> "本月"
+      "allTime" -> "全部"
+      else -> "今日"
     }
     Column(
       Modifier
@@ -191,7 +228,15 @@ fun DeviceDetailScreen(
             style = MaterialTheme.typography.headlineSmall
           )
           Text(
-            "${device.platform.orEmpty()} · ${if (device.stale) "离线" else "在线"}",
+            buildString {
+              append(devicePlatformLabel(device.platform, device.osName, device.osVersion))
+              append(" · ")
+              append(if (device.stale) "离线" else "在线")
+              agentRuntimeLabel(device.agentRuntime).takeIf { it.isNotBlank() }?.let {
+                append(" · ")
+                append(it)
+              }
+            },
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
           )
@@ -202,7 +247,68 @@ fun DeviceDetailScreen(
           )
         }
       }
-      MetricHeroCard(title = "今日", period = device.periods.today)
+      if (device.clientStatus.isNotEmpty()) {
+        AppCard {
+          SectionHeader(title = "工具状态", subtitle = "来自采集端 clientStatus")
+          Spacer(Modifier.height(10.dp))
+          device.clientStatus.entries
+            .sortedBy { it.key }
+            .forEach { (client, state) ->
+              Row(
+                Modifier
+                  .fillMaxWidth()
+                  .padding(vertical = 4.dp),
+                horizontalArrangement = Arrangement.SpaceBetween
+              ) {
+                Text(
+                  ClientBranding.label(client),
+                  style = MaterialTheme.typography.bodyMedium
+                )
+                Text(
+                  clientStatusLabel(state),
+                  style = MaterialTheme.typography.labelMedium,
+                  color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+              }
+            }
+        }
+      }
+      device.wslStatus?.state?.takeIf { it.isNotBlank() }?.let { state ->
+        AppCard {
+          SectionHeader(title = "WSL 状态", subtitle = wslStatusLabel(state))
+          Spacer(Modifier.height(8.dp))
+          val detected = device.wslStatus?.detected.orEmpty()
+          val withData = device.wslStatus?.withData.orEmpty()
+          if (detected.isNotEmpty()) {
+            Text(
+              "已检测：" + detected.joinToString { ClientBranding.label(it) },
+              style = MaterialTheme.typography.bodySmall,
+              color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+          }
+          if (withData.isNotEmpty()) {
+            Text(
+              "有数据：" + withData.joinToString { ClientBranding.label(it) },
+              style = MaterialTheme.typography.bodySmall,
+              color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+          }
+        }
+      }
+      Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        listOf(
+          "today" to "今日",
+          "month" to "本月",
+          "allTime" to "全部"
+        ).forEach { (key, label) ->
+          FilterChip(
+            selected = periodKey == key,
+            onClick = { periodKey = key },
+            label = { Text(label) }
+          )
+        }
+      }
+      MetricHeroCard(title = periodLabel, period = selectedPeriod)
       Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         CompactMetricCard(
           title = "本月",
@@ -216,25 +322,43 @@ fun DeviceDetailScreen(
         )
       }
       val clients = topShareEntries(
-        device.periods.today.clients,
-        device.periods.today.clientCosts,
+        selectedPeriod.clients,
+        selectedPeriod.clientCosts,
         limit = 6
       )
       if (clients.isNotEmpty()) {
         AppCard {
-          SectionHeader(title = "今日客户端", subtitle = "本设备")
+          SectionHeader(title = "${periodLabel}客户端", subtitle = "本设备 · 可展开模型")
           Spacer(Modifier.height(12.dp))
-          ShareBarList(clients)
+          clients.forEach { entry ->
+            ShareBarList(listOf(entry))
+            if (entry.key != "其他") {
+              val nested = selectedPeriod.clientModels[entry.key].orEmpty()
+              val nestedCosts = selectedPeriod.clientModelCosts[entry.key].orEmpty()
+              val modelEntries = topShareEntries(nested, nestedCosts, limit = 6)
+              if (modelEntries.isNotEmpty()) {
+                Spacer(Modifier.height(6.dp))
+                Text(
+                  "${ClientBranding.label(entry.key)} 模型",
+                  style = MaterialTheme.typography.labelMedium,
+                  color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(6.dp))
+                ShareBarList(modelEntries, brandClients = false)
+              }
+            }
+            Spacer(Modifier.height(10.dp))
+          }
         }
       }
       val models = topShareEntries(
-        device.periods.today.models,
-        device.periods.today.modelCosts,
+        selectedPeriod.models,
+        selectedPeriod.modelCosts,
         limit = 6
       )
       if (models.isNotEmpty()) {
         AppCard {
-          SectionHeader(title = "今日模型", subtitle = "本设备")
+          SectionHeader(title = "${periodLabel}模型", subtitle = "本设备汇总")
           Spacer(Modifier.height(12.dp))
           ShareBarList(models, brandClients = false)
         }
@@ -243,6 +367,3 @@ fun DeviceDetailScreen(
     }
   }
 }
-
-
-

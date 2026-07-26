@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.outlined.PieChartOutline
 import androidx.compose.material.icons.outlined.Timeline
 import androidx.compose.material3.CircularProgressIndicator
@@ -30,6 +31,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -46,9 +48,14 @@ import com.igng.tokenmonitor.android.ui.AnalyticsPeriodKind
 import com.igng.tokenmonitor.android.ui.HubUiState
 import com.igng.tokenmonitor.android.ui.HubViewModel
 import com.igng.tokenmonitor.android.ui.components.AppCard
+import com.igng.tokenmonitor.android.ui.components.countActiveDays
+import com.igng.tokenmonitor.android.ui.components.HeatmapMetric
+import com.igng.tokenmonitor.android.ui.components.ContributionHeatmap
 import com.igng.tokenmonitor.android.ui.components.ClientBranding
 import com.igng.tokenmonitor.android.ui.components.ClientMonogram
 import com.igng.tokenmonitor.android.ui.components.DailyTrendChart
+import com.igng.tokenmonitor.android.ui.components.StackedDailyTrendChart
+import com.igng.tokenmonitor.android.ui.components.TrendStackMode
 import com.igng.tokenmonitor.android.ui.components.DateTimeRangePickerDialog
 import com.igng.tokenmonitor.android.ui.components.DonutChart
 import com.igng.tokenmonitor.android.ui.components.EmptyState
@@ -115,7 +122,7 @@ fun AnalyticsScreen(
           navController.navigate("model/${encode(id)}")
         }
       )
-      else -> TrendAnalyticsTab(state.stats)
+      else -> TrendAnalyticsTab(state, onEnsureHistory = { viewModel.refreshHistory() })
     }
   }
 }
@@ -334,7 +341,8 @@ private fun clientsFromSessions(period: PeriodDto?, modelId: String): Pair<Map<S
 fun ClientDetailScreen(
   clientId: String,
   state: HubUiState,
-  onBack: () -> Unit
+  onBack: () -> Unit,
+  onHome: (() -> Unit)? = null
 ) {
   val periodLabel = periodCaption(state)
   val period = resolvePeriod(state)
@@ -345,7 +353,14 @@ fun ClientDetailScreen(
       val range = state.customRangeResult
       (range?.clientModels?.get(clientId).orEmpty()) to (range?.clientModelCosts?.get(clientId).orEmpty())
     }
-    else -> modelsFromSessions(period, clientId)
+    else -> {
+      val mapped = period?.clientModels?.get(clientId).orEmpty()
+      if (mapped.isNotEmpty()) {
+        mapped to period?.clientModelCosts?.get(clientId).orEmpty()
+      } else {
+        modelsFromSessions(period, clientId)
+      }
+    }
   }
   val shares = topShareEntries(modelTokens, modelCosts, limit = 12)
   val title = ClientBranding.label(clientId)
@@ -359,7 +374,8 @@ fun ClientDetailScreen(
     leading = { ClientMonogram(clientId, size = 36.dp) },
     emptyText = "该客户端在此范围内没有模型拆分。",
     shares = shares,
-    brandClients = false
+    brandClients = false,
+    onHome = onHome
   )
 }
 
@@ -367,7 +383,8 @@ fun ClientDetailScreen(
 fun ModelDetailScreen(
   modelId: String,
   state: HubUiState,
-  onBack: () -> Unit
+  onBack: () -> Unit,
+  onHome: (() -> Unit)? = null
 ) {
   val periodLabel = periodCaption(state)
   val period = resolvePeriod(state)
@@ -398,7 +415,8 @@ fun ModelDetailScreen(
     leading = null,
     emptyText = "该模型在此范围内没有客户端拆分。",
     shares = shares,
-    brandClients = true
+    brandClients = true,
+    onHome = onHome
   )
 }
 
@@ -413,7 +431,8 @@ private fun DetailScaffold(
   leading: (@Composable () -> Unit)?,
   emptyText: String,
   shares: List<ShareEntry>,
-  brandClients: Boolean
+  brandClients: Boolean,
+  onHome: (() -> Unit)? = null
 ) {
   Column(Modifier.fillMaxSize()) {
     TopAppBar(
@@ -421,6 +440,13 @@ private fun DetailScaffold(
       navigationIcon = {
         IconButton(onClick = onBack) {
           Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+        }
+      },
+      actions = {
+        if (onHome != null) {
+          IconButton(onClick = onHome) {
+            Icon(Icons.Filled.Home, contentDescription = "首页")
+          }
         }
       }
     )
@@ -476,7 +502,9 @@ private fun resolvePeriod(state: HubUiState): PeriodDto? = when (state.analytics
       clients = it.clients,
       clientCosts = it.clientCosts,
       models = it.models,
-      modelCosts = it.modelCosts
+      modelCosts = it.modelCosts,
+      clientModels = it.clientModels,
+      clientModelCosts = it.clientModelCosts
     )
   }
 }
@@ -492,21 +520,34 @@ private fun encode(value: String): String =
   URLEncoder.encode(value, StandardCharsets.UTF_8.toString())
 
 @Composable
-private fun TrendAnalyticsTab(stats: StatsDto?) {
+private fun TrendAnalyticsTab(state: HubUiState, onEnsureHistory: () -> Unit) {
   var rangeIndex by rememberSaveable { mutableIntStateOf(1) }
   var metricIndex by rememberSaveable { mutableIntStateOf(0) }
+  var trendsStack by rememberSaveable { mutableStateOf("client") }
+  var activeDaysWindow by rememberSaveable { mutableStateOf("all") }
+  var heatmapMetric by rememberSaveable { mutableStateOf("cost") }
+  LaunchedEffect(Unit) { onEnsureHistory() }
   val rangeLabels = listOf("7 日", "30 日", "12 月")
   val metricLabels = listOf("Token", "费用", "对比", "活跃")
-  val history = stats?.historyPreview
+  val history = state.history ?: state.stats?.historyPreview
   val metric = when (metricIndex) {
     1 -> TrendMetric.Cost
     2 -> TrendMetric.Dual
     3 -> TrendMetric.ActiveTime
     else -> TrendMetric.Tokens
   }
+  val heatMetric = if (heatmapMetric == "tokens") HeatmapMetric.Tokens else HeatmapMetric.Cost
   val summary = history?.summary
   val daily = history?.daily.orEmpty()
   val monthly = history?.monthly.orEmpty().takeMonths(12)
+  val displayActiveDays = countActiveDays(daily, activeDaysWindow)
+  val activeDaysValue = if (activeDaysWindow == "year") {
+    displayActiveDays.toString()
+  } else if (summary != null) {
+    summary.activeDays.toLong().toString()
+  } else {
+    displayActiveDays.toString()
+  }
 
   if (history == null || (daily.isEmpty() && monthly.isEmpty())) {
     EmptyState(
@@ -551,7 +592,7 @@ private fun TrendAnalyticsTab(stats: StatsDto?) {
           Spacer(Modifier.height(10.dp))
           SummaryGrid(
             listOf(
-              "活跃天" to summary.activeDays.toLong().toString(),
+              "活跃天" to activeDaysValue,
               "连胜" to "${summary.currentStreak.toLong()} 天",
               "最长连胜" to "${summary.longestStreak.toLong()} 天",
               "峰值日" to formatTokensShort(summary.peakDayTokens.toLong()),
@@ -567,6 +608,46 @@ private fun TrendAnalyticsTab(stats: StatsDto?) {
               color = MaterialTheme.colorScheme.onSurfaceVariant
             )
           }
+        }
+      }
+    }
+
+    item {
+      Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        listOf("all" to "全部活跃天", "year" to "近一年").forEach { (key, label) ->
+          FilterChip(
+            selected = activeDaysWindow == key,
+            onClick = { activeDaysWindow = key },
+            label = { Text(label) }
+          )
+        }
+      }
+    }
+
+    item {
+      Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+        listOf("client" to "按客户端", "model" to "按模型").forEach { (key, label) ->
+          FilterChip(
+            selected = trendsStack == key,
+            onClick = { trendsStack = key },
+            label = { Text(label) }
+          )
+        }
+      }
+    }
+
+    if (daily.isNotEmpty()) {
+      item {
+        AppCard {
+          Text("贡献热力图", style = MaterialTheme.typography.titleMedium)
+          Spacer(Modifier.height(8.dp))
+          ContributionHeatmap(
+            daily = daily,
+            metric = heatMetric,
+            onMetricChange = { next ->
+              heatmapMetric = if (next == HeatmapMetric.Tokens) "tokens" else "cost"
+            }
+          )
         }
       }
     }
@@ -600,12 +681,17 @@ private fun TrendAnalyticsTab(stats: StatsDto?) {
               metric = metric,
               useLine = rangeIndex == 1
             )
+            Spacer(Modifier.height(12.dp))
+            StackedDailyTrendChart(
+              days = days,
+              stackMode = if (trendsStack == "model") TrendStackMode.Model else TrendStackMode.Client
+            )
           }
         }
       }
     }
 
-    item { LimitsSection(stats.limits, title = "限额状态") }
+    item { LimitsSection(state.stats?.limits, title = "限额状态") }
   }
 }
 

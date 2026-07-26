@@ -1,6 +1,8 @@
 'use strict';
 
 const http = require('node:http');
+const https = require('node:https');
+const fs = require('node:fs');
 const { URL } = require('node:url');
 const { aggregateDevices, aggregateHistory, mergeDeviceRecord } = require('../shared/usage');
 const { historyPreview, historyRevision } = require('../shared/history');
@@ -24,6 +26,29 @@ const PRICE_FIELDS = [
 // must not expose account identity (email/plan/key) to the network. Binding to
 // loopback keeps an unauthenticated hub usable locally while refusing LAN/remote
 // reach; set a secret to bind a non-loopback address and accept other devices.
+function loadTlsOptions(tls) {
+  if (tls && tls.key && tls.cert) {
+    return {
+      key: tls.key,
+      cert: tls.cert,
+      ca: tls.ca
+    };
+  }
+  const certPath = String(process.env.TOKEN_MONITOR_TLS_CERT || '').trim();
+  const keyPath = String(process.env.TOKEN_MONITOR_TLS_KEY || '').trim();
+  const caPath = String(process.env.TOKEN_MONITOR_TLS_CA || '').trim();
+  if (!certPath && !keyPath) return null;
+  if (!certPath || !keyPath) {
+    throw new Error('TOKEN_MONITOR_TLS_CERT and TOKEN_MONITOR_TLS_KEY must be set together');
+  }
+  const options = {
+    cert: fs.readFileSync(certPath),
+    key: fs.readFileSync(keyPath)
+  };
+  if (caPath) options.ca = fs.readFileSync(caPath);
+  return options;
+}
+
 function resolveBindHost(host, secret) {
   const requested = String(host || '').trim() || '0.0.0.0';
   if (secret) return requested;
@@ -194,12 +219,15 @@ function createHub({
   lookupPricing = lookupModelPricing,
   fallbackPricing = createCatalogPricingLookup(),
   webRoot,
+  tls = null,
   logger = console
 } = {}) {
   const ownedPool = !repository && !pool;
   const activePool = pool || (repository ? null : createMySqlPool());
   const store = repository || createRepository(activePool);
   const bindHost = resolveBindHost(host, secret);
+  const tlsOptions = loadTlsOptions(tls);
+  const protocol = tlsOptions ? 'https' : 'http';
   let statsCache = null;
 
   async function getStats() {
@@ -542,12 +570,15 @@ function createHub({
     return sendJson(res, 404, { error: 'not_found' });
   }
 
-  const server = http.createServer((req, res) => {
+  const requestListener = (req, res) => {
     handleRequest(req, res).catch((error) => {
       (logger.error || console.error)(error);
       sendJson(res, 500, { error: 'internal_error', message: error.message });
     });
-  });
+  };
+  const server = tlsOptions
+    ? https.createServer(tlsOptions, requestListener)
+    : http.createServer(requestListener);
 
   async function start() {
     // Fail before opening the listening socket when migrations have not run or
@@ -588,6 +619,7 @@ function createHub({
     fetchUpstreamPricing,
     fetchAllUpstreamPricing,
     bindHost,
+    protocol,
     getCachedStats: () => statsCache
   };
 }
@@ -601,9 +633,9 @@ if (require.main === module) {
   const staleAfterMs = Number(args.staleAfterMs || process.env.TOKEN_MONITOR_STALE_AFTER_MS || 10 * 60 * 1000);
   const hub = createHub({ port, host, secret, staleAfterMs });
   hub.start()
-    .then(() => console.log(`Token Monitor hub listening on http://${hub.bindHost}:${port}`))
+    .then(() => console.log(`Token Monitor hub listening on ${hub.protocol}://${hub.bindHost}:${port}`))
     .catch((error) => { console.error(`Could not start hub: ${error.message}`); process.exitCode = 1; });
 }
 
-module.exports = { createHub, normalizePrices, priceSnapshot, resolveBindHost, upstreamPrices, aggregateHistoryRange, emptyUsageRangePayload };
+module.exports = { createHub, normalizePrices, priceSnapshot, resolveBindHost, loadTlsOptions, upstreamPrices, aggregateHistoryRange, emptyUsageRangePayload };
 

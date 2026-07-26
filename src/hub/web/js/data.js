@@ -35,7 +35,8 @@ export const CLIENT_LABELS = {
   meta: 'Meta',
   mistral: 'Mistral',
   cohere: 'Cohere',
-  xiaomi: 'Xiaomi'
+  xiaomi: 'Xiaomi',
+  openrouter: 'OpenRouter'
 };
 
 export const CLIENT_COLORS = {
@@ -75,6 +76,7 @@ export const CLIENT_COLORS = {
   volcengine: '#006EFF',
   qoder: '#2ADB5C',
   ollama: '#888888',
+  openrouter: '#6b57ff',
   default: '#6ab4f0'
 };
 
@@ -95,7 +97,8 @@ export const PROVIDER_LABELS = {
   volcengine: 'Volcengine',
   qoder: 'Qoder',
   kimi: 'Kimi',
-  ollama: 'Ollama'
+  ollama: 'Ollama',
+  openrouter: 'OpenRouter'
 };
 
 const FALLBACK_MODEL_COLORS = ['#6ab4f0', '#cc7c5e', '#a57df0', '#49a3b0', '#f0d66a', '#f06a7b'];
@@ -160,6 +163,160 @@ export function platformLabel(platform) {
   return platform || '—';
 }
 
+export function devicePlatformLabel(platform, osName, osVersion) {
+  const base = platformLabel(platform);
+  const name = String(osName || '').trim() || base;
+  const version = String(osVersion || '').trim();
+  return [name, version].filter(Boolean).join(' ') || '—';
+}
+
+export function countActiveDays(daily, window = 'all') {
+  let days = Array.isArray(daily) ? daily.slice() : [];
+  if (window === 'year' && days.length) {
+    const cutoff = new Date();
+    cutoff.setUTCDate(cutoff.getUTCDate() - 365);
+    const cut = cutoff.toISOString().slice(0, 10);
+    days = days.filter((day) => String(day?.date || '') >= cut);
+  }
+  return days.filter((day) => Number(day?.tokens || 0) > 0 || Number(day?.cost || 0) > 0).length;
+}
+
+export function heatmapValue(day, metric = 'tokens') {
+  if (metric === 'cost') return Math.max(0, Number(day?.cost || 0));
+  return Math.max(0, Number(day?.tokens || 0));
+}
+
+
+
+export function limitRemainingTone(remaining) {
+  if (remaining == null || remaining === '') return 'unknown';
+  const value = Number(remaining);
+  if (!Number.isFinite(value)) return 'unknown';
+  if (value < 20) return 'critical';
+  if (value < 50) return 'warn';
+  return 'ok';
+}
+
+export function clampHomeLimitAccountCount(value, fallback = 3) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return Math.max(1, Math.min(12, Math.floor(Number(fallback)) || 3));
+  return Math.max(1, Math.min(12, Math.floor(n)));
+}
+
+export function personalWorkspaceLabel(locale = 'en') {
+  const lang = String(locale || 'en').toLowerCase();
+  if (lang.startsWith('zh')) return lang.includes('tw') || lang.includes('hk') ? '個人' : '个人';
+  if (lang.startsWith('ja')) return '個人';
+  if (lang.startsWith('ko')) return '개인';
+  return 'Personal';
+}
+
+export function providerPlanLabel(provider) {
+  const planLabel = String(provider?.planLabel || '').trim();
+  if (planLabel) return planLabel;
+  const plan = String(provider?.plan || provider?.planType || '').trim();
+  if (plan) return plan;
+  // legacy: some providers stuffed plan into accountLabel while email was the identity
+  if (provider?.accountEmail && provider?.accountLabel && provider.accountLabel !== provider.accountEmail) {
+    return String(provider.accountLabel).trim();
+  }
+  return '';
+}
+
+export function providerDisplayName(provider, peers = [], locale = 'en') {
+  const id = String(provider?.provider || '').toLowerCase();
+  const email = String(provider?.accountEmail || '').trim();
+  const accountName = String(provider?.accountName || '').trim();
+  const accountLabel = String(provider?.accountLabel || '').trim();
+  const workspaceKind = String(provider?.workspaceKind || '').trim().toLowerCase();
+  let workspace = accountName;
+  if (!workspace && workspaceKind === 'personal') workspace = personalWorkspaceLabel(locale);
+
+  if (id === 'codex') {
+    if (email && workspace) {
+      const sameEmail = (peers || []).filter((p) => String(p?.accountEmail || '').trim().toLowerCase() === email.toLowerCase()).length > 1;
+      return sameEmail ? `${email} · ${workspace}` : email;
+    }
+    return email || workspace || accountLabel || 'Codex';
+  }
+
+  return accountName || accountLabel || email || (PROVIDER_LABELS[id] || id || 'Account');
+}
+
+export function statusRows(stats, locale = 'en') {
+  return limitCards(stats, locale).map((card) => ({
+    ...card,
+    health: card.stale ? 'stale' : (String(card.status || '').toLowerCase() === 'ok' ? 'ok' : 'warn')
+  }));
+}
+
+export function agentRuntimeLabel(runtime) {
+  const raw = String(runtime || '').trim();
+  if (!raw) return '';
+  const value = raw.toLowerCase();
+  if (value === 'widget' || value.includes('electron') || value.includes('widget')) return 'widget';
+  if (value.includes('headless') || value === 'agent') return 'headless-agent';
+  if (value.includes('embedded')) return 'embedded-hub';
+  return raw;
+}
+
+export function clientStatusEntries(status) {
+  if (!status || typeof status !== 'object') return [];
+  return Object.entries(status)
+    .map(([client, state]) => ({
+      client: String(client || '').trim(),
+      state: String(state || '').trim().toLowerCase()
+    }))
+    .filter((row) => row.client && ['active', 'waiting', 'missing'].includes(row.state))
+    .sort((a, b) => a.client.localeCompare(b.client));
+}
+
+export function wslStatusSummary(status) {
+  if (!status || typeof status !== 'object') return null;
+  const state = String(status.state || '').trim().toLowerCase();
+  if (!['active', 'no-data', 'not-running', 'not-installed', 'disabled'].includes(state)) return null;
+  const ids = (arr) => (Array.isArray(arr) ? arr.map((id) => String(id || '').trim()).filter(Boolean) : []);
+  return {
+    state,
+    detected: ids(status.detected),
+    withData: ids(status.withData)
+  };
+}
+
+export function deviceBreakdownRows(device, periodKey = 'today') {
+  const period = device?.periods?.[periodKey] || {};
+  const totalTokens = Math.max(0, Number(period.totalTokens || 0));
+  const totalCost = Math.max(0, Number(period.costUsd || 0));
+  const tools = mapRows(period.clients, period.clientCosts, {
+    labelFor: clientLabel,
+    colorFor: clientColor
+  }).map((row) => {
+    const modelMap = period.clientModels?.[row.key] || {};
+    const modelCostMap = period.clientModelCosts?.[row.key] || {};
+    const models = mapRows(modelMap, modelCostMap, {
+      labelFor: (id) => id,
+      colorFor: modelColor
+    }).map((model) => ({
+      ...model,
+      percent: row.value > 0 ? (model.value / row.value) * 100 : 0
+    }));
+    return {
+      ...row,
+      client: row.key,
+      percent: totalTokens > 0 ? (row.value / totalTokens) * 100 : 0,
+      models
+    };
+  });
+  const models = mapRows(period.models, period.modelCosts, {
+    labelFor: (id) => id,
+    colorFor: modelColor
+  }).map((row) => ({
+    ...row,
+    percent: totalTokens > 0 ? (row.value / totalTokens) * 100 : 0
+  }));
+  return { totalTokens, totalCost, tools, models };
+}
+
 export function mapRows(mapTokens = {}, mapCosts = {}, { labelFor, colorFor } = {}) {
   return Object.entries(mapTokens)
     .map(([key, value]) => ({
@@ -187,22 +344,32 @@ export function modelRows(period) {
   });
 }
 
-export function projectRows(period) {
-  return Object.entries(period?.projects || {})
-    .map(([key, project]) => ({
-      key,
-      name: project?.label || key,
-      value: Number(project?.tokens || 0),
-      cost: Number(project?.costUsd || 0),
-      color: CLIENT_COLORS.default,
-      sub: Object.keys(project?.clients || {}).map(clientLabel).join(' · ')
-    }))
+export function projectRows(period, { incomplete = false } = {}) {
+  const rows = Object.entries(period?.projects || {})
+    .map(([key, project]) => {
+      const clients = Object.keys(project?.clients || {});
+      const topClient = clients
+        .map((id) => ({ id, value: Number(project?.clients?.[id] || 0) }))
+        .sort((a, b) => b.value - a.value)[0];
+      return {
+        key,
+        name: project?.label || key,
+        value: Number(project?.tokens || 0),
+        cost: Number(project?.costUsd || 0),
+        color: topClient ? clientColor(topClient.id) : CLIENT_COLORS.default,
+        clients,
+        sub: clients.map(clientLabel).join(' · ')
+      };
+    })
     .filter((row) => row.value > 0)
     .sort((a, b) => b.value - a.value || a.name.localeCompare(b.name));
+  return { rows, incomplete: Boolean(incomplete) };
 }
 
-export function sessionRows(period) {
-  return Object.entries(period?.sessions || {})
+export const MAX_SESSION_ROWS = 200;
+
+export function sessionRows(period, { limit = MAX_SESSION_ROWS } = {}) {
+  const rows = Object.entries(period?.sessions || {})
     .map(([key, session]) => {
       const value = Number(session?.totalTokens || 0);
       if (value <= 0) return null;
@@ -215,12 +382,24 @@ export function sessionRows(period) {
         cost: Number(session?.costUsd || 0),
         color: clientColor(client),
         client,
-        sub: session?.projectLabel || session?.sessionId || key,
+        sub: [
+          session?.projectLabel || '',
+          session?.sessionId || key,
+          Number(session?.messageCount || 0) > 0 ? `${Number(session.messageCount)} msgs` : ''
+        ].filter(Boolean).join(' · '),
+        messageCount: Number(session?.messageCount || 0),
+        projectLabel: session?.projectLabel || '',
         lastUsedAt: session?.lastUsedAt || session?.startedAt || ''
       };
     })
     .filter(Boolean)
     .sort((a, b) => Date.parse(b.lastUsedAt || 0) - Date.parse(a.lastUsedAt || 0) || b.value - a.value);
+  const max = Number.isFinite(Number(limit)) && Number(limit) > 0 ? Math.floor(Number(limit)) : MAX_SESSION_ROWS;
+  return {
+    rows: rows.slice(0, max),
+    total: rows.length,
+    truncated: rows.length > max
+  };
 }
 
 export function deviceRows(stats, periodKey) {
@@ -229,58 +408,137 @@ export function deviceRows(stats, periodKey) {
       const period = device?.periods?.[periodKey] || {};
       return {
         key: device.deviceId,
-        name: device.deviceId || device.hostname || 'device',
+        name: device.hostname || device.deviceId || 'device',
         value: Number(period.totalTokens || 0),
         cost: Number(period.costUsd || 0),
         color: device.stale ? '#8c97a7' : '#73bdf5',
         stale: Boolean(device.stale),
         platform: device.platform || '',
+        osName: device.osName || '',
+        osVersion: device.osVersion || '',
+        platformDisplay: devicePlatformLabel(device.platform, device.osName, device.osVersion),
         updatedAt: device.updatedAt || device.receivedAt || '',
-        hostname: device.hostname || ''
+        hostname: device.hostname || '',
+        deviceId: device.deviceId || '',
+        agentRuntime: device.agentRuntime || '',
+        agentRuntimeLabel: agentRuntimeLabel(device.agentRuntime),
+        clientStatus: device.clientStatus || {},
+        wslStatus: device.wslStatus || null,
+        periods: device.periods || {},
+        limits: device.limits || null,
+        raw: device
       };
     })
     .sort((a, b) => b.value - a.value || a.name.localeCompare(b.name));
 }
 
-export function limitCards(stats) {
+export function limitCards(stats, locale = 'en') {
   const providers = stats?.limits?.providers || [];
   return providers.map((provider, index) => {
     const id = String(provider?.provider || '').toLowerCase();
+    const peers = providers.filter((p) => String(p?.provider || '').toLowerCase() === id);
     const windows = (provider?.windows || []).map((window) => {
       const remaining = Number.isFinite(Number(window.remainingPercent))
         ? Number(window.remainingPercent)
         : (Number.isFinite(Number(window.usedPercent)) ? 100 - Number(window.usedPercent) : null);
+      const metric = String(window.metric || '').toLowerCase() === 'credits' ? 'credits' : '';
+      const showMeter = window.showMeter === false ? false : remaining != null;
       return {
         kind: window.kind || 'window',
         label: window.label || window.kind || 'Window',
         remaining,
         used: remaining == null ? null : 100 - remaining,
         resetsAt: window.resetsAt || '',
-        value: window.value || ''
+        value: window.value || '',
+        metric,
+        showMeter,
+        detail: String(window.detail || '').trim()
       };
     });
+
+    if (Number.isFinite(Number(provider?.balanceUsd))) {
+      const amount = Math.max(0, Number(provider.balanceUsd || 0));
+      windows.push({
+        kind: 'balanceUsd',
+        label: 'Balance (USD)',
+        remaining: null,
+        used: null,
+        resetsAt: '',
+        value: `$${amount.toFixed(2)}`,
+        metric: '',
+        showMeter: false,
+        detail: ''
+      });
+    }
+
     if (provider?.balance && Number.isFinite(Number(provider.balance.amount))) {
       const amount = Math.max(0, Number(provider.balance.amount || 0));
       const spend = Math.max(0, Number(provider.balance.monthSpend || 0));
+      const todaySpend = Math.max(0, Number(provider.balance.todaySpend || 0));
+      const weekSpend = Math.max(0, Number(provider.balance.weekSpend || 0));
+      const allTimeSpend = Math.max(0, Number(provider.balance.allTimeSpend || 0));
+      const currency = String(provider.balance.currency || '').trim();
       const total = amount + spend;
+      const hasSpend = Number.isFinite(Number(provider.balance.monthSpend)) && spend > 0;
+      const spendBits = [];
+      if (todaySpend > 0) spendBits.push(`today ${todaySpend}${currency ? ` ${currency}` : ''}`);
+      if (weekSpend > 0) spendBits.push(`week ${weekSpend}${currency ? ` ${currency}` : ''}`);
+      if (hasSpend) spendBits.push(`month ${spend}${currency ? ` ${currency}` : ''}`);
+      if (allTimeSpend > 0) spendBits.push(`all-time ${allTimeSpend}${currency ? ` ${currency}` : ''}`);
       windows.push({
         kind: 'balance',
         label: 'Balance',
-        remaining: total > 0 ? (amount / total) * 100 : 100,
-        used: total > 0 ? (spend / total) * 100 : 0,
+        remaining: hasSpend && total > 0 ? (amount / total) * 100 : null,
+        used: hasSpend && total > 0 ? (spend / total) * 100 : null,
         resetsAt: '',
-        value: `${amount} ${provider.balance.currency || ''}`.trim()
+        value: `${amount}${currency ? ` ${currency}` : ''}`.trim(),
+        metric: '',
+        showMeter: hasSpend && total > 0,
+        detail: spendBits.join(' · ')
       });
     }
+
+    const resetCredits = provider?.resetCredits || provider?.rateLimitResetCredits || null;
+    if (resetCredits && typeof resetCredits === 'object') {
+      const available = Number(resetCredits.availableCount ?? resetCredits.available ?? resetCredits.remaining);
+      const total = Number(resetCredits.totalCount ?? resetCredits.total ?? resetCredits.limit);
+      const parts = [];
+      if (Number.isFinite(available)) parts.push(String(available));
+      if (Number.isFinite(total)) parts.push(`/ ${total}`);
+      if (parts.length) {
+        windows.push({
+          kind: 'resetCredits',
+          label: 'Reset credits',
+          remaining: Number.isFinite(available) && Number.isFinite(total) && total > 0
+            ? (available / total) * 100
+            : null,
+          used: null,
+          resetsAt: '',
+          value: parts.join(' '),
+          metric: 'credits',
+          showMeter: Number.isFinite(available) && Number.isFinite(total) && total > 0,
+          detail: ''
+        });
+      }
+    }
+
     const lowest = windows
-      .map((window) => window.remaining)
+      .map((window) => (window.showMeter === false ? null : window.remaining))
       .filter((value) => value != null)
       .sort((a, b) => a - b)[0];
+    const plan = providerPlanLabel(provider);
+    const name = providerDisplayName(provider, peers, locale);
     return {
       key: `${id}:${provider.accountKey || index}`,
       provider: id,
-      name: provider.accountEmail || provider.accountName || PROVIDER_LABELS[id] || id,
-      plan: provider.plan || provider.planType || '',
+      name,
+      accountEmail: provider.accountEmail || '',
+      accountName: provider.accountName || '',
+      accountLabel: provider.accountLabel || '',
+      accountKey: provider.accountKey || '',
+      workspaceKind: provider.workspaceKind || '',
+      plan,
+      source: provider.source || '',
       status: provider.status || 'unknown',
       stale: Boolean(provider.stale),
       color: clientColor(id),

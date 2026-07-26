@@ -3,6 +3,7 @@ package com.igng.tokenmonitor.android.data.remote
 import com.igng.tokenmonitor.android.data.model.BatchPricingResponseDto
 import com.igng.tokenmonitor.android.data.model.DevicesResponseDto
 import com.igng.tokenmonitor.android.data.model.HealthDto
+import com.igng.tokenmonitor.android.data.model.HistoryDto
 import com.igng.tokenmonitor.android.data.model.PricingListDto
 import com.igng.tokenmonitor.android.data.model.PricingRequestDto
 import com.igng.tokenmonitor.android.data.model.PricingResponseDto
@@ -18,6 +19,7 @@ import retrofit2.http.Query
 interface HubApi {
   @GET("api/health") suspend fun health(): HealthDto
   @GET("api/stats") suspend fun stats(): StatsDto
+  @GET("api/history") suspend fun history(): HistoryDto
   @GET("api/devices") suspend fun devices(): DevicesResponseDto
   @GET("api/usage/range") suspend fun usageRange(
     @Query("startDate") startDate: String,

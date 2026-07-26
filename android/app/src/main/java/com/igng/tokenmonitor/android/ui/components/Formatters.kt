@@ -1,5 +1,6 @@
 package com.igng.tokenmonitor.android.ui.components
 
+import com.igng.tokenmonitor.android.data.model.HistoryDayDto
 import java.text.NumberFormat
 import java.time.Duration
 import java.time.Instant
@@ -123,4 +124,115 @@ fun topShareEntries(
   val otherCost = rest.sumOf { costs[it.key] ?: 0.0 }
   return head.map { ShareEntry(it.key, it.value, costs[it.key] ?: 0.0) } +
     ShareEntry("其他", otherTokens, otherCost)
+}
+
+
+fun devicePlatformLabel(
+  platform: String?,
+  osName: String? = null,
+  osVersion: String? = null
+): String {
+  val base = when {
+    platform.isNullOrBlank() -> ""
+    platform.contains("darwin", true) || platform.contains("mac", true) -> "macOS"
+    platform.contains("win", true) -> "Windows"
+    platform.contains("linux", true) -> "Linux"
+    else -> platform
+  }
+  val name = osName?.trim().orEmpty().ifBlank { base }
+  val version = osVersion?.trim().orEmpty()
+  return listOf(name, version).filter { it.isNotBlank() }.joinToString(" ").ifBlank { "—" }
+}
+
+fun countActiveDays(
+  daily: List<HistoryDayDto>,
+  window: String = "all"
+): Int {
+  var days = daily
+  if (window == "year" && days.isNotEmpty()) {
+    val cutoff = java.time.LocalDate.now(java.time.ZoneOffset.UTC).minusDays(365).toString()
+    days = days.filter { it.date >= cutoff }
+  }
+  return days.count { it.tokens > 0.0 || it.cost > 0.0 }
+}
+
+fun heatmapValue(day: HistoryDayDto, metric: String = "tokens"): Double {
+  return if (metric == "cost") kotlin.math.max(0.0, day.cost) else kotlin.math.max(0.0, day.tokens)
+}
+
+fun agentRuntimeLabel(runtime: String?): String {
+  val raw = runtime?.trim().orEmpty()
+  if (raw.isEmpty()) return ""
+  val value = raw.lowercase()
+  return when {
+    value == "widget" || value.contains("electron") || value.contains("widget") -> "widget"
+    value.contains("headless") || value == "agent" -> "headless-agent"
+    value.contains("embedded") -> "embedded-hub"
+    else -> raw
+  }
+}
+
+fun clientStatusLabel(state: String?): String = when (state?.trim()?.lowercase()) {
+  "active" -> "活跃"
+  "waiting" -> "等待"
+  "missing" -> "未发现"
+  else -> state.orEmpty()
+}
+
+fun wslStatusLabel(state: String?): String = when (state?.trim()?.lowercase()) {
+  "active" -> "活跃"
+  "no-data" -> "无数据"
+  "not-running" -> "未运行"
+  "not-installed" -> "未安装"
+  "disabled" -> "已禁用"
+  else -> state.orEmpty()
+}
+
+fun formatMoneyAmount(amount: Double?, currency: String? = null): String {
+  if (amount == null || !amount.isFinite()) return "—"
+  val cur = currency?.trim().orEmpty()
+  val body = if (kotlin.math.abs(amount) >= 100) {
+    String.format(java.util.Locale.US, "%.0f", amount)
+  } else {
+    String.format(java.util.Locale.US, "%.2f", amount)
+  }
+  return if (cur.isBlank()) body else "$body $cur"
+}
+
+fun limitPlanLabel(provider: com.igng.tokenmonitor.android.data.model.LimitProviderDto): String {
+  val planLabel = provider.planLabel?.trim().orEmpty()
+  if (planLabel.isNotEmpty()) return planLabel
+  val plan = provider.plan?.trim().orEmpty().ifEmpty { provider.planType?.trim().orEmpty() }
+  if (plan.isNotEmpty()) return plan
+  val email = provider.accountEmail?.trim().orEmpty()
+  val label = provider.accountLabel?.trim().orEmpty()
+  if (email.isNotEmpty() && label.isNotEmpty() && !label.equals(email, ignoreCase = true)) return label
+  return ""
+}
+
+fun limitAccountDisplayName(
+  provider: com.igng.tokenmonitor.android.data.model.LimitProviderDto,
+  peers: List<com.igng.tokenmonitor.android.data.model.LimitProviderDto> = emptyList()
+): String {
+  val id = provider.provider.trim().lowercase()
+  val email = provider.accountEmail?.trim().orEmpty()
+  val accountName = provider.accountName?.trim().orEmpty()
+  val accountLabel = provider.accountLabel?.trim().orEmpty()
+  val workspace = accountName.ifEmpty {
+    if (provider.workspaceKind?.trim().equals("personal", ignoreCase = true)) "个人" else ""
+  }
+  if (id == "codex") {
+    if (email.isNotEmpty() && workspace.isNotEmpty()) {
+      val sameEmail = peers.count {
+        it.accountEmail?.trim().orEmpty().equals(email, ignoreCase = true)
+      } > 1
+      return if (sameEmail) "$email · $workspace" else email
+    }
+    return email.ifEmpty { workspace.ifEmpty { accountLabel.ifEmpty { "Codex" } } }
+  }
+  return accountName.ifEmpty {
+    accountLabel.ifEmpty {
+      email.ifEmpty { id.ifEmpty { "账户" } }
+    }
+  }
 }

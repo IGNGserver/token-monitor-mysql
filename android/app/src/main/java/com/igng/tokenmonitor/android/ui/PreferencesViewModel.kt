@@ -15,4 +15,5 @@ class PreferencesViewModel @Inject constructor(
 
   fun setThemeSeed(seed: ThemeSeedId) = store.setThemeSeed(seed)
   fun setHapticsMode(mode: HapticsMode) = store.setHapticsMode(mode)
+  fun setHomeLimitAccountCount(count: Int) = store.setHomeLimitAccountCount(count)
 }

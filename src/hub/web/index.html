@@ -40,7 +40,8 @@
       <div class="main">
         <header class="topbar">
           <div class="topbar-left">
-            <button type="button" id="menuToggle" class="icon-btn mobile-only" aria-label="Menu">☰</button>
+            <button type="button" id="menuToggle" class="icon-btn mobile-only" aria-label="Menu" aria-controls="primaryNav" aria-expanded="false" data-i18n-aria="nav.menu">☰</button>
+            <button type="button" id="homeReturnBtn" class="icon-btn home-return hidden" title="Home" aria-label="Home">←</button>
             <div>
               <h1 id="pageTitle" class="page-title">Home</h1>
               <p id="pageMeta" class="page-meta">—</p>
@@ -50,6 +51,7 @@
             <div class="period-tabs" id="periodTabs" role="tablist" aria-label="Period"></div>
             <button type="button" id="customRangeBtn" class="icon-btn" title="Custom range" aria-label="Custom range">▦</button>
             <button type="button" id="refreshBtn" class="icon-btn" title="Refresh" aria-label="Refresh">↻</button>
+            <button type="button" id="settingsOpenTop" class="icon-btn mobile-only" title="Settings" aria-label="Settings" data-i18n-aria="nav.settings">⚙</button>
           </div>
         </header>
 
@@ -131,6 +133,10 @@
             </select>
           </label>
           <label class="field">
+            <span data-i18n="settings.homeLimitAccountCount">Home limit accounts</span>
+            <input id="homeLimitAccountCount" type="number" min="1" max="12" step="1" value="3" />
+          </label>
+          <label class="field">
             <span data-i18n="settings.secret">Hub secret</span>
             <input id="settingsSecret" type="password" autocomplete="off" spellcheck="false" />
           </label>
@@ -167,6 +173,16 @@
       </div>
     </div>
 
+    <div id="pwaBanner" class="pwa-banner hidden" role="status">
+      <div class="pwa-banner-copy">
+        <strong data-i18n="pwa.title">Install Token Monitor</strong>
+        <span id="pwaBannerText" data-i18n="pwa.hint">Add this dashboard as an app for faster mobile access.</span>
+      </div>
+      <div class="pwa-banner-actions">
+        <button type="button" id="pwaInstallBtn" class="primary-btn" data-i18n="pwa.install">Install</button>
+        <button type="button" id="pwaDismissBtn" class="ghost-btn" data-i18n="pwa.dismiss">Not now</button>
+      </div>
+    </div>
     <div id="toast" class="toast hidden" role="status"></div>
     <div id="navScrim" class="nav-scrim hidden"></div>
 

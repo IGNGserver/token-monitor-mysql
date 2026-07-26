@@ -37,6 +37,13 @@ services:
       MYSQL_USER: ${MYSQL_USER:-token_monitor}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD}
       TOKSCALE_PRICING_CATALOG_URL: ${TOKSCALE_PRICING_CATALOG_URL:-https://models.dev/api.json}
+      # Optional HTTPS (enable true PWA install on mobile LAN clients):
+      TOKEN_MONITOR_TLS_CERT: ${TOKEN_MONITOR_TLS_CERT:-}
+      TOKEN_MONITOR_TLS_KEY: ${TOKEN_MONITOR_TLS_KEY:-}
+      TOKEN_MONITOR_TLS_CA: ${TOKEN_MONITOR_TLS_CA:-}
+    # Mount certs when TLS env paths are set, e.g.:
+    # volumes:
+    #   - ./certs:/certs:ro
     ports:
       - "${TOKEN_MONITOR_PORT:-17321}:17321"
 

@@ -5,6 +5,7 @@ import com.igng.tokenmonitor.android.data.local.ConnectionStorage
 import com.igng.tokenmonitor.android.data.model.BatchPricingResponseDto
 import com.igng.tokenmonitor.android.data.model.DevicesResponseDto
 import com.igng.tokenmonitor.android.data.model.HealthDto
+import com.igng.tokenmonitor.android.data.model.HistoryDto
 import com.igng.tokenmonitor.android.data.model.PricingListDto
 import com.igng.tokenmonitor.android.data.model.PricingRequestDto
 import com.igng.tokenmonitor.android.data.model.PricingResponseDto
@@ -46,6 +47,7 @@ class HubRepository @Inject constructor(
 
   suspend fun testConnection(config: ConnectionConfig): HubResult<HealthDto> = safeCall { apiFactory.create(config).health() }
   suspend fun stats(): HubResult<StatsDto> = withConnection { apiFactory.create(it).stats() }
+  suspend fun history(): HubResult<HistoryDto> = withConnection { apiFactory.create(it).history() }
   suspend fun devices(): HubResult<DevicesResponseDto> = withConnection { apiFactory.create(it).devices() }
   suspend fun usageRange(
     startDate: String,

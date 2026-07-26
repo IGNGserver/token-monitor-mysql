@@ -112,4 +112,81 @@ class HubDtosHistoryLimitsTest {
     assertEquals("codex", device.limits!!.providers.single().provider)
     assertTrue(device.limits!!.providers.single().windows.single().showMeter)
   }
+
+  @Test
+  fun deviceParsesOsFields() {
+    val body = """
+      {
+        "deviceId": "abc",
+        "hostname": "laptop",
+        "platform": "win32",
+        "osName": "Windows",
+        "osVersion": "11",
+        "agentRuntime": "widget",
+        "stale": false,
+        "periods": { "today": { "totalTokens": 10 } }
+      }
+    """.trimIndent()
+    val device = json.decodeFromString(DeviceDto.serializer(), body)
+    assertEquals("Windows", device.osName)
+    assertEquals("11", device.osVersion)
+    assertEquals("widget", device.agentRuntime)
+  }
+
+  @Test
+  fun deviceParsesRuntimeStatusAndProjects() {
+    val body = """
+      {
+        "deviceId": "dev-1",
+        "hostname": "box",
+        "platform": "win32",
+        "osName": "Windows",
+        "osVersion": "11",
+        "agentRuntime": "headless-agent",
+        "clientStatus": { "codex": "active", "cursor": "missing" },
+        "wslStatus": { "state": "active", "detected": ["codex"], "withData": ["codex"] },
+        "periods": {
+          "today": {
+            "totalTokens": 12,
+            "costUsd": 0.2,
+            "projects": {
+              "p1": { "label": "token-monitor", "tokens": 12, "costUsd": 0.2, "clients": { "codex": 12 } }
+            },
+            "sessions": {
+              "codex:abc": {
+                "client": "codex",
+                "sessionId": "abc",
+                "projectLabel": "token-monitor",
+                "totalTokens": 12,
+                "costUsd": 0.2
+              }
+            },
+            "clientModels": { "codex": { "gpt-5": 12 } },
+            "clientModelCosts": { "codex": { "gpt-5": 0.2 } }
+          }
+        },
+        "limits": {
+          "providers": [{
+            "provider": "openrouter",
+            "balanceUsd": 3.5,
+            "balance": { "amount": 20.0, "currency": "USD", "monthSpend": 5.0 },
+            "resetCredits": { "availableCount": 1, "totalCount": 3 },
+            "windows": [{ "kind": "weekly", "remainingPercent": 55.0, "metric": "credits", "showMeter": true }]
+          }]
+        }
+      }
+    """.trimIndent()
+    val device = json.decodeFromString(DeviceDto.serializer(), body)
+    assertEquals("headless-agent", device.agentRuntime)
+    assertEquals("active", device.clientStatus["codex"])
+    assertEquals("active", device.wslStatus?.state)
+    assertEquals("token-monitor", device.periods.today.projects["p1"]?.label)
+    assertEquals("token-monitor", device.periods.today.sessions["codex:abc"]?.projectLabel)
+    assertEquals(12L, device.periods.today.clientModels["codex"]?.get("gpt-5"))
+    assertEquals(0.2, device.periods.today.clientModelCosts["codex"]?.get("gpt-5") ?: -1.0, 0.001)
+    assertEquals(3.5, device.limits?.providers?.first()?.balanceUsd)
+    assertEquals(5.0, device.limits?.providers?.first()?.balance?.monthSpend)
+    assertEquals(1.0, device.limits?.providers?.first()?.resetCredits?.availableCount)
+    assertEquals("credits", device.limits?.providers?.first()?.windows?.first()?.metric)
+  }
 }

@@ -36,7 +36,8 @@ enum class HapticsMode(val storageKey: String, val labelZh: String) {
 
 data class UserPreferences(
   val themeSeed: ThemeSeedId = ThemeSeedId.System,
-  val hapticsMode: HapticsMode = HapticsMode.Standard
+  val hapticsMode: HapticsMode = HapticsMode.Standard,
+  val homeLimitAccountCount: Int = 3
 )
 
 @Singleton
@@ -49,7 +50,8 @@ class UserPreferencesStore @Inject constructor(
 
   fun read(): UserPreferences = UserPreferences(
     themeSeed = ThemeSeedId.fromStorage(prefs.getString(KEY_THEME_SEED, ThemeSeedId.System.storageKey)),
-    hapticsMode = HapticsMode.fromStorage(prefs.getString(KEY_HAPTICS, HapticsMode.Standard.storageKey))
+    hapticsMode = HapticsMode.fromStorage(prefs.getString(KEY_HAPTICS, HapticsMode.Standard.storageKey)),
+    homeLimitAccountCount = clampHomeLimitAccountCount(prefs.getInt(KEY_HOME_LIMIT_ACCOUNT_COUNT, 3))
   )
 
   fun setThemeSeed(seed: ThemeSeedId) {
@@ -62,9 +64,19 @@ class UserPreferencesStore @Inject constructor(
     _preferences.value = _preferences.value.copy(hapticsMode = mode)
   }
 
+  fun setHomeLimitAccountCount(count: Int) {
+    val next = clampHomeLimitAccountCount(count)
+    prefs.edit().putInt(KEY_HOME_LIMIT_ACCOUNT_COUNT, next).apply()
+    _preferences.value = _preferences.value.copy(homeLimitAccountCount = next)
+  }
+
   private companion object {
     const val PREFS_NAME = "token_monitor_prefs"
     const val KEY_THEME_SEED = "theme_seed"
     const val KEY_HAPTICS = "haptics_mode"
+    const val KEY_HOME_LIMIT_ACCOUNT_COUNT = "home_limit_account_count"
   }
 }
+
+fun clampHomeLimitAccountCount(value: Int): Int = value.coerceIn(1, 12)
+
