@@ -6,12 +6,11 @@
 
 <!-- app-update-notes:en:start -->
 ### Added
-- **Hub Web / Android analytics parity:** Port more desktop analytics surfaces to the Hub web dashboard and Android app — client/provider status, plan & workspace identity, OpenRouter branding, contribution heatmap, active days, session 200, incomplete projects, home return navigation, stacked trend charts, tool→model drilldown, custom hour ranges, limit tone cues, home limit account counts, WSL/device runtime breakdown, and full `/api/history` support.
-- **Optional Hub HTTPS/TLS:** `TOKEN_MONITOR_TLS_CERT` / `TOKEN_MONITOR_TLS_KEY` / `TOKEN_MONITOR_TLS_CA` enable same-port HTTPS so true PWA install works for phones opening the hub by LAN IP.
-- **PWA maskable icons:** Add maskable 192/512 icons for better home-screen install on mobile.
+- **Claude Desktop Local Agent / Cowork tracking:** New default-tracked client `claude-desktop` (separate from Claude Code). Reads real Local Agent transcript `message.usage` under Desktop app data, with today/month/all-time totals, history, custom date ranges, project labels, costs, and session detail — same feature set as other tools. Regular claude.ai chat remains out of scope.
+- **Android More-page haptics:** Every action button on the Android “More” page now provides vibration feedback.
 
-### Changed
-- **Portable multi-surface experience:** Hub web and Android stay aligned with desktop analytics workflows while preserving fork-only MySQL Hub, custom hour ranges, tray/desktop glass, and IGNGserver release packaging.
+### Fixed
+- **Windows custom date range empty results:** Restores data after selecting a custom date range on desktop (Windows).
 <!-- app-update-notes:en:end -->
 
 ## Download
@@ -60,12 +59,11 @@ open-source: https://github.com/junhoyeo/tokscale
 
 <!-- app-update-notes:zh:start -->
 ### 新增
-- **Hub 网页 / Android 分析能力对齐：** 将更多桌面端分析能力移植到 Hub 网页与 Android —— 客户端/供应商状态、套餐与工作区身份、OpenRouter 品牌、贡献热力图、活跃天数、会话 200、未完成项目、返回首页导航、堆叠趋势图、工具→模型下钻、自定义小时范围、额度色阶提示、首页额度账号数、WSL/设备运行时拆分，以及完整 `/api/history` 支持。
-- **可选 Hub HTTPS/TLS：** 通过 `TOKEN_MONITOR_TLS_CERT` / `TOKEN_MONITOR_TLS_KEY` / `TOKEN_MONITOR_TLS_CA` 启用同端口 HTTPS，便于手机用局域网 IP 打开时真正安装 PWA。
-- **PWA maskable 图标：** 补充 192/512 maskable 图标，改善移动端主屏安装效果。
+- **Claude Desktop Local Agent / Cowork 监测：** 新增默认跟踪客户端 `claude-desktop`（与 Claude Code 分离）。从 Desktop 本地 Local Agent 会话 transcript 读取真实 `message.usage`，支持今日/本月/全部、历史曲线、自定义日期、项目标签、费用估算与 session 明细，功能类别与其他工具一致。普通 claude.ai 聊天仍不在监测范围。
+- **Android「更多」页振动反馈：** 「更多」页面各操作按钮均提供振动反馈。
 
-### 变更
-- **多端便携体验：** Hub 网页与 Android 更贴近桌面端分析工作流，同时保留本 fork 的 MySQL Hub、自定义小时范围、桌面毛玻璃/托盘，以及 IGNGserver 发布打包链路。
+### 修复
+- **Windows 自定义日期选择后无数据：** 修复桌面端（Windows）选择自定义日期后不显示数据的问题。
 <!-- app-update-notes:zh:end -->
 
 ## 下载
