@@ -311,7 +311,15 @@ private fun MoreNavCard(
 
 ) {
 
-  AppCard(onClick = onClick) {
+  val haptics = rememberAppHaptics()
+
+  AppCard(onClick = {
+
+    haptics.perform(HapticEvent.Tap)
+
+    onClick()
+
+  }) {
 
     Row(
 
@@ -367,7 +375,11 @@ private const val MAX_SESSION_ROWS = 200
 @Composable
 fun NavigateHomeAction(onHome: (() -> Unit)?) {
   if (onHome == null) return
-  IconButton(onClick = onHome) {
+  val haptics = rememberAppHaptics()
+  IconButton(onClick = {
+    haptics.perform(HapticEvent.Tap)
+    onHome()
+  }) {
     Icon(Icons.Filled.Home, contentDescription = "首页")
   }
 }
@@ -375,6 +387,8 @@ fun NavigateHomeAction(onHome: (() -> Unit)?) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SessionsScreen(stats: StatsDto?, navController: NavHostController, onHome: (() -> Unit)? = null) {
+
+  val haptics = rememberAppHaptics()
 
   val allSessions = availableSessions(stats)
   val totalSessions = allSessions.size
@@ -422,7 +436,10 @@ fun SessionsScreen(stats: StatsDto?, navController: NavHostController, onHome: (
 
       navigationIcon = {
 
-        IconButton(onClick = { navController.popBackStack() }) {
+        IconButton(onClick = {
+          haptics.perform(HapticEvent.Tap)
+          navController.popBackStack()
+        }) {
 
           Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
 
@@ -486,7 +503,10 @@ fun SessionsScreen(stats: StatsDto?, navController: NavHostController, onHome: (
 
           val clientId = session.client.orEmpty()
 
-          AppCard(onClick = { navController.navigate("session/${Uri.encode(key)}") }) {
+          AppCard(onClick = {
+          haptics.perform(HapticEvent.Tap)
+          navController.navigate("session/${Uri.encode(key)}")
+        }) {
 
             Row(verticalAlignment = Alignment.CenterVertically) {
 
@@ -582,6 +602,8 @@ fun SessionsScreen(stats: StatsDto?, navController: NavHostController, onHome: (
 
 fun SessionDetailScreen(stats: StatsDto?, key: String, onBack: () -> Unit, onHome: (() -> Unit)? = null) {
 
+  val haptics = rememberAppHaptics()
+
   val session = availableSessions(stats).firstOrNull { it.first == key }?.second
 
   Column(Modifier.fillMaxSize()) {
@@ -592,7 +614,10 @@ fun SessionDetailScreen(stats: StatsDto?, key: String, onBack: () -> Unit, onHom
 
       navigationIcon = {
 
-        IconButton(onClick = onBack) {
+        IconButton(onClick = {
+          haptics.perform(HapticEvent.Tap)
+          onBack()
+        }) {
 
           Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
 
@@ -789,6 +814,8 @@ fun SessionDetailScreen(stats: StatsDto?, key: String, onBack: () -> Unit, onHom
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProjectsScreen(stats: StatsDto?, onBack: () -> Unit, onHome: (() -> Unit)? = null) {
+  val haptics = rememberAppHaptics()
+
   var periodKey by remember { mutableStateOf("today") }
   val period = when (periodKey) {
     "month" -> stats?.periods?.month
@@ -804,7 +831,10 @@ fun ProjectsScreen(stats: StatsDto?, onBack: () -> Unit, onHome: (() -> Unit)? =
     TopAppBar(
       title = { Text("项目") },
       navigationIcon = {
-        IconButton(onClick = onBack) {
+        IconButton(onClick = {
+          haptics.perform(HapticEvent.Tap)
+          onBack()
+        }) {
           Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
         }
       },
@@ -817,7 +847,10 @@ fun ProjectsScreen(stats: StatsDto?, onBack: () -> Unit, onHome: (() -> Unit)? =
       listOf("today" to "今日", "month" to "本月", "allTime" to "全部").forEach { (key, label) ->
         FilterChip(
           selected = periodKey == key,
-          onClick = { periodKey = key },
+          onClick = {
+            haptics.perform(HapticEvent.Selection)
+            periodKey = key
+          },
           label = { Text(label) }
         )
       }
@@ -901,6 +934,8 @@ fun ProjectsScreen(stats: StatsDto?, onBack: () -> Unit, onHome: (() -> Unit)? =
 
 fun PricingScreen(state: HubUiState, viewModel: HubViewModel, onBack: () -> Unit, onHome: (() -> Unit)? = null) {
 
+  val haptics = rememberAppHaptics()
+
   var editing by remember { mutableStateOf<PricingDto?>(null) }
 
   var showNew by remember { mutableStateOf(false) }
@@ -917,7 +952,10 @@ fun PricingScreen(state: HubUiState, viewModel: HubViewModel, onBack: () -> Unit
 
         navigationIcon = {
 
-          IconButton(onClick = onBack) {
+          IconButton(onClick = {
+          haptics.perform(HapticEvent.Tap)
+          onBack()
+        }) {
 
             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
 
@@ -927,7 +965,10 @@ fun PricingScreen(state: HubUiState, viewModel: HubViewModel, onBack: () -> Unit
 
         actions = {
           NavigateHomeAction(onHome)
-          IconButton(onClick = viewModel::refreshPricing) {
+          IconButton(onClick = {
+            haptics.perform(HapticEvent.Refresh)
+            viewModel.refreshPricing()
+          }) {
             Icon(Icons.Default.Refresh, contentDescription = "刷新")
           }
         }
@@ -960,7 +1001,10 @@ fun PricingScreen(state: HubUiState, viewModel: HubViewModel, onBack: () -> Unit
 
           Button(
 
-            onClick = viewModel::fetchAllUpstream,
+            onClick = {
+              haptics.perform(HapticEvent.Confirm)
+              viewModel.fetchAllUpstream()
+            },
 
             modifier = Modifier.fillMaxWidth()
 
@@ -980,7 +1024,10 @@ fun PricingScreen(state: HubUiState, viewModel: HubViewModel, onBack: () -> Unit
 
           items(state.pricing, key = { it.model }) { pricing ->
 
-            AppCard(onClick = { editing = pricing }) {
+            AppCard(onClick = {
+              haptics.perform(HapticEvent.Tap)
+              editing = pricing
+            }) {
 
               Row(
 
@@ -1008,7 +1055,10 @@ fun PricingScreen(state: HubUiState, viewModel: HubViewModel, onBack: () -> Unit
 
                 }
 
-                IconButton(onClick = { viewModel.fetchUpstream(pricing.model) }) {
+                IconButton(onClick = {
+                  haptics.perform(HapticEvent.Refresh)
+                  viewModel.fetchUpstream(pricing.model)
+                }) {
 
                   Icon(Icons.Default.Refresh, contentDescription = "从上游拉取")
 
@@ -1048,7 +1098,10 @@ fun PricingScreen(state: HubUiState, viewModel: HubViewModel, onBack: () -> Unit
 
     FloatingActionButton(
 
-      onClick = { showNew = true },
+      onClick = {
+        haptics.perform(HapticEvent.Tap)
+        showNew = true
+      },
 
       modifier = Modifier
 
@@ -1109,6 +1162,7 @@ private fun PricingEditorDialog(
   onSave: (String, PricingRequestDto) -> Unit
 
 ) {
+  val haptics = rememberAppHaptics()
 
   var model by remember(existing) { mutableStateOf(existing?.model.orEmpty()) }
 
@@ -1181,8 +1235,8 @@ private fun PricingEditorDialog(
         enabled = valid,
 
         onClick = {
-
-          onSave(
+        haptics.perform(HapticEvent.Confirm)
+        onSave(
 
             model.trim(),
 
@@ -1196,7 +1250,10 @@ private fun PricingEditorDialog(
 
     },
 
-    dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } }
+    dismissButton = { TextButton(onClick = {
+      haptics.perform(HapticEvent.Tap)
+      onDismiss()
+    }) { Text("取消") } }
 
   )
 
@@ -1217,6 +1274,7 @@ private fun PriceField(label: String, value: String, onChange: (String) -> Unit)
 @Composable
 
 private fun BatchResultDialog(results: List<BatchPricingResultDto>, dismiss: () -> Unit) {
+  val haptics = rememberAppHaptics()
 
   AlertDialog(
 
@@ -1238,7 +1296,10 @@ private fun BatchResultDialog(results: List<BatchPricingResultDto>, dismiss: () 
 
     },
 
-    confirmButton = { TextButton(onClick = dismiss) { Text("关闭") } }
+    confirmButton = { TextButton(onClick = {
+      haptics.perform(HapticEvent.Tap)
+      dismiss()
+    }) { Text("关闭") } }
 
   )
 
@@ -1730,6 +1791,8 @@ fun availableSessions(stats: StatsDto?): List<Pair<String, SessionDto>> {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun StatusScreen(stats: StatsDto?, onBack: () -> Unit, onHome: (() -> Unit)? = null) {
+  val haptics = rememberAppHaptics()
+
   val providers = stats?.limits?.providers.orEmpty()
   val devices = stats?.devices.orEmpty()
   val okCount = providers.count { !it.status.isNullOrBlank() && it.status.equals("ok", ignoreCase = true) }
@@ -1739,7 +1802,10 @@ fun StatusScreen(stats: StatsDto?, onBack: () -> Unit, onHome: (() -> Unit)? = n
     TopAppBar(
       title = { Text("服务状态") },
       navigationIcon = {
-        IconButton(onClick = onBack) {
+        IconButton(onClick = {
+          haptics.perform(HapticEvent.Tap)
+          onBack()
+        }) {
           Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
         }
       },

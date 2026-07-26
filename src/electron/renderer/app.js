@@ -1811,6 +1811,9 @@ function toolRowsForPeriod(period) {
     return clientDisplayPreferencesApi.applyClientDisplayPreferences(usageSortedRows, state.settings?.clientDisplayOrder, state.settings?.hiddenClients, KNOWN_CLIENTS, state.settings?.pinnedClients);
   }
   if (Number(period?.totalTokens || 0) === 0) return [];
+  // Custom ranges only live on the aggregate period — devices do not carry
+  // `periods.custom`, so the device-row fallback would render a list of zeros.
+  if (state.period === 'custom') return [];
   return deviceRowsForPeriod();
 }
 
@@ -11554,4 +11557,5 @@ setupCursorAccountUI();
 setupCustomPricingUI();
 setupCustomRangeUI();
 init();
+
 

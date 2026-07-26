@@ -135,3 +135,54 @@ test('GET /api/usage/range prefers history_daily over usage_events', async () =>
     await hub.stop();
   }
 });
+test('GET /api/usage/range falls back to live today when history is empty', async () => {
+  const repository = new MemoryRepository();
+  const today = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  const todayKey = `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`;
+
+  await repository.saveDevice({
+    deviceId: 'dev-live',
+    hostname: 'host-a',
+    platform: 'win32',
+    updatedAt: new Date().toISOString(),
+    receivedAt: new Date().toISOString(),
+    today: {
+      totalTokens: 12345,
+      costUsd: 1.25,
+      clients: { codex: 12345 },
+      clientCosts: { codex: 1.25 },
+      models: { 'gpt-5': 12345 },
+      modelCosts: { 'gpt-5': 1.25 }
+    },
+    history: { daily: [], monthly: [], summary: {} }
+  });
+
+  const hub = createHub({
+    port: 0,
+    host: '127.0.0.1',
+    secret: 'range-secret',
+    repository,
+    logger: { error() {}, warn() {} }
+  });
+  await hub.start();
+  try {
+    const { port } = hub.server.address();
+    const base = `http://127.0.0.1:${port}`;
+    const headers = { authorization: 'Bearer range-secret' };
+    const res = await fetch(
+      `${base}/api/usage/range?startDate=${todayKey}&endDate=${todayKey}&startHour=0&endHour=23`,
+      { headers }
+    );
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.source, 'live_today');
+    assert.equal(body.totalTokens, 12345);
+    assert.equal(body.clients.codex, 12345);
+    assert.equal(body.startDate, todayKey);
+    assert.equal(body.endDate, todayKey);
+  } finally {
+    await hub.stop();
+  }
+});
+

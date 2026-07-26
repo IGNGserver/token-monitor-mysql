@@ -4434,9 +4434,46 @@ app.whenReady().then(() => {
       return { ok: false, error: range.error || 'invalid-range', message: range.error || 'invalid-range' };
     }
 
-    // Hub modes must use the same /api/usage/range source as mobile so both
-    // surfaces show identical custom-range totals.
+    const rangeMeta = {
+      startDate: range.startDate,
+      endDate: range.endDate,
+      startHour: range.startHour,
+      endHour: range.endHour,
+      startMs: range.startMs,
+      endMs: range.endMs,
+      since: range.since,
+      until: range.until,
+      isSameDay: range.isSameDay,
+      coversFullDays: range.coversFullDays
+    };
+
+    const collectLocalCustomRange = async () => {
+      const clients = clientsCsvForSetting(settings.clients, DEFAULT_CLIENTS);
+      const commandTimeoutMs = Number(process.env.TOKEN_MONITOR_COMMAND_TIMEOUT_MS) || 120000;
+      const result = await collectCustomRangeOnce({
+        clients,
+        range,
+        commandTimeoutMs,
+        projectsEnabled: settings.projectsEnabled !== false,
+        homeDir: os.homedir()
+      });
+      return { ok: true, ...result };
+    };
+
+    const isEmptyCustomRangePeriod = (period) => {
+      if (!period || typeof period !== 'object') return true;
+      if (Math.round(Number(period.totalTokens) || 0) > 0) return false;
+      if (Object.keys(period.clients || {}).some((key) => Number(period.clients[key]) > 0)) return false;
+      if (Object.keys(period.models || {}).some((key) => Number(period.models[key]) > 0)) return false;
+      return true;
+    };
+
+    // Hub modes prefer /api/usage/range so multi-device totals match mobile/web.
+    // When hub history/events are empty (common before graph history is warm) or
+    // the hub call fails, fall back to a local tokscale scan so the desktop
+    // widget still shows the same data as the Day tab.
     if (mode !== 'local') {
+      let hubError = null;
       try {
         let body;
         if (settings.hubMode === 'host' && embeddedHub?.hub?.getUsageRange) {
@@ -4483,44 +4520,53 @@ app.whenReady().then(() => {
           projects: Object.create(null),
           sessions: {}
         };
-        return {
-          ok: true,
-          range: {
-            startDate: range.startDate,
-            endDate: range.endDate,
-            startHour: range.startHour,
-            endHour: range.endHour,
-            startMs: range.startMs,
-            endMs: range.endMs,
-            since: range.since,
-            until: range.until,
-            isSameDay: range.isSameDay,
-            coversFullDays: range.coversFullDays
-          },
-          period,
-          source: body.source || 'history_daily',
-          updatedAt: new Date().toISOString()
-        };
+        if (!isEmptyCustomRangePeriod(period)) {
+          return {
+            ok: true,
+            range: rangeMeta,
+            period,
+            source: body.source || 'history_daily',
+            updatedAt: new Date().toISOString()
+          };
+        }
       } catch (error) {
+        hubError = error;
+      }
+
+      try {
+        const local = await collectLocalCustomRange();
+        if (!isEmptyCustomRangePeriod(local.period) || !hubError) {
+          return {
+            ...local,
+            source: local.source || (hubError ? 'local_fallback_after_hub_error' : 'local_fallback_empty_hub')
+          };
+        }
+      } catch (localError) {
+        if (hubError) {
+          return {
+            ok: false,
+            error: hubError?.code || 'hub-range-failed',
+            message: hubError?.message || String(hubError)
+          };
+        }
         return {
           ok: false,
-          error: error?.code || 'hub-range-failed',
-          message: error?.message || String(error)
+          error: localError?.code || 'collect-failed',
+          message: localError?.message || String(localError)
+        };
+      }
+
+      if (hubError) {
+        return {
+          ok: false,
+          error: hubError?.code || 'hub-range-failed',
+          message: hubError?.message || String(hubError)
         };
       }
     }
 
-    const clients = clientsCsvForSetting(settings.clients, DEFAULT_CLIENTS);
-    const commandTimeoutMs = Number(process.env.TOKEN_MONITOR_COMMAND_TIMEOUT_MS) || 120000;
     try {
-      const result = await collectCustomRangeOnce({
-        clients,
-        range,
-        commandTimeoutMs,
-        projectsEnabled: settings.projectsEnabled !== false,
-        homeDir: os.homedir()
-      });
-      return { ok: true, ...result };
+      return await collectLocalCustomRange();
     } catch (error) {
       return {
         ok: false,
@@ -5099,4 +5145,5 @@ app.on('before-quit', () => { quitRequested = true; if (rateRefreshTimer) clearI
 for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
   process.once(signal, requestAppQuit);
 }
+
 

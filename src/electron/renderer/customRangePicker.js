@@ -134,32 +134,26 @@
     const current = normalizeDraft(draft);
     const phase = draft._pickPhase || 'done';
     if (phase !== 'end') {
-      return {
+      return normalizeDraft({
         ...current,
-        ok: true,
         startDate: nextDate,
         endDate: nextDate,
-        error: undefined,
         _pickPhase: 'end'
-      };
+      });
     }
     if (nextDate < current.startDate) {
-      return {
+      return normalizeDraft({
         ...current,
-        ok: true,
         startDate: nextDate,
         endDate: current.startDate,
-        error: undefined,
         _pickPhase: 'done'
-      };
+      });
     }
-    return {
+    return normalizeDraft({
       ...current,
-      ok: true,
       endDate: nextDate,
-      error: undefined,
       _pickPhase: 'done'
-    };
+    });
   }
 
   function hourOptions() {

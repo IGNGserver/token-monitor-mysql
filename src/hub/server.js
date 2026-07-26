@@ -245,6 +245,55 @@ function createHub({
     return aggregateHistory(await store.listDeviceRecords());
   }
 
+  function localDayKey(date = new Date()) {
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+  }
+
+  function localMonthKey(date = new Date()) {
+    return localDayKey(date).slice(0, 7);
+  }
+
+  function periodToUsageRangePayload(period) {
+    return {
+      totalTokens: Math.round(number(period?.totalTokens)),
+      costUsd: number(period?.costUsd),
+      clients: { ...(period?.clients || {}) },
+      clientCosts: { ...(period?.clientCosts || {}) },
+      models: { ...(period?.models || {}) },
+      modelCosts: { ...(period?.modelCosts || {}) },
+      clientModels: period?.clientModels && typeof period.clientModels === 'object' ? period.clientModels : {},
+      clientModelCosts: period?.clientModelCosts && typeof period.clientModelCosts === 'object' ? period.clientModelCosts : {}
+    };
+  }
+
+  async function liveUsageRangeFromDevices(range) {
+    const empty = { ...emptyUsageRangePayload(), source: 'live_periods' };
+    if (!range?.ok) return empty;
+    const todayKey = localDayKey();
+    const monthKey = localMonthKey();
+    let periodName = null;
+    let source = 'live_periods';
+    if (range.isSameDay && range.startDate === todayKey) {
+      periodName = 'today';
+      source = 'live_today';
+    } else if (
+      range.coversFullDays
+      && String(range.startDate || '').startsWith(`${monthKey}-`)
+      && String(range.endDate || '').startsWith(`${monthKey}-`)
+      && String(range.startDate || '').slice(8) === '01'
+      && String(range.endDate || '') === todayKey
+    ) {
+      // Full-day span from the first of this month through today ≈ live month window.
+      periodName = 'month';
+      source = 'live_month';
+    }
+    if (!periodName) return empty;
+    const stats = await getStats();
+    const period = stats?.periods?.[periodName];
+    if (!period || number(period.totalTokens) <= 0) return empty;
+    return { ...periodToUsageRangePayload(period), source };
+  }
   async function getUsageRange(query = {}) {
     const params = query && typeof query === 'object' && !Array.isArray(query)
       ? query
@@ -335,6 +384,31 @@ function createHub({
         modelCosts: eventsAgg.modelCosts || {},
         clientModels: eventsAgg.clientModels || {},
         clientModelCosts: eventsAgg.clientModelCosts || {}
+      };
+    }
+
+    // Graph history and usage_events can both be empty while live device
+    // snapshots still have today/month totals (cold start, history disabled,
+    // or first ingest). Reuse those periods for matching full-day windows so
+    // custom-range surfaces do not go blank while Day/Month tabs still work.
+    const live = await liveUsageRangeFromDevices(range);
+    if (number(live.totalTokens) > 0) {
+      return {
+        from: from.toISOString(),
+        to: to.toISOString(),
+        startDate: range.startDate,
+        endDate: range.endDate,
+        startHour: range.startHour,
+        endHour: range.endHour,
+        source: live.source,
+        totalTokens: live.totalTokens,
+        costUsd: live.costUsd,
+        clients: live.clients,
+        clientCosts: live.clientCosts,
+        models: live.models,
+        modelCosts: live.modelCosts,
+        clientModels: live.clientModels,
+        clientModelCosts: live.clientModelCosts
       };
     }
 
