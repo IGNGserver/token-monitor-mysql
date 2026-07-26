@@ -6,7 +6,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { app, BrowserWindow, clipboard, dialog, globalShortcut, ipcMain, nativeImage, Notification, screen, session, shell } = require('electron');
 const { autoUpdater } = require('electron-updater');
-const { defaultDeviceId, generateHubSecret, lanIpv4Addresses, loadDotEnv, pidFilePath, sharedDataDir } = require('../shared/config');
+const { defaultDeviceId, generateHubSecret, lanIpv4Addresses, loadDotEnv, pidFilePath, sharedDataDir, normalizeHubUrl } = require('../shared/config');
 const {
   CredentialStore,
   credentialSettingsForRenderer,
@@ -26,7 +26,7 @@ const motionPreferenceApi = require('./motionPreference');
 // a closed parent pipe turns the next log call into an unhandled 'error'
 // event and Electron pops a "JavaScript error in the main process" dialog.
 installSafeStdout();
-const { DEFAULT_CLIENTS, KNOWN_CLIENTS, clientsCsvForSetting } = require('../shared/clientTracking');
+const { DEFAULT_CLIENTS, KNOWN_CLIENTS, clientsCsvForSetting, applyNewDefaultClientMigration } = require('../shared/clientTracking');
 const { collectCustomRangeOnce, lookupModelPricing, normalizeHistoryIntervalMs } = require('../shared/collector');
 const { createDeviceRuntime } = require('../shared/deviceRuntime');
 const { customPricingPath } = require('../shared/tokscaleConfig');
@@ -246,7 +246,7 @@ function normalizeHomeLimitAccountCount(value) {
 }
 
 function defaultSettings() {
-  const envHubUrl = process.env.TOKEN_MONITOR_HUB_URL || '';
+  const envHubUrl = normalizeHubUrl(process.env.TOKEN_MONITOR_HUB_URL || '');
   const windowBehavior = process.env.TOKEN_MONITOR_ALWAYS_ON_TOP === '0' ? 'normal' : 'floating';
   return {
     hubMode: envHubUrl ? 'client' : 'local',
@@ -284,6 +284,7 @@ function defaultSettings() {
     deviceId: process.env.TOKEN_MONITOR_DEVICE_ID || defaultDeviceId(),
     lastPostedDeviceId: '',
     clients: clientsCsvForSetting(process.env.TOKEN_MONITOR_CLIENTS),
+    migratedDefaultClients: '',
     clientDisplayOrder: '',
     hiddenClients: '',
     pinnedClients: '',
@@ -1442,6 +1443,23 @@ function floatingBubblePayload() {
 function ensureSettingsLoaded() {
   if (settings) return settings;
   settings = readSettings();
+  // Auto-enable newly introduced default clients (e.g. claude-desktop) once for existing installs.
+  {
+    const migration = applyNewDefaultClientMigration(settings.clients, settings.migratedDefaultClients);
+    if (migration.changed) {
+      settings.clients = migration.clients;
+      settings.migratedDefaultClients = migration.migratedDefaultClients;
+      saveSettings();
+    }
+  }
+  // Bare hub host/IP defaults to http://
+  {
+    const normalizedHubUrl = normalizeHubUrl(settings.hubUrl);
+    if (normalizedHubUrl !== (settings.hubUrl || '')) {
+      settings.hubUrl = normalizedHubUrl;
+      saveSettings();
+    }
+  }
   // Discard cached release metadata from older builds that queried upstream.
   if (settings.appUpdate?.lastKnownLatest?.htmlUrl && !settings.appUpdate.lastKnownLatest.htmlUrl.startsWith('https://github.com/IGNGserver/token-monitor-mysql/releases/')) {
     settings.appUpdate = { ...settings.appUpdate, lastKnownLatest: null, lastCheckedAt: null, dismissedVersion: null };
@@ -2263,7 +2281,7 @@ function effectiveHubConfig() {
     };
   }
   if (settings?.hubMode === 'client') {
-    const url = String(settings.hubUrl || '').trim();
+    const url = normalizeHubUrl(settings.hubUrl);
     return { url: url || null, secret: settings.secret || '' };
   }
   return { url: null, secret: '' };
@@ -4126,6 +4144,7 @@ app.whenReady().then(() => {
     delete normalizedPatch.openrouterProfiles;
     delete normalizedPatch.customModelPricing;
     if (patch.clients !== undefined) normalizedPatch.clients = clientsCsvForSetting(patch.clients, '');
+    if (patch.hubUrl !== undefined) normalizedPatch.hubUrl = normalizeHubUrl(patch.hubUrl);
     if (patch.deepseekApiKey !== undefined) normalizedPatch.deepseekApiKey = normalizeDeepSeekApiKey(patch.deepseekApiKey);
     if (patch.minimaxApiKey !== undefined) normalizedPatch.minimaxApiKey = normalizeMinimaxApiKey(patch.minimaxApiKey);
     if (patch.copilotApiToken !== undefined) normalizedPatch.copilotApiToken = normalizeCopilotApiToken(patch.copilotApiToken);

@@ -1,4 +1,4 @@
-﻿'use strict';
+'use strict';
 
 const crypto = require('node:crypto');
 const fs = require('node:fs');
@@ -74,6 +74,15 @@ function defaultDeviceId() {
   return os.hostname().toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || 'device';
 }
 
+// Bare host / IP / host:port → http://… (desktop + agent convenience).
+// Leaves existing schemes (http/https/…) untouched; empty stays empty.
+function normalizeHubUrl(value) {
+  const raw = String(value ?? '').trim();
+  if (!raw) return '';
+  if (/^[a-zA-Z][a-zA-Z\d+.-]*:\/\//.test(raw)) return raw;
+  return `http://${raw}`;
+}
+
 function pidFilePath() {
   return path.join(sharedDataDir(), 'agent.pid');
 }
@@ -144,6 +153,7 @@ function generateHubSecret() {
 }
 
 module.exports = {
+  normalizeHubUrl,
   defaultDeviceId,
   generateHubSecret,
   lanIpv4Addresses,

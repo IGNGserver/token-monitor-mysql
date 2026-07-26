@@ -3,6 +3,7 @@ package com.igng.tokenmonitor.android.data.local
 import android.content.Context
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
+import com.igng.tokenmonitor.android.data.remote.HubApiFactory
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -36,7 +37,11 @@ class ConnectionStore @Inject constructor(@ApplicationContext context: Context) 
   )
 
   override fun save(config: ConnectionConfig) {
-    preferences.edit().putString(HUB_URL, config.hubUrl.trim()).putString(SECRET, config.secret).apply()
+    val hubUrl = config.hubUrl.trim().let { raw ->
+      if (raw.isEmpty()) raw
+      else HubApiFactory.normalizeUrl(raw).trimEnd('/')
+    }
+    preferences.edit().putString(HUB_URL, hubUrl).putString(SECRET, config.secret).apply()
   }
 
   override fun clear() = preferences.edit().clear().apply()

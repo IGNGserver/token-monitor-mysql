@@ -47,13 +47,23 @@ class HubApiFactory private constructor(
     }
     .build()
 
-  private fun normalizeUrl(raw: String): String {
-    val value = raw.trim()
-    require(value.startsWith("http://") || value.startsWith("https://")) { "Hub URL must start with http:// or https://" }
-    return if (value.endsWith('/')) value else "$value/"
-  }
-
   companion object {
+    /**
+     * Bare host / IP / host:port → http://… for convenience.
+     * Existing http(s) schemes are preserved. Always ends with '/'.
+     */
+    fun normalizeUrl(raw: String): String {
+      val value = raw.trim()
+      require(value.isNotEmpty()) { "Hub URL is required" }
+      val withScheme = when {
+        value.startsWith("http://", ignoreCase = true) || value.startsWith("https://", ignoreCase = true) -> value
+        else -> "http://$value"
+      }
+      return if (withScheme.endsWith('/')) withScheme else "$withScheme/"
+    }
+
     fun forTesting(json: Json, requestTimeoutMs: Long = 100L): HubApiFactory = HubApiFactory(json, requestTimeoutMs)
   }
+
+  private fun normalizeUrl(raw: String): String = Companion.normalizeUrl(raw)
 }

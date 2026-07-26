@@ -2,7 +2,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { defaultDeviceId, loadDotEnv, parseArgs, pidFilePath } = require('../shared/config');
+const { defaultDeviceId, loadDotEnv, normalizeHubUrl, parseArgs, pidFilePath } = require('../shared/config');
 const { appVersion } = require('../shared/appVersion');
 const { clientsCsvForSetting } = require('../shared/clientTracking');
 const { normalizeHistoryIntervalMs } = require('../shared/collector');
@@ -20,7 +20,7 @@ const {
 
 loadDotEnv();
 const args = parseArgs(process.argv.slice(2));
-const hubUrl = String(args.hub || args.hubUrl || process.env.TOKEN_MONITOR_HUB_URL || 'http://127.0.0.1:17321').replace(/\/$/, '');
+const hubUrl = normalizeHubUrl(args.hub || args.hubUrl || process.env.TOKEN_MONITOR_HUB_URL || 'http://127.0.0.1:17321').replace(/\/$/, '');
 const secret = String(args.secret || process.env.TOKEN_MONITOR_SECRET || '').trim();
 const deviceId = String(args.device || args.deviceId || process.env.TOKEN_MONITOR_DEVICE_ID || defaultDeviceId());
 const intervalMs = Number(args.interval || args.intervalMs || process.env.TOKEN_MONITOR_INTERVAL_MS || 5 * 60 * 1000);

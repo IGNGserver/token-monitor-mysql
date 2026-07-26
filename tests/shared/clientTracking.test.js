@@ -9,7 +9,13 @@ try {
   trackingApi = require('../../src/shared/clientTracking');
 } catch (_) {}
 
-const { DEFAULT_CLIENTS, KNOWN_CLIENTS, clientsCsvForSetting } = trackingApi;
+const {
+  DEFAULT_CLIENTS,
+  KNOWN_CLIENTS,
+  NEW_DEFAULT_CLIENTS,
+  clientsCsvForSetting,
+  applyNewDefaultClientMigration
+} = trackingApi;
 
 test('clientsCsvForSetting uses defaults only for missing settings', () => {
   assert.equal(typeof DEFAULT_CLIENTS, 'string');
@@ -23,6 +29,11 @@ test('default tracked clients include current tokscale-supported tools', () => {
   for (const client of ['cline', 'kimi', 'qwen', 'grok', 'copilot', 'pi', 'zed', 'kilocode', 'zcode', 'kiro', 'codebuddy', 'workbuddy']) {
     assert.ok(clients.includes(client), `${client} should be tracked by default`);
   }
+});
+
+test('default tracked clients include claude-desktop local agent', () => {
+  assert.ok(DEFAULT_CLIENTS.split(',').includes('claude-desktop'));
+  assert.ok(NEW_DEFAULT_CLIENTS.includes('claude-desktop'));
 });
 
 test('micode is intentionally NOT default-tracked (mimocode.db double-counts Claude imports)', () => {
@@ -60,4 +71,24 @@ test('clientsCsvForSetting preserves explicit empty tracked-tool selection', () 
 
 test('clientsCsvForSetting normalizes saved client csv values', () => {
   assert.equal(clientsCsvForSetting(' Claude , Codex,,hermes '), 'claude,codex,hermes');
+});
+
+test('applyNewDefaultClientMigration appends claude-desktop once for pre-0.37 installs', () => {
+  const old = DEFAULT_CLIENTS.split(',').filter((c) => c !== 'claude-desktop').join(',');
+  const first = applyNewDefaultClientMigration(old, '');
+  assert.ok(first.clients.split(',').includes('claude-desktop'));
+  assert.equal(first.migratedDefaultClients, 'claude-desktop');
+  assert.equal(first.changed, true);
+
+  const afterDisable = first.clients.split(',').filter((c) => c !== 'claude-desktop').join(',');
+  const second = applyNewDefaultClientMigration(afterDisable, first.migratedDefaultClients);
+  // User disabled after migration — do not re-add.
+  assert.ok(!second.clients.split(',').filter(Boolean).includes('claude-desktop'));
+  assert.equal(second.changed, false);
+});
+
+test('applyNewDefaultClientMigration leaves empty tracked list empty', () => {
+  const result = applyNewDefaultClientMigration('', '');
+  assert.equal(result.clients, '');
+  assert.ok(result.migratedDefaultClients.includes('claude-desktop'));
 });
