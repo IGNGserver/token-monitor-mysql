@@ -95,6 +95,19 @@ test('Windows keeps native-style controls visible beside the period switcher', (
   assert.match(css, /body\.is-windows #closeButton:hover/);
 });
 
+test('Windows keeps period controls visible while window actions are hovered', () => {
+  const css = readRendererFile('styles.css');
+  const tabs = css.match(/body\.is-windows:not\(\.settings-open\) \.title-controls:has\(\.window-actions:hover\) \.tabs,[\s\S]*?\{([^}]*)\}/)?.[1] || '';
+  const calendar = css.match(/body\.is-windows:not\(\.settings-open\) \.title-controls:has\(\.window-actions:hover\) \.period-calendar-button,[\s\S]*?\{([^}]*)\}/)?.[1] || '';
+
+  assert.ok(tabs, 'Windows hover override keeps tabs visible');
+  assert.ok(calendar, 'Windows hover override keeps the calendar visible');
+  assert.equal(declaration(tabs, 'opacity'), '1');
+  assert.equal(declaration(tabs, 'pointer-events'), 'auto');
+  assert.equal(declaration(calendar, 'opacity'), '1');
+  assert.equal(declaration(calendar, 'pointer-events'), 'auto');
+});
+
 test('hover hotspot stays right-anchored and never extends left over the tabs', () => {
   const css = readRendererFile('styles.css');
   const hotspot = cssRule(css, '.actions-hotspot');

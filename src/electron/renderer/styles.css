@@ -440,6 +440,20 @@ body.is-windows .title-controls .tabs { right: 120px; }
   pointer-events: none;
   transition-delay: 0ms;
 }
+/* The Windows controls are always present, so hovering them must not hide the
+   period controls that occupy the adjacent reserved space. */
+body.is-windows:not(.settings-open) .title-controls:has(.window-actions:hover) .tabs,
+body.is-windows:not(.settings-open) .title-controls:has(.window-actions:focus-within) .tabs {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
+body.is-windows:not(.settings-open) .title-controls:has(.window-actions:hover) .period-calendar-button,
+body.is-windows:not(.settings-open) .title-controls:has(.window-actions:focus-within) .period-calendar-button {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
 .icon-button, .refresh-button, .settings-actions button, .shortcut-recorder button, .tab, .mode-button, .home-empty-action, .home-module-empty-action {
   border: 1px solid var(--line);
   border-radius: 7px;
