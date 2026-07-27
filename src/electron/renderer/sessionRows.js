@@ -134,10 +134,16 @@
     return archivedKeys.size;
   }
 
+  function sessionBreakdownIncomplete(stats, periodName) {
+    const count = Number(stats?.sessionDetailsOmitted?.[periodName] || 0);
+    return Number.isFinite(count) && count > 0;
+  }
+
   return {
     archivedSessionCount,
     compactSessionTime,
     sessionIdLabel,
+    sessionBreakdownIncomplete,
     sessionRowsForPeriod
   };
 });

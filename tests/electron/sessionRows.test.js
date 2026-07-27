@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
 
-const { archivedSessionCount, sessionRowsForPeriod } = require('../../src/electron/renderer/sessionRows');
+const { archivedSessionCount, sessionBreakdownIncomplete, sessionRowsForPeriod } = require('../../src/electron/renderer/sessionRows');
 
 const clientLabels = { claude: 'Claude Code', codex: 'Codex' };
 const clientColors = { claude: '#cc7c5e', codex: '#49a3b0', default: '#6ab4f0' };
@@ -124,6 +124,12 @@ test('archived session count deduplicates retained sessions across periods', () 
     }
   }), 2);
   assert.equal(archivedSessionCount(null), 0);
+});
+
+test('session breakdown reports omitted detail without breaking the renderer contract', () => {
+  assert.equal(sessionBreakdownIncomplete({ sessionDetailsOmitted: { month: 3 } }, 'month'), true);
+  assert.equal(sessionBreakdownIncomplete({ sessionDetailsOmitted: { month: 3 } }, 'today'), false);
+  assert.equal(sessionBreakdownIncomplete(null, 'month'), false);
 });
 
 test('session layout keeps page chrome consistent and lets details wrap', () => {
