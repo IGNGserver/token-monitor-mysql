@@ -244,7 +244,9 @@ private fun UsageRangeDto.toPeriodDto(): PeriodDto = PeriodDto(
   models = models,
   modelCosts = modelCosts,
   clientModels = clientModels,
-  clientModelCosts = clientModelCosts
+  clientModelCosts = clientModelCosts,
+  projects = projects,
+  sessions = sessions
 )
 
 fun formatRangeLabel(startDate: String, endDate: String, startHour: Int, endHour: Int): String {

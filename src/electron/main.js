@@ -4487,6 +4487,20 @@ app.whenReady().then(() => {
       return true;
     };
 
+    const mergeCustomRangeDetails = (aggregatePeriod, localPeriod) => {
+      const aggregate = aggregatePeriod && typeof aggregatePeriod === 'object' ? aggregatePeriod : {};
+      const local = localPeriod && typeof localPeriod === 'object' ? localPeriod : {};
+      return {
+        ...aggregate,
+        // /api/usage/range currently returns aggregate totals but deliberately
+        // omits unbounded session/project detail. The desktop process already
+        // has the authoritative local detail, so keep Hub totals and restore
+        // the detail needed by the desktop breakdown views.
+        projects: local.projects && typeof local.projects === 'object' ? local.projects : aggregate.projects || {},
+        sessions: local.sessions && typeof local.sessions === 'object' ? local.sessions : aggregate.sessions || {}
+      };
+    };
+
     // Hub modes prefer /api/usage/range so multi-device totals match mobile/web.
     // When hub history/events are empty (common before graph history is warm) or
     // the hub call fails, fall back to a local tokscale scan so the desktop
@@ -4518,7 +4532,7 @@ app.whenReady().then(() => {
           }
           body = await response.json();
         }
-        const period = {
+        const hubPeriod = {
           totalTokens: Math.round(Number(body.totalTokens) || 0),
           costUsd: Number(body.costUsd) || 0,
           cacheReadTokens: 0,
@@ -4539,12 +4553,28 @@ app.whenReady().then(() => {
           projects: Object.create(null),
           sessions: {}
         };
-        if (!isEmptyCustomRangePeriod(period)) {
+        let local = null;
+        try {
+          local = await collectLocalCustomRange();
+        } catch (localError) {
+          if (isEmptyCustomRangePeriod(hubPeriod)) throw localError;
+        }
+        if (!isEmptyCustomRangePeriod(hubPeriod)) {
+          const localPeriod = local?.period || {};
           return {
             ok: true,
             range: rangeMeta,
-            period,
-            source: body.source || 'history_daily',
+            period: mergeCustomRangeDetails(hubPeriod, localPeriod),
+            devices: localPeriod && !isEmptyCustomRangePeriod(localPeriod)
+              ? [{
+                deviceId: settings.deviceId || defaultDeviceId(),
+                periods: { custom: localPeriod },
+                updatedAt: new Date().toISOString()
+              }]
+              : [],
+            source: local && !isEmptyCustomRangePeriod(localPeriod)
+              ? `${body.source || 'history_daily'}+local-details`
+              : (body.source || 'history_daily'),
             updatedAt: new Date().toISOString()
           };
         }

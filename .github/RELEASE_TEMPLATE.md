@@ -8,6 +8,7 @@
 ### Fixed
 - **Claude Desktop usage missing after upgrade:** Existing installs that already had a saved tools list now one-time auto-enable the new default client `claude-desktop` (Local Agent / Cowork). Later manual disable is preserved.
 - **Hub URL without scheme:** Entering a bare domain or IP on desktop/agent/Android now defaults to `http://` (existing `http://` / `https://` values are left unchanged).
+- **Custom date range details:** Desktop and Android keep project, session, device, and Claude Desktop breakdowns when the Hub supplies aggregate range totals.
 <!-- app-update-notes:en:end -->
 
 ## Download
@@ -58,6 +59,7 @@ open-source: https://github.com/junhoyeo/tokscale
 ### 修复
 - **升级后 Claude Desktop 用量不显示：** 已有安装若持久化了旧的工具列表，会一次性自动启用新增的默认客户端 `claude-desktop`（Local Agent / Cowork）；之后用户手动关闭会保持关闭。
 - **Hub 地址未写协议：** 桌面端 / Agent / Android 填写裸域名或 IP 时默认补全为 `http://`（已有 `http://` / `https://` 不变）。
+- **自定义日期范围详情：** Hub 返回聚合总量时，桌面端和 Android 仍保留项目、会话、设备及 Claude Desktop 的分项数据。
 <!-- app-update-notes:zh:end -->
 
 ## 下载

@@ -265,7 +265,9 @@ data class UsageRangeDto(
   val models: Map<String, Long> = emptyMap(),
   val modelCosts: Map<String, Double> = emptyMap(),
   val clientModels: Map<String, Map<String, Long>> = emptyMap(),
-  val clientModelCosts: Map<String, Map<String, Double>> = emptyMap()
+  val clientModelCosts: Map<String, Map<String, Double>> = emptyMap(),
+  val projects: Map<String, ProjectDto> = emptyMap(),
+  val sessions: Map<String, SessionDto> = emptyMap()
 )
 
 @Serializable

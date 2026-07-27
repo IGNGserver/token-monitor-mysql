@@ -50,6 +50,20 @@ test('deviceBreakdownForPeriod tolerates shared models and legacy device records
   });
 });
 
+test('deviceBreakdownForPeriod reads custom range periods', () => {
+  const result = deviceBreakdownForPeriod({ periods: { custom: {
+    totalTokens: 180,
+    clients: { 'claude-desktop': 180 }
+  } } }, 'custom', {
+    clientLabels: { 'claude-desktop': 'Claude Desktop' }
+  });
+
+  assert.equal(result.totalTokens, 180);
+  assert.deepEqual(result.tools.map(({ key, name, value }) => ({ key, name, value })), [
+    { key: 'claude-desktop', name: 'Claude Desktop', value: 180 }
+  ]);
+});
+
 test('devicePlatformLabel appends OS versions without exposing architecture', () => {
   assert.equal(devicePlatformLabel('darwin-arm64', 'macOS', '26.0'), 'macOS 26.0');
   assert.equal(devicePlatformLabel('win32-x64', 'Windows 11', '24H2'), 'Windows 11 24H2');

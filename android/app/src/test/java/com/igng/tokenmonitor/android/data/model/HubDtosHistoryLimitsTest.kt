@@ -13,6 +13,35 @@ class HubDtosHistoryLimitsTest {
   }
 
   @Test
+  fun customRangeParsesClaudeDesktopProjectsAndSessions() {
+    val body = """
+      {
+        "source": "history_daily+local-details",
+        "totalTokens": 180,
+        "clients": { "claude-desktop": 180 },
+        "clientModels": { "claude-desktop": { "claude-sonnet": 180 } },
+        "projects": {
+          "demo": { "label": "demo", "tokens": 180, "clients": { "claude-desktop": 180 } }
+        },
+        "sessions": {
+          "claude-desktop:abc": {
+            "client": "claude-desktop",
+            "sessionId": "abc",
+            "projectLabel": "demo",
+            "totalTokens": 180
+          }
+        }
+      }
+    """.trimIndent()
+
+    val range = json.decodeFromString(UsageRangeDto.serializer(), body)
+
+    assertEquals(180L, range.clients["claude-desktop"])
+    assertEquals("demo", range.projects["demo"]?.label)
+    assertEquals("claude-desktop", range.sessions["claude-desktop:abc"]?.client)
+  }
+
+  @Test
   fun statsParsesHistoryPreviewAndLimits() {
     val body = """
       {

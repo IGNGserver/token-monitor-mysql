@@ -1777,7 +1777,10 @@ function stableColor(value, colors) {
 
 function deviceRowsForPeriod() {
   const localId = state.settings?.deviceId || '';
-  return (state.stats?.devices || []).map((device) => {
+  const devices = (state.stats?.devices || []).filter((device) => (
+    state.period !== 'custom' || device?.periods?.custom
+  ));
+  return devices.map((device) => {
     const breakdown = deviceBreakdownApi.deviceBreakdownForPeriod(device, state.period, {
       clientLabels,
       clientColors,
@@ -1812,9 +1815,6 @@ function toolRowsForPeriod(period) {
     return clientDisplayPreferencesApi.applyClientDisplayPreferences(usageSortedRows, state.settings?.clientDisplayOrder, state.settings?.hiddenClients, KNOWN_CLIENTS, state.settings?.pinnedClients);
   }
   if (Number(period?.totalTokens || 0) === 0) return [];
-  // Custom ranges only live on the aggregate period — devices do not carry
-  // `periods.custom`, so the device-row fallback would render a list of zeros.
-  if (state.period === 'custom') return [];
   return deviceRowsForPeriod();
 }
 
@@ -5057,15 +5057,30 @@ async function applyCustomRange(rangeInput) {
     };
     state.customRangeDraft = { ...state.customRange, ok: true, _pickPhase: 'done' };
     if (state.stats) {
+      const existingDevices = Array.isArray(state.stats.devices) ? state.stats.devices : [];
+      const customDevices = Array.isArray(result.devices) ? result.devices : [];
+      const customById = new Map(customDevices.map((device) => [String(device?.deviceId || ''), device]));
+      const devices = existingDevices.map((device) => {
+        const custom = customById.get(String(device?.deviceId || ''));
+        if (!custom) return device;
+        return { ...device, periods: { ...(device.periods || {}), custom: custom.periods?.custom || {} } };
+      });
+      for (const custom of customDevices) {
+        if (!devices.some((device) => String(device?.deviceId || '') === String(custom?.deviceId || ''))) devices.push(custom);
+      }
       state.stats = {
         ...state.stats,
+        devices,
         periods: {
           ...(state.stats.periods || {}),
           custom: result.period
         }
       };
     } else {
-      state.stats = { periods: { custom: result.period } };
+      state.stats = {
+        periods: { custom: result.period },
+        devices: Array.isArray(result.devices) ? result.devices : []
+      };
     }
     state.period = 'custom';
     publishViewState();

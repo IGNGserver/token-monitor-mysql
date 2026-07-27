@@ -155,7 +155,9 @@ private fun ShareAnalyticsTab(
         clients = it.clients,
         clientCosts = it.clientCosts,
         models = it.models,
-        modelCosts = it.modelCosts
+        modelCosts = it.modelCosts,
+        projects = it.projects,
+        sessions = it.sessions
       )
     }
   }
@@ -504,7 +506,9 @@ private fun resolvePeriod(state: HubUiState): PeriodDto? = when (state.analytics
       models = it.models,
       modelCosts = it.modelCosts,
       clientModels = it.clientModels,
-      clientModelCosts = it.clientModelCosts
+      clientModelCosts = it.clientModelCosts,
+      projects = it.projects,
+      sessions = it.sessions
     )
   }
 }
