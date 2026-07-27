@@ -10,6 +10,7 @@
 - **Hub URL without scheme:** Entering a bare domain or IP on desktop/agent/Android now defaults to `http://` (existing `http://` / `https://` values are left unchanged).
 - **Custom date range details:** Desktop and Android keep project, session, device, and Claude Desktop breakdowns when the Hub supplies aggregate range totals.
 - **Desktop session view:** Fixed the session breakdown failing to render for today, month, and custom ranges.
+- **Windows window controls:** The frameless desktop window now keeps minimize, close, and pin controls visible in the title bar.
 <!-- app-update-notes:en:end -->
 
 ## Download
@@ -62,6 +63,7 @@ open-source: https://github.com/junhoyeo/tokscale
 - **Hub 地址未写协议：** 桌面端 / Agent / Android 填写裸域名或 IP 时默认补全为 `http://`（已有 `http://` / `https://` 不变）。
 - **自定义日期范围详情：** Hub 返回聚合总量时，桌面端和 Android 仍保留项目、会话、设备及 Claude Desktop 的分项数据。
 - **桌面端会话视图：** 修复今日、本月及自定义日期范围的会话分解无法渲染的问题。
+- **Windows 窗口控制：** 无边框桌面窗口现在会在标题栏常驻显示最小化、关闭和置顶按钮。
 <!-- app-update-notes:zh:end -->
 
 ## 下载

@@ -68,7 +68,7 @@ test('applyControlLayout keeps both controls in the footer and swaps their roles
   assert.doesNotMatch(body, /titlebarSlot\.appendChild/);
 });
 
-test('window-actions and tabs fade out after a leave grace delay, in instantly', () => {
+test('window-actions fade out by default and reveal instantly on hover', () => {
   const css = readRendererFile('styles.css');
 
   const actions = cssRule(css, '.window-actions');
@@ -79,6 +79,20 @@ test('window-actions and tabs fade out after a leave grace delay, in instantly',
 
   const tabs = cssRule(css, '.title-controls .tabs');
   assert.match(declaration(tabs, 'transition'), /280ms/, 'tabs restore after the same 280ms grace');
+});
+
+test('Windows keeps native-style controls visible beside the period switcher', () => {
+  const css = readRendererFile('styles.css');
+  const controls = cssRule(css, 'body.is-windows .title-controls');
+  const actions = cssRule(css, 'body.is-windows .window-actions');
+  const tabs = cssRule(css, 'body.is-windows .title-controls .tabs');
+
+  assert.equal(declaration(controls, 'width'), '288px');
+  assert.equal(declaration(actions, 'opacity'), '1');
+  assert.equal(declaration(actions, 'pointer-events'), 'auto');
+  assert.equal(declaration(actions, 'width'), '114px');
+  assert.equal(declaration(tabs, 'right'), '120px');
+  assert.match(css, /body\.is-windows #closeButton:hover/);
 });
 
 test('hover hotspot stays right-anchored and never extends left over the tabs', () => {
@@ -247,4 +261,3 @@ test('refresh button exposes busy, success, and error feedback states', () => {
     'settings-specific notice file was consolidated into the shared icon notice file',
   );
 });
-

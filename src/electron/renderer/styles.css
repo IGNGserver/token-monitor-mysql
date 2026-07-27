@@ -294,6 +294,23 @@ body.is-windows.floating-bubble-collapsed-right .floating-bubble-tab {
   transition: opacity 160ms ease 280ms, transform 160ms ease 280ms;
   z-index: 4;
 }
+/* Windows uses a frameless window, so keep the native-style controls visible
+   and reserve space for them beside the period switcher. */
+body.is-windows .title-controls {
+  flex: 0 0 288px;
+  width: 288px;
+  min-width: 288px;
+}
+body.is-windows .window-actions {
+  width: 114px;
+  opacity: 1;
+  pointer-events: auto;
+  transform: none;
+  transition: none;
+}
+body.is-windows .actions-hotspot {
+  display: none;
+}
 #footerActionSlot { display: contents; }
 /* Settings and Refresh move as one utility group. The selected primary action
    stays anchored while the other progressively discloses to its left. */
@@ -373,6 +390,7 @@ body.is-windows.floating-bubble-collapsed-right .floating-bubble-tab {
   width: auto;
   transition: opacity 160ms ease 280ms, transform 160ms ease 280ms;
 }
+body.is-windows .title-controls .tabs { right: 120px; }
 .period-calendar-button {
   position: absolute;
   top: 0;
@@ -446,6 +464,12 @@ body.is-windows.floating-bubble-collapsed-right .floating-bubble-tab {
   mask: url("icons/actions/settings.svg") center / contain no-repeat;
 }
 .icon-button:hover, .refresh-button:hover, .mode-button:hover, .settings-actions button:hover, .shortcut-recorder button:hover { border-color: var(--line-strong); background: rgba(var(--overlay-rgb), 0.072); }
+body.is-windows #closeButton:hover,
+body.is-windows #closeButton:focus-visible {
+  border-color: #e06c75;
+  color: #fff;
+  background: #c94f5b;
+}
 .icon-button.active { border-color: rgba(var(--accent-rgb), 0.58); color: var(--accent); background: rgba(var(--accent-rgb), 0.08); }
 /* The settings panel is a plain view on the widget glass (like the main
    breakdown), not a recessed slab: the section cards carry all the surface
