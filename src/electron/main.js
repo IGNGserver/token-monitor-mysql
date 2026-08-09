@@ -181,15 +181,17 @@ const { applyWindowsChrome } = require('./windowsChrome');
 const { setMoveToActiveSpace } = require('./macosSpaceBehavior');
 const {
   normalizeWindowsBackdropMode,
-  windowsElectronBackgroundMaterial,
-  isWindowsAccentBackdrop
+  windowsElectronBackgroundMaterial
 } = require('./windowsBackdropMode');
-const { applyWindowsAccentBlur } = require('./windowsBackdrop');
 
 if (!app.isPackaged) loadDotEnv();
 
 const APP_NAME = 'Token Monitor';
-const APP_ICON_PATH = path.join(__dirname, '..', '..', 'assets', 'icon.png');
+const WIN_ICON_PATH = path.join(__dirname, '..', '..', 'build', 'icons', 'icon.ico');
+const PNG_ICON_PATH = path.join(__dirname, '..', '..', 'assets', 'icon.png');
+const APP_ICON_PATH = process.platform === 'win32' && fs.existsSync(WIN_ICON_PATH)
+  ? WIN_ICON_PATH
+  : PNG_ICON_PATH;
 
 const DEFAULT_WINDOW = { width: 340, height: 650 };
 const WINDOW_LIMITS = { minWidth: 240, minHeight: 140, maxWidth: 1200, maxHeight: 1400 };
@@ -3800,7 +3802,6 @@ function createWindow(boundsOverride, options = {}) {
   const collapsedFloatingBubble = options.collapsedFloatingBubble === true;
   const glass = nativeBlurEnabled();
   const windowsBackdrop = normalizeWindowsBackdropMode(settings?.windowsBackdrop);
-  const windowsAccent = process.platform === 'win32' && glass && isWindowsAccentBackdrop(windowsBackdrop);
   const windowsMaterial = windowsElectronBackgroundMaterial(windowsBackdrop);
   const bounds = boundsOverride || restoredBounds() || DEFAULT_WINDOW;
   const collapsedSizeLimits = {
@@ -3824,7 +3825,7 @@ function createWindow(boundsOverride, options = {}) {
     ...(collapsedFloatingBubble ? { fullscreenable: false, maximizable: false, minimizable: false } : {}),
     ...floatingBubbleWindowChrome(process.platform, collapsedFloatingBubble),
     ...(process.platform === 'darwin' && glass ? { vibrancy: 'hud', visualEffectState: 'active' } : {}),
-    ...(process.platform === 'win32' && glass && !windowsAccent ? { backgroundMaterial: windowsMaterial } : {}),
+    ...(process.platform === 'win32' && glass ? { backgroundMaterial: windowsMaterial } : {}),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -3835,15 +3836,6 @@ function createWindow(boundsOverride, options = {}) {
   mainWindowChrome = { collapsedFloatingBubble };
   applyMacSpaceBehavior();
   applyWindowsChrome(win, { round: true });
-  let windowsAccentFallback = false;
-  if (windowsAccent && !applyWindowsAccentBlur(win)) {
-    // The Accent API is undocumented and can disappear or reject a window on
-    // a future Windows build. This window is still non-transparent, so the
-    // documented Electron Acrylic material is a safe in-place fallback.
-    windowsAccentFallback = true;
-    console.warn('[window] AccentBlurBehind unavailable; falling back to Acrylic');
-    try { win.setBackgroundMaterial(windowsMaterial || 'acrylic'); } catch (_) {}
-  }
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (isAllowedExternalUrl(url)) shell.openExternal(url);
     return { action: 'deny' };
@@ -3889,8 +3881,7 @@ function createWindow(boundsOverride, options = {}) {
         suppressInitialNumberAnimation: options.suppressInitialNumberAnimation === true,
         viewState: rendererViewState
       }),
-      ...(settings?.systemGlass === false ? { systemGlassDisabled: '1' } : {}),
-      ...(windowsAccentFallback ? { windowsBackdropFallback: '1' } : {})
+      ...(settings?.systemGlass === false ? { systemGlassDisabled: '1' } : {})
     }
   });
 }
