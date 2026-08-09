@@ -1618,7 +1618,7 @@ fun SettingsScreen(
 
           label = { Text("Hub URL") },
 
-          placeholder = { Text("http://192.168.5.28:17321") },
+          placeholder = { Text("http://192.168.1.100:17321") },
 
           singleLine = true,
 

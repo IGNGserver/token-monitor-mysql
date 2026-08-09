@@ -11,12 +11,11 @@
   const { normalizeWindowsBackdropMode } = backdropModeApi;
 
   function appearanceState(settings = {}, { isWindows = false } = {}) {
-    const systemGlassEnabled = settings.systemGlass !== false;
-    const backdropMode = normalizeWindowsBackdropMode(settings.windowsBackdrop);
+    const backdropMode = normalizeWindowsBackdropMode(settings?.windowsBackdrop);
     return {
-      showBackdropControl: isWindows && systemGlassEnabled,
-      showAccentNote: isWindows && systemGlassEnabled && backdropMode === 'accent',
-      showMicaNote: isWindows && systemGlassEnabled && (backdropMode === 'mica' || backdropMode === 'tabbed'),
+      showBackdropControl: isWindows,
+      showAccentNote: false,
+      showMicaNote: isWindows && backdropMode === 'mica',
       backdropMode
     };
   }

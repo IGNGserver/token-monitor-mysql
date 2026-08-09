@@ -91,6 +91,18 @@ html.is-windows .shell {
      blur) with proper anti-aliasing instead. */
   clip-path: none;
 }
+html.is-windows[data-windows-backdrop="mica"] .shell,
+body.is-windows[data-windows-backdrop="mica"] .shell {
+  background: transparent;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+html.is-windows[data-windows-backdrop="acrylic"] .shell,
+body.is-windows[data-windows-backdrop="acrylic"] .shell {
+  background: rgba(var(--glass-rgb), 0.38);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
 
 html.is-mac-legacy, html.is-mac-legacy body {
   border-radius: 10px;
@@ -220,6 +232,11 @@ body.is-windows.floating-bubble-collapsed-right .floating-bubble-tab {
   display: none;
   font-weight: 700;
   line-height: 1;
+  vertical-align: middle;
+}
+.app-title-mark-svg {
+  display: inline-block;
+  vertical-align: text-bottom;
 }
 /* Offscreen probe: rendered with the same font/size as the title, used by JS */
 /* to detect "would Token Monitor still fit?". Independent of the live text */
@@ -232,10 +249,10 @@ body.is-windows.floating-bubble-collapsed-right .floating-bubble-tab {
   pointer-events: none;
   white-space: nowrap;
 }
-/* Swap text → Σ at the exact width where the title would start to truncate, */
+/* Swap text → T mark at the exact width where the title would start to truncate, */
 /* driven by JS overflow detection (see renderer/app.js). */
 .shell.title-collapsed .app-title-text, .shell.title-icon-only .app-title-text { display: none; }
-.shell.title-collapsed .app-title-mark, .shell.title-icon-only .app-title-mark { display: inline; }
+.shell.title-collapsed .app-title-mark, .shell.title-icon-only .app-title-mark { display: inline-block; }
 .live-dot {
   display: inline-block;
   width: 4px;

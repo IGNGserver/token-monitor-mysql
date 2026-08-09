@@ -173,10 +173,7 @@ test('main section holds views; appearance is its own section; window holds beha
     html.indexOf('<div id="appearanceSettingsDetails"'),
     html.indexOf('<div class="settings-group settings-collapsible-group settings-tools-group"')
   );
-  assert.notEqual(appearance, '', 'appearance section should exist');
-  assert.match(appearance, /name="systemGlassOption" value="system"/);
-  assert.match(appearance, /name="systemGlassOption" value="off"/);
-  assert.match(appearance, /id="glassInput"/);
+  assert.doesNotMatch(appearance, /name="systemGlassOption"/);
   assert.match(appearance, /id="zoomInput"/);
   assert.match(appearance, /id="themePresetChips"/);
   assert.match(appearance, /id="themeCodeInput"/);

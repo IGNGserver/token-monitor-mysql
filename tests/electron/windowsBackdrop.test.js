@@ -25,54 +25,32 @@ const {
 
 test('Windows backdrop modes fail closed to documented Acrylic', () => {
   assert.equal(normalizeRendererMode, normalizeWindowsBackdropMode);
-  for (const value of [undefined, null, '', 'nope', 'ACRYLIC']) {
+  for (const value of [undefined, null, '', 'nope', 'ACRYLIC', 'tabbed', 'accent']) {
     assert.equal(normalizeWindowsBackdropMode(value), 'acrylic');
     assert.equal(normalizeRendererMode(value), 'acrylic');
   }
-  assert.equal(normalizeWindowsBackdropMode('accent'), 'accent');
-  assert.equal(normalizeRendererMode('accent'), 'accent');
   assert.equal(normalizeWindowsBackdropMode('mica'), 'mica');
   assert.equal(normalizeRendererMode('mica'), 'mica');
-  assert.equal(normalizeWindowsBackdropMode('tabbed'), 'tabbed');
-  assert.equal(normalizeRendererMode('tabbed'), 'tabbed');
 });
 
-test('Windows glass appearance state covers platform and system-glass boundaries', () => {
+test('Windows glass appearance state covers platform boundaries', () => {
   assert.deepEqual(appearanceState({}, { isWindows: false }), {
     showBackdropControl: false,
     showAccentNote: false,
     showMicaNote: false,
     backdropMode: 'acrylic'
   });
-  assert.deepEqual(appearanceState({ systemGlass: false, windowsBackdrop: 'accent' }, { isWindows: true }), {
-    showBackdropControl: false,
-    showAccentNote: false,
-    showMicaNote: false,
-    backdropMode: 'accent'
-  });
-  assert.deepEqual(appearanceState({ systemGlass: true, windowsBackdrop: 'accent' }, { isWindows: true }), {
-    showBackdropControl: true,
-    showAccentNote: true,
-    showMicaNote: false,
-    backdropMode: 'accent'
-  });
-  assert.deepEqual(appearanceState({ systemGlass: true, windowsBackdrop: 'acrylic' }, { isWindows: true }), {
+  assert.deepEqual(appearanceState({ windowsBackdrop: 'acrylic' }, { isWindows: true }), {
     showBackdropControl: true,
     showAccentNote: false,
     showMicaNote: false,
     backdropMode: 'acrylic'
   });
-  assert.deepEqual(appearanceState({ systemGlass: true, windowsBackdrop: 'mica' }, { isWindows: true }), {
+  assert.deepEqual(appearanceState({ windowsBackdrop: 'mica' }, { isWindows: true }), {
     showBackdropControl: true,
     showAccentNote: false,
     showMicaNote: true,
     backdropMode: 'mica'
-  });
-  assert.deepEqual(appearanceState({ systemGlass: true, windowsBackdrop: 'tabbed' }, { isWindows: true }), {
-    showBackdropControl: true,
-    showAccentNote: false,
-    showMicaNote: true,
-    backdropMode: 'tabbed'
   });
 });
 
@@ -176,28 +154,20 @@ test('native Accent adapter rejects failed DWM setup before applying the Accent 
   });
 });
 
-test('main process selects Accent at creation and falls back to Acrylic on failure', () => {
+test('main process configures backgroundMaterial from windowsBackdrop', () => {
   assert.match(main, /windowsBackdrop: 'acrylic',/);
   assert.match(main, /windowsBackdrop: normalizeWindowsBackdropMode\(patch\.windowsBackdrop \?\? settings\.windowsBackdrop\)/);
-  assert.match(main, /backgroundMaterial: windowsMaterial/);
   assert.match(main, /windowsElectronBackgroundMaterial\(/);
-  assert.match(main, /windowsAccent && !applyWindowsAccentBlur\(win\)/);
-  assert.match(main, /win\.setBackgroundMaterial\(windowsMaterial \|\| 'acrylic'\)/);
-  assert.match(main, /windowsBackdropFallback: '1'/);
-  assert.match(main, /previousWindowsBackdrop !== nextWindowsBackdrop/);
-  assert.doesNotMatch(main, /windowsLayeredBlur/);
 });
 
-test('Windows exposes an accessible Acrylic and experimental Accent selector', () => {
-  assert.match(html, /role="radiogroup" aria-labelledby="windowGlassEffectLabel"/);
-  assert.match(html, /input type="radio" name="systemGlassOption" value="system"/);
-  assert.match(html, /input type="radio" name="systemGlassOption" value="off"/);
+test('Windows exposes an accessible Acrylic and Mica selector', () => {
+  assert.doesNotMatch(html, /name="systemGlassOption"/);
   assert.match(html, /id="windowsBackdropRow" class="settings-item hidden"/);
   assert.match(html, /id="windowsBackdropInput"/);
   assert.match(html, /option value="acrylic"/);
   assert.match(html, /option value="mica"/);
-  assert.match(html, /option value="tabbed"/);
-  assert.match(html, /option value="accent"/);
+  assert.doesNotMatch(html, /option value="tabbed"/);
+  assert.doesNotMatch(html, /option value="accent"/);
   assert.match(html, /data-i18n="settings\.appearance\.windowsBackdropNote"/);
   assert.match(html, /id="windowsBackdropNote"/);
   assert.match(html, /<script src="\.\.\/windowsBackdropMode\.js"><\/script>[\s\S]*<script src="windowsGlass\.js"><\/script>[\s\S]*<script src="app\.js"><\/script>/);
@@ -205,13 +175,8 @@ test('Windows exposes an accessible Acrylic and experimental Accent selector', (
   assert.match(app, /const showNote = windowsGlass\.showAccentNote \|\| windowsGlass\.showMicaNote/);
   assert.match(app, /classList\.toggle\('hidden', !showNote\)/);
   assert.doesNotMatch(app, /backdropControlDisabled/);
-  assert.equal((i18n.match(/'settings\.appearance\.glassEffectSystem':/g) || []).length, 5);
-  assert.equal((i18n.match(/'settings\.appearance\.glassEffectTransparent':/g) || []).length, 5);
   assert.equal((i18n.match(/'settings\.appearance\.windowsBackdrop':/g) || []).length, 5);
-  assert.equal((i18n.match(/'settings\.appearance\.windowsBackdropAccent':/g) || []).length, 5);
-  assert.equal((i18n.match(/'settings\.appearance\.windowsBackdropFallback':/g) || []).length, 5);
   assert.equal((i18n.match(/'settings\.appearance\.windowsBackdropMica':/g) || []).length, 5);
-  assert.equal((i18n.match(/'settings\.appearance\.windowsBackdropTabbed':/g) || []).length, 5);
   assert.equal((i18n.match(/'settings\.appearance\.windowsBackdropMicaNote':/g) || []).length, 5);
   assert.match(i18n, /Keeps the background translucent and blurred, even when the window is not focused\./);
   assert.doesNotMatch(css, /windows-native-blur-only/);
@@ -223,24 +188,19 @@ test('experimental Accent mode uses the shared glass surface treatment', () => {
   assert.match(css, /#windowsBackdropNote\.hidden \{ display: none; \}/);
 });
 
-
-test('normalizeWindowsBackdropMode accepts mica and tabbed', () => {
+test('normalizeWindowsBackdropMode accepts mica and acrylic', () => {
   const {
     normalizeWindowsBackdropMode,
     windowsElectronBackgroundMaterial,
-    isWindowsAccentBackdrop,
     WINDOWS_BACKDROP_MICA,
-    WINDOWS_BACKDROP_TABBED,
-    WINDOWS_BACKDROP_ACRYLIC,
-    WINDOWS_BACKDROP_ACCENT
+    WINDOWS_BACKDROP_ACRYLIC
   } = require('../../src/electron/windowsBackdropMode');
   assert.equal(normalizeWindowsBackdropMode('mica'), WINDOWS_BACKDROP_MICA);
-  assert.equal(normalizeWindowsBackdropMode('tabbed'), WINDOWS_BACKDROP_TABBED);
+  assert.equal(normalizeWindowsBackdropMode('acrylic'), WINDOWS_BACKDROP_ACRYLIC);
+  assert.equal(normalizeWindowsBackdropMode('tabbed'), WINDOWS_BACKDROP_ACRYLIC);
+  assert.equal(normalizeWindowsBackdropMode('accent'), WINDOWS_BACKDROP_ACRYLIC);
   assert.equal(normalizeWindowsBackdropMode('nope'), WINDOWS_BACKDROP_ACRYLIC);
   assert.equal(windowsElectronBackgroundMaterial('mica'), 'mica');
-  assert.equal(windowsElectronBackgroundMaterial('tabbed'), 'tabbed');
-  assert.equal(windowsElectronBackgroundMaterial('accent'), WINDOWS_BACKDROP_ACRYLIC);
-  assert.equal(isWindowsAccentBackdrop('accent'), true);
-  assert.equal(isWindowsAccentBackdrop('mica'), false);
-  assert.equal(WINDOWS_BACKDROP_ACCENT, 'accent');
+  assert.equal(windowsElectronBackgroundMaterial('acrylic'), 'acrylic');
+  assert.equal(windowsElectronBackgroundMaterial('tabbed'), 'acrylic');
 });

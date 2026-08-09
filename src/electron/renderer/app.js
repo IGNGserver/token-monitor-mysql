@@ -5295,6 +5295,13 @@ function applyAppearanceSettings(settings) {
     els.windowsBackdropNote.classList.toggle('error', accentFallback);
     els.windowsBackdropNote.classList.toggle('hidden', !showNote);
   }
+  if (isWindows && windowsGlass.backdropMode) {
+    document.documentElement.dataset.windowsBackdrop = windowsGlass.backdropMode;
+    document.body.dataset.windowsBackdrop = windowsGlass.backdropMode;
+  } else {
+    delete document.documentElement.dataset.windowsBackdrop;
+    delete document.body.dataset.windowsBackdrop;
+  }
   applyReduceMotionPreference(settings?.reduceMotion);
   // Only full settings objects carry themeColors; glass/zoom preview patches
   // omit it, so we must not wipe theme overrides mid-slider-drag.
@@ -5908,9 +5915,7 @@ function handleFloatingBubblePointerUp(event) {
 }
 
 function appearancePatchFromControls() {
-  const systemGlass = els.systemGlassInputs?.find((input) => input.checked)?.value !== 'off';
   return {
-    systemGlass,
     windowsBackdrop: windowsGlassApi.normalizeWindowsBackdropMode(els.windowsBackdropInput?.value),
     reduceMotion: els.reduceMotionInputs?.find((input) => input.checked)?.value || 'system',
     showLiveDot: Boolean(els.liveDotInput.checked),
@@ -5918,9 +5923,9 @@ function appearancePatchFromControls() {
     titleIconOnly: Boolean(els.titleIconInput.checked),
     showCompactTotalTokens: Boolean(els.showCompactTotalTokensInput.checked),
     settingsInTitlebar: Boolean(els.swapSettingsRefreshInput.checked),
-    glassOpacity: Number(els.glassInput.value === '' ? defaultAppearance.glassOpacity : els.glassInput.value),
-    glassBlur: Number(els.blurInput.value === '' ? defaultAppearance.glassBlur : els.blurInput.value),
-    zoomFactor: Number(els.zoomInput.value === '' ? defaultAppearance.zoomFactor * 100 : els.zoomInput.value) / 100
+    ...(els.glassInput ? { glassOpacity: Number(els.glassInput.value === '' ? defaultAppearance.glassOpacity : els.glassInput.value) } : {}),
+    ...(els.blurInput ? { glassBlur: Number(els.blurInput.value === '' ? defaultAppearance.glassBlur : els.blurInput.value) } : {}),
+    zoomFactor: Number(els.zoomInput?.value === '' || !els.zoomInput ? defaultAppearance.zoomFactor * 100 : els.zoomInput.value) / 100
   };
 }
 
@@ -5931,9 +5936,9 @@ function syncSliderRow(input) {
 }
 
 function syncSliderRows() {
-  syncSliderRow(els.glassInput);
-  syncSliderRow(els.blurInput);
-  syncSliderRow(els.zoomInput);
+  if (els.glassInput) syncSliderRow(els.glassInput);
+  if (els.blurInput) syncSliderRow(els.blurInput);
+  if (els.zoomInput) syncSliderRow(els.zoomInput);
 }
 
 function applyAppearanceFromControls() {
@@ -6198,9 +6203,9 @@ function syncSettingsForm() {
         ? t('settings.startup.appimageNote')
         : t('settings.startup.launchAtSignIn');
   }
-  els.glassInput.value = String(state.settings.glassOpacity ?? 68);
-  els.blurInput.value = String(state.settings.glassBlur ?? 32);
-  els.zoomInput.value = String(Math.round((Number(state.settings.zoomFactor) || 1) * 100));
+  if (els.glassInput) els.glassInput.value = String(state.settings.glassOpacity ?? 68);
+  if (els.blurInput) els.blurInput.value = String(state.settings.glassBlur ?? 32);
+  if (els.zoomInput) els.zoomInput.value = String(Math.round((Number(state.settings.zoomFactor) || 1) * 100));
   syncSliderRows();
   renderDeepseekStatus();
   renderMinimaxStatus();
@@ -7889,19 +7894,22 @@ els.resetClientDisplayOrderButton?.addEventListener('click', resetClientDisplayO
 els.showAllClientsButton?.addEventListener('click', showAllClients);
 els.resetViewDisplayOrderButton?.addEventListener('click', resetViewDisplayOrder);
 els.showAllViewsButton?.addEventListener('click', showAllViews);
-els.resetGlassButton.addEventListener('click', async () => {
-  els.glassInput.value = String(defaultAppearance.glassOpacity);
+els.resetGlassButton?.addEventListener('click', async () => {
+  if (els.glassInput) els.glassInput.value = String(defaultAppearance.glassOpacity);
   applyAppearanceFromControls();
   await saveSettings({ glassOpacity: defaultAppearance.glassOpacity });
 });
-els.resetDepthButton.addEventListener('click', async () => {
-  els.blurInput.value = String(defaultAppearance.glassBlur);
+els.resetDepthButton?.addEventListener('click', async () => {
+  if (els.blurInput) els.blurInput.value = String(defaultAppearance.glassBlur);
   applyAppearanceFromControls();
   await saveSettings({ glassBlur: defaultAppearance.glassBlur });
 });
-els.glassInput.addEventListener('input', applyAppearanceFromControls);
-els.blurInput.addEventListener('input', applyAppearanceFromControls);
-els.zoomInput.addEventListener('input', applyAppearanceFromControls);
+els.glassInput?.addEventListener('input', applyAppearanceFromControls);
+els.blurInput?.addEventListener('input', applyAppearanceFromControls);
+els.zoomInput?.addEventListener('input', applyAppearanceFromControls);
+els.glassInput?.addEventListener('change', saveAppearanceFromControls);
+els.blurInput?.addEventListener('change', saveAppearanceFromControls);
+els.zoomInput?.addEventListener('change', saveAppearanceFromControls);
 els.resetThemeColorsButton?.addEventListener('click', () => commitThemeColors({}));
 els.resetVendorColorsButton?.addEventListener('click', () => commitVendorColors({}));
 els.applyThemeCodeButton?.addEventListener('click', () => { void pasteAndApplyThemeCode(); });
@@ -8644,21 +8652,21 @@ function drawCustomTrayProviderBadge(ctx, x, y, size, color) {
   ctx.strokeStyle = color;
   ctx.stroke();
 
-  // Custom tray images remain macOS template images. Cut the sigma out of the
+  // Custom tray images remain macOS template images. Cut the T mark out of the
   // badge alpha so the mark survives the menu-bar tint as negative space.
-  const left = badgeX + badgeSize * 0.29;
-  const right = badgeX + badgeSize * 0.72;
-  const top = badgeY + badgeSize * 0.27;
-  const middle = badgeY + badgeSize * 0.5;
-  const bottom = badgeY + badgeSize * 0.73;
+  const left = badgeX + badgeSize * 0.33;
+  const right = badgeX + badgeSize * 0.70;
+  const top = badgeY + badgeSize * 0.32;
+  const bottom = badgeY + badgeSize * 0.71;
+  const stemX = badgeX + badgeSize * 0.51;
   ctx.globalCompositeOperation = 'destination-out';
   ctx.beginPath();
-  ctx.moveTo(right, top);
-  ctx.lineTo(left, top);
-  ctx.lineTo(badgeX + badgeSize * 0.56, middle);
-  ctx.lineTo(left, bottom);
-  ctx.lineTo(right, bottom);
-  ctx.lineWidth = Math.max(1, badgeSize * 0.13);
+  ctx.moveTo(left, top);
+  ctx.lineTo(right, top);
+  ctx.moveTo(stemX, top);
+  ctx.lineTo(stemX, bottom - badgeSize * 0.12);
+  ctx.quadraticCurveTo(stemX, bottom, stemX + badgeSize * 0.14, bottom);
+  ctx.lineWidth = Math.max(1, badgeSize * 0.12);
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
   ctx.strokeStyle = '#000000';
@@ -9173,19 +9181,19 @@ function providerImageToPngDataUrl(img, size, showBadge = false, options = {}) {
   ctx.strokeStyle = '#ffffff';
   ctx.stroke();
 
-  // Draw the project's sigma mark as geometry so it remains crisp without a font dependency.
-  const left = x + badgeSize * 0.29;
-  const right = x + badgeSize * 0.72;
-  const top = y + badgeSize * 0.27;
-  const middle = y + badgeSize * 0.5;
-  const bottom = y + badgeSize * 0.73;
+  // Draw the project's T token mark as geometry so it remains crisp without a font dependency.
+  const left = x + badgeSize * 0.33;
+  const right = x + badgeSize * 0.70;
+  const top = y + badgeSize * 0.32;
+  const bottom = y + badgeSize * 0.71;
+  const stemX = x + badgeSize * 0.51;
   ctx.beginPath();
-  ctx.moveTo(right, top);
-  ctx.lineTo(left, top);
-  ctx.lineTo(x + badgeSize * 0.56, middle);
-  ctx.lineTo(left, bottom);
-  ctx.lineTo(right, bottom);
-  ctx.lineWidth = Math.max(2, badgeSize * 0.13);
+  ctx.moveTo(left, top);
+  ctx.lineTo(right, top);
+  ctx.moveTo(stemX, top);
+  ctx.lineTo(stemX, bottom - badgeSize * 0.12);
+  ctx.quadraticCurveTo(stemX, bottom, stemX + badgeSize * 0.14, bottom);
+  ctx.lineWidth = Math.max(2, badgeSize * 0.12);
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
   ctx.strokeStyle = '#ffffff';
