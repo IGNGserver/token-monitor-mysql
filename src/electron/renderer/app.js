@@ -8007,10 +8007,10 @@ els.startAtLoginInput?.addEventListener('change', () => saveSettings({ startAtLo
 els.startInTrayInput?.addEventListener('change', () => saveSettings({ startInTray: els.startInTrayInput.checked }));
 els.closeToTrayInput?.addEventListener('change', () => saveSettings({ closeToTray: els.closeToTrayInput.checked }));
 els.automaticAppUpdatesInput?.addEventListener('change', () => saveSettings({ automaticAppUpdates: els.automaticAppUpdatesInput.checked }));
-els.glassInput.addEventListener('change', saveAppearanceFromControls);
-els.blurInput.addEventListener('change', saveAppearanceFromControls);
-els.zoomInput.addEventListener('change', saveAppearanceFromControls);
-els.resetZoomButton.addEventListener('click', async () => {
+// Glass and Depth controls were removed from the Windows appearance panel;
+// keep this legacy reset binding optional so a missing optional control cannot
+// abort the entire renderer bootstrap.
+els.resetZoomButton?.addEventListener('click', async () => {
   els.zoomInput.value = String(Math.round(defaultAppearance.zoomFactor * 100));
   syncSliderRow(els.zoomInput);
   await saveSettings({ zoomFactor: defaultAppearance.zoomFactor });

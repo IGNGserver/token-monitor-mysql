@@ -1,18 +1,24 @@
 # Release Notes Format
 
-`.github/RELEASE_TEMPLATE.md` is the live GitHub release body used by
-`.github/workflows/release.yml` through `body_path`. Replace its release-specific
-sections for each tag; do not treat it as a permanent placeholder template.
+`.github/RELEASE_TEMPLATE.md` is the bilingual shell used by
+`.github/workflows/release.yml`. The workflow runs
+`scripts/generate-release-notes.js` with the commit range since the previous
+`v*` tag, replaces the marked release-note sections, and then adds the Hub
+download instructions. Do not edit release-specific bullets into the shell;
+the generated body must describe the tag being published.
 
 ## Editable Sections
 
-Only replace these blocks unless download, first-launch, or tokscale guidance is
-actually stale:
+The generator replaces these blocks for every tag unless download, first-launch,
+or tokscale guidance is also being changed:
 
 - English: `## What's changed`
 - Simplified Chinese: `## 更新内容`
 
-Keep the bilingual structure and remove categories that do not apply.
+Keep the bilingual structure and the marker comments. Categories with no
+user-facing commits are omitted; a maintenance-only range gets a
+version-specific fallback bullet so the release body never silently repeats an
+older release's notes.
 
 ## Category Order
 

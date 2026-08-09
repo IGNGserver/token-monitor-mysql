@@ -301,6 +301,8 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
@@ -315,13 +317,16 @@ jobs:
           version="${raw#v}"
           echo "version=${version}" >> "$GITHUB_OUTPUT"
           echo "tag=v${version}" >> "$GITHUB_OUTPUT"
-      - name: Render release notes with image pull lines
+      - name: Render release notes from commits
         run: |
           version="${{ steps.ver.outputs.version }}"
           owner="$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')"
           image="ghcr.io/${owner}/token-monitor-hub"
+          node scripts/generate-release-notes.js \
+            --version "${version}" \
+            --template .github/RELEASE_TEMPLATE.md \
+            --output release-body.md
           {
-            cat .github/RELEASE_TEMPLATE.md
             echo
             echo "---"
             echo
@@ -334,7 +339,7 @@ jobs:
             echo
             echo "Compose: set \`TOKEN_MONITOR_VERSION=${version}\` (or \`latest\`) then \`docker compose pull && docker compose up -d\`."
             echo "Or download \`Token-Monitor-Hub-Compose-${version}.zip\` from Assets for a minimal deploy bundle."
-          } > release-body.md
+          } >> release-body.md
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.ver.outputs.tag }}
