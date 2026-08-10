@@ -26,6 +26,8 @@ jobs:
           node-version: '22'
           cache: npm
       - run: npm ci
+      - name: Generate icon assets
+        run: npm run icons
       # Sign the branded application executable before it is embedded into the
       # NSIS installer and portable wrapper. electron-builder's --prepackaged
       # mode then packages these exact signed bytes without rebuilding the app.

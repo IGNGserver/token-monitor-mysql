@@ -1,7 +1,7 @@
 {
   "name": "token-monitor",
   "productName": "Token Monitor",
-  "version": "0.37.8",
+  "version": "0.37.9",
   "description": "Live token & cost widget for Claude Code, Codex & Hermes — local-first, optional multi-device sync.",
   "main": "src/electron/main.js",
   "scripts": {
@@ -19,6 +19,7 @@
     "prepack": "npm run icons",
     "predist:mac": "npm run icons",
     "predist:win": "npm run icons",
+    "predist:win:dir": "npm run icons",
     "predist:linux": "npm run icons",
     "pack": "electron-builder --dir",
     "dist:mac": "electron-builder --mac --arm64 --publish never",
