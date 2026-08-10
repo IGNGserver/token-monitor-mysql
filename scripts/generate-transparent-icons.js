@@ -9,8 +9,9 @@ const ASSETS_DIR = path.join(ROOT, 'assets');
 const ICONS_DIR = path.join(ASSETS_DIR, 'icons');
 const BUILD_ICONS_DIR = path.join(ROOT, 'build', 'icons');
 const TEMP_HTML = path.join(ROOT, 'build', 'temp_icon_render.html');
+const ANDROID_ICON_PATH = path.join(ROOT, 'src', 'hub', 'web', 'icons', 'icon-512.png');
 
-function buildLogoSvg(size = 1024, isTray = false) {
+function buildLogoSvg(size = 1024, isTray = false, androidIconDataUrl = '') {
   const scale = size / 1024;
 
   if (isTray) {
@@ -39,47 +40,17 @@ function buildLogoSvg(size = 1024, isTray = false) {
 </svg>`;
   }
 
-  // App Tile Icon: Sleek rounded squircle on transparent background
-  const pad = 64 * scale;
-  const tileSize = 896 * scale;
-  const rx = 192 * scale;
-
-  const strokeWidth = 48 * scale;
-  const dotR = 38 * scale;
-
-  const s = size / 108;
-  const pArc = `M ${31.2 * s},${67.1 * s} A ${34 * s},${34 * s} 0 1,1 ${78.1 * s},${78.1 * s}`;
-  const cxDot = 31.2 * s;
-  const cyDot = 67.1 * s;
-
-  const pTopBar = `M ${41 * s},${44 * s} H ${67 * s}`;
-  const pStem = `M ${54 * s},${44 * s} V ${62 * s} c 0,${4 * s} ${3 * s},${7 * s} ${7 * s},${7 * s} h ${3 * s}`;
-
+  // Reuse the original Android/PWA T mark as the desktop source. Keeping the
+  // source artwork intact avoids the old low-resolution cutout and any logo
+  // drift between desktop surfaces. Only the outer canvas gets rounded.
+  const cornerRadius = 160 * scale;
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
   <defs>
-    <linearGradient id="tileBg" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" stop-color="#0D1A3B" />
-      <stop offset="100%" stop-color="#04091A" />
-    </linearGradient>
-    <linearGradient id="brandGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#38BDF8" />
-      <stop offset="100%" stop-color="#0284C7" />
-    </linearGradient>
-    <filter id="emblemGlow" x="-20%" y="-20%" width="140%" height="140%">
-      <feDropShadow dx="0" dy="${4 * scale}" stdDeviation="${6 * scale}" flood-color="#38BDF8" flood-opacity="0.35"/>
-    </filter>
+    <clipPath id="appIconClip">
+      <rect width="${size}" height="${size}" rx="${cornerRadius}" />
+    </clipPath>
   </defs>
-
-  <!-- Rounded Brand Squircle Tile (outer canvas background remains 100% transparent) -->
-  <rect x="${pad}" y="${pad}" width="${tileSize}" height="${tileSize}" rx="${rx}" fill="url(#tileBg)" stroke="rgba(56, 189, 248, 0.3)" stroke-width="${4 * scale}" />
-
-  <!-- Logo Emblem -->
-  <g filter="url(#emblemGlow)">
-    <path d="${pArc}" fill="none" stroke="url(#brandGradient)" stroke-width="${strokeWidth}" stroke-linecap="round" />
-    <circle cx="${cxDot}" cy="${cyDot}" r="${dotR}" fill="#38BDF8" />
-    <path d="${pTopBar}" fill="none" stroke="url(#brandGradient)" stroke-width="${strokeWidth}" stroke-linecap="round" />
-    <path d="${pStem}" fill="none" stroke="url(#brandGradient)" stroke-width="${strokeWidth}" stroke-linecap="round" stroke-linejoin="round" />
-  </g>
+  <image href="${androidIconDataUrl}" width="${size}" height="${size}" preserveAspectRatio="none" clip-path="url(#appIconClip)" />
 </svg>`;
 }
 
@@ -156,7 +127,8 @@ app.whenReady().then(async () => {
       }
     });
 
-    const main1024Png = await renderSvgToPng(win, buildLogoSvg(1024, false), 1024);
+    const androidIconDataUrl = `data:image/png;base64,${fs.readFileSync(ANDROID_ICON_PATH).toString('base64')}`;
+    const main1024Png = await renderSvgToPng(win, buildLogoSvg(1024, false, androidIconDataUrl), 1024);
 
     fs.writeFileSync(path.join(ASSETS_DIR, 'icon.png'), main1024Png);
     fs.writeFileSync(path.join(ASSETS_DIR, 'icon-win.png'), main1024Png);
@@ -170,12 +142,12 @@ app.whenReady().then(async () => {
     const icoItems = [];
 
     for (const sz of sizes) {
-      const pngBuf = await renderSvgToPng(win, buildLogoSvg(sz, false), sz);
+      const pngBuf = await renderSvgToPng(win, buildLogoSvg(sz, false, androidIconDataUrl), sz);
       fs.writeFileSync(path.join(BUILD_ICONS_DIR, `${sz}x${sz}.png`), pngBuf);
       icoItems.push({ size: sz, buffer: pngBuf });
     }
 
-    const sz512Png = await renderSvgToPng(win, buildLogoSvg(512, false), 512);
+    const sz512Png = await renderSvgToPng(win, buildLogoSvg(512, false, androidIconDataUrl), 512);
     fs.writeFileSync(path.join(BUILD_ICONS_DIR, '512x512.png'), sz512Png);
     fs.writeFileSync(path.join(BUILD_ICONS_DIR, '1024x1024.png'), main1024Png);
 
