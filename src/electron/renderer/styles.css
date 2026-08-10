@@ -3736,6 +3736,22 @@ html.is-windows .limit-live-badge {
     visibility 0s linear 0s;
   will-change: opacity, transform, filter;
 }
+html.is-windows[data-windows-backdrop="mica"] .view-switcher-menu,
+body.is-windows[data-windows-backdrop="mica"] .view-switcher-menu {
+  background: rgba(var(--glass-rgb), 0.35);
+  border: 1px solid rgba(var(--line-rgb), 0.3);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+html.is-windows[data-windows-backdrop="acrylic"] .view-switcher-menu,
+body.is-windows[data-windows-backdrop="acrylic"] .view-switcher-menu {
+  background: rgba(var(--glass-rgb), 0.45);
+  border: 1px solid rgba(var(--line-rgb), 0.3);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
 .view-switcher-menu.hidden {
   visibility: hidden;
   opacity: 0;
