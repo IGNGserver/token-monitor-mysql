@@ -10,38 +10,76 @@ const ICONS_DIR = path.join(ASSETS_DIR, 'icons');
 const BUILD_ICONS_DIR = path.join(ROOT, 'build', 'icons');
 const TEMP_HTML = path.join(ROOT, 'build', 'temp_icon_render.html');
 
-function buildLogoSvg(size = 1024) {
-  const scale = size / 108;
-  const strokeWidth = 7.5 * scale;
-  const dotR = 5.5 * scale;
-  
-  const pArc = `M ${31.2 * scale},${67.1 * scale} A ${34 * scale},${34 * scale} 0 1,1 ${78.1 * scale},${78.1 * scale}`;
-  const cxDot = 31.2 * scale;
-  const cyDot = 67.1 * scale;
-  
-  const pTopBar = `M ${41 * scale},${44 * scale} H ${67 * scale}`;
-  const pStem = `M ${54 * scale},${44 * scale} V ${62 * scale} c 0,${4 * scale} ${3 * scale},${7 * scale} ${7 * scale},${7 * scale} h ${3 * scale}`;
+function buildLogoSvg(size = 1024, isTray = false) {
+  const scale = size / 1024;
 
-  const primaryColor = '#1599F5';
-  const secondaryColor = '#40B5FF';
+  if (isTray) {
+    // Crisp standalone tray icon for OS menu bar / notification area
+    const s = size / 108;
+    const strokeWidth = 7.5 * s;
+    const dotR = 5.5 * s;
+
+    const pArc = `M ${31.2 * s},${67.1 * s} A ${34 * s},${34 * s} 0 1,1 ${78.1 * s},${78.1 * s}`;
+    const cxDot = 31.2 * s;
+    const cyDot = 67.1 * s;
+    const pTopBar = `M ${41 * s},${44 * s} H ${67 * s}`;
+    const pStem = `M ${54 * s},${44 * s} V ${62 * s} c 0,${4 * s} ${3 * s},${7 * s} ${7 * s},${7 * s} h ${3 * s}`;
+
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+  <defs>
+    <linearGradient id="trayGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38BDF8" />
+      <stop offset="100%" stop-color="#0284C7" />
+    </linearGradient>
+  </defs>
+  <path d="${pArc}" fill="none" stroke="url(#trayGrad)" stroke-width="${strokeWidth}" stroke-linecap="round" />
+  <circle cx="${cxDot}" cy="${cyDot}" r="${dotR}" fill="#38BDF8" />
+  <path d="${pTopBar}" fill="none" stroke="url(#trayGrad)" stroke-width="${strokeWidth}" stroke-linecap="round" />
+  <path d="${pStem}" fill="none" stroke="url(#trayGrad)" stroke-width="${strokeWidth}" stroke-linecap="round" stroke-linejoin="round" />
+</svg>`;
+  }
+
+  // App Tile Icon: Sleek rounded squircle on transparent background
+  const pad = 64 * scale;
+  const tileSize = 896 * scale;
+  const rx = 192 * scale;
+
+  const strokeWidth = 48 * scale;
+  const dotR = 38 * scale;
+
+  const s = size / 108;
+  const pArc = `M ${31.2 * s},${67.1 * s} A ${34 * s},${34 * s} 0 1,1 ${78.1 * s},${78.1 * s}`;
+  const cxDot = 31.2 * s;
+  const cyDot = 67.1 * s;
+
+  const pTopBar = `M ${41 * s},${44 * s} H ${67 * s}`;
+  const pStem = `M ${54 * s},${44 * s} V ${62 * s} c 0,${4 * s} ${3 * s},${7 * s} ${7 * s},${7 * s} h ${3 * s}`;
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
   <defs>
-    <linearGradient id="brandGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="${primaryColor}" />
-      <stop offset="100%" stop-color="${secondaryColor}" />
+    <linearGradient id="tileBg" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#0D1A3B" />
+      <stop offset="100%" stop-color="#04091A" />
     </linearGradient>
+    <linearGradient id="brandGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38BDF8" />
+      <stop offset="100%" stop-color="#0284C7" />
+    </linearGradient>
+    <filter id="emblemGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="${4 * scale}" stdDeviation="${6 * scale}" flood-color="#38BDF8" flood-opacity="0.35"/>
+    </filter>
   </defs>
 
-  <!-- Outer Arc -->
-  <path d="${pArc}" fill="none" stroke="url(#brandGradient)" stroke-width="${strokeWidth}" stroke-linecap="round" />
+  <!-- Rounded Brand Squircle Tile (outer canvas background remains 100% transparent) -->
+  <rect x="${pad}" y="${pad}" width="${tileSize}" height="${tileSize}" rx="${rx}" fill="url(#tileBg)" stroke="rgba(56, 189, 248, 0.3)" stroke-width="${4 * scale}" />
 
-  <!-- Token Dot -->
-  <circle cx="${cxDot}" cy="${cyDot}" r="${dotR}" fill="${primaryColor}" />
-
-  <!-- Inner T Mark -->
-  <path d="${pTopBar}" fill="none" stroke="url(#brandGradient)" stroke-width="${strokeWidth}" stroke-linecap="round" />
-  <path d="${pStem}" fill="none" stroke="url(#brandGradient)" stroke-width="${strokeWidth}" stroke-linecap="round" stroke-linejoin="round" />
+  <!-- Logo Emblem -->
+  <g filter="url(#emblemGlow)">
+    <path d="${pArc}" fill="none" stroke="url(#brandGradient)" stroke-width="${strokeWidth}" stroke-linecap="round" />
+    <circle cx="${cxDot}" cy="${cyDot}" r="${dotR}" fill="#38BDF8" />
+    <path d="${pTopBar}" fill="none" stroke="url(#brandGradient)" stroke-width="${strokeWidth}" stroke-linecap="round" />
+    <path d="${pStem}" fill="none" stroke="url(#brandGradient)" stroke-width="${strokeWidth}" stroke-linecap="round" stroke-linejoin="round" />
+  </g>
 </svg>`;
 }
 
@@ -118,13 +156,13 @@ app.whenReady().then(async () => {
       }
     });
 
-    const main1024Png = await renderSvgToPng(win, buildLogoSvg(1024), 1024);
+    const main1024Png = await renderSvgToPng(win, buildLogoSvg(1024, false), 1024);
 
     fs.writeFileSync(path.join(ASSETS_DIR, 'icon.png'), main1024Png);
     fs.writeFileSync(path.join(ASSETS_DIR, 'icon-win.png'), main1024Png);
 
     // 44x44 high-DPI tray icon matching test assertion
-    const trayPng = await renderSvgToPng(win, buildLogoSvg(44), 44);
+    const trayPng = await renderSvgToPng(win, buildLogoSvg(44, true), 44);
     fs.writeFileSync(path.join(ICONS_DIR, 'tray-token-monitor.png'), trayPng);
 
     // Sizes for ICO container
@@ -132,12 +170,12 @@ app.whenReady().then(async () => {
     const icoItems = [];
 
     for (const sz of sizes) {
-      const pngBuf = await renderSvgToPng(win, buildLogoSvg(sz), sz);
+      const pngBuf = await renderSvgToPng(win, buildLogoSvg(sz, false), sz);
       fs.writeFileSync(path.join(BUILD_ICONS_DIR, `${sz}x${sz}.png`), pngBuf);
       icoItems.push({ size: sz, buffer: pngBuf });
     }
 
-    const sz512Png = await renderSvgToPng(win, buildLogoSvg(512), 512);
+    const sz512Png = await renderSvgToPng(win, buildLogoSvg(512, false), 512);
     fs.writeFileSync(path.join(BUILD_ICONS_DIR, '512x512.png'), sz512Png);
     fs.writeFileSync(path.join(BUILD_ICONS_DIR, '1024x1024.png'), main1024Png);
 
@@ -147,10 +185,10 @@ app.whenReady().then(async () => {
     win.destroy();
     if (fs.existsSync(TEMP_HTML)) fs.unlinkSync(TEMP_HTML);
 
-    console.log('Successfully generated transparent 1024x1024 PNGs, 44x44 tray icon, and multi-size icon.ico!');
+    console.log('Successfully generated crisp high-DPI squircle app icon and tray icon!');
     app.exit(0);
   } catch (err) {
-    console.error('Error generating transparent icons:', err);
+    console.error('Error generating icons:', err);
     if (fs.existsSync(TEMP_HTML)) fs.unlinkSync(TEMP_HTML);
     app.exit(1);
   }
