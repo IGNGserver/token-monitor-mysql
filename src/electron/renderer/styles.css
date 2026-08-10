@@ -93,7 +93,7 @@ html.is-windows .shell {
 }
 html.is-windows[data-windows-backdrop="mica"] .shell,
 body.is-windows[data-windows-backdrop="mica"] .shell {
-  background: transparent;
+  background: rgba(var(--glass-rgb), 0.22);
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
 }

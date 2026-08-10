@@ -200,7 +200,7 @@ test('normalizeWindowsBackdropMode accepts mica and acrylic', () => {
   assert.equal(normalizeWindowsBackdropMode('tabbed'), WINDOWS_BACKDROP_ACRYLIC);
   assert.equal(normalizeWindowsBackdropMode('accent'), WINDOWS_BACKDROP_ACRYLIC);
   assert.equal(normalizeWindowsBackdropMode('nope'), WINDOWS_BACKDROP_ACRYLIC);
-  assert.equal(windowsElectronBackgroundMaterial('mica'), 'mica');
+  assert.equal(windowsElectronBackgroundMaterial('mica'), 'tabbed');
   assert.equal(windowsElectronBackgroundMaterial('acrylic'), 'acrylic');
   assert.equal(windowsElectronBackgroundMaterial('tabbed'), 'acrylic');
 });
