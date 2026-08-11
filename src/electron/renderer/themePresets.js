@@ -35,12 +35,10 @@
 
   // Curated one-click themes. Each is a full palette — accent + background tint
   // + text + muted swap together, so picking one changes the whole mood, not
-  // just the accent. All stay dark (the stylesheet's overlays/borders assume a
-  // dark base); a true light mode is a separate, larger piece of work. The
-  // non-default themes borrow from well-known palettes for a familiar feel.
-  // Three themes: the shipped graphite default (also the reset point), a
-  // near-black "Carbon", and a light "Paper". Paper relies on the light-mode
-  // flip in themeCssVarEntries() so borders/panels stay visible on a pale base.
+  // just the accent. The shipped graphite default and near-black "Carbon" are
+  // dark themes; "Paper" is a light theme. Paper relies on the light-mode flip
+  // in themeCssVarEntries() so borders/panels and native controls stay visible
+  // on a pale base. Windows material surfaces also use the resolved bg tone.
   const THEME_PRESETS = [
     { id: 'default', colors: { ...DEFAULT_THEME } },
     { id: 'obsidian', colors: { accent: '#e6e8ec', bg: '#0b0c0e', text: '#eceef2', muted: '#8f949c' } },

@@ -14,6 +14,12 @@
   --line-alpha: 0.138;
   --line-strong-alpha: 0.238;
   --control-alpha: 0.049;
+  /* Windows' native backdrop is behind the complete BrowserWindow. These
+     surfaces stay opaque enough to keep the selected theme readable while
+     preserving a restrained amount of Mica/Acrylic texture. The renderer
+     adjusts them for the selected mode, tone, and glass-opacity control. */
+  --windows-surface-alpha: 0.88;
+  --windows-popover-alpha: 0.94;
   --glass: rgba(var(--glass-rgb), var(--glass-alpha));
   --glass-filter: blur(32px) saturate(115%);
   --floating-bubble-radius: 17px;
@@ -93,17 +99,16 @@ html.is-windows .shell {
 }
 html.is-windows[data-windows-backdrop="mica"] .shell,
 body.is-windows[data-windows-backdrop="mica"] .shell {
-  background: rgba(var(--glass-rgb), 0.22);
+  background: rgba(var(--glass-rgb), var(--windows-surface-alpha));
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
 }
 html.is-windows[data-windows-backdrop="acrylic"] .shell,
 body.is-windows[data-windows-backdrop="acrylic"] .shell {
-  background: rgba(var(--glass-rgb), 0.38);
+  background: rgba(var(--glass-rgb), var(--windows-surface-alpha));
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
 }
-
 html.is-mac-legacy, html.is-mac-legacy body {
   border-radius: 10px;
 }
@@ -135,6 +140,14 @@ html.is-mac-legacy .shell {
   backdrop-filter: var(--glass-filter);
 }
 .system-glass-disabled .floating-bubble-tab {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+html.is-windows[data-windows-backdrop="mica"] .floating-bubble-tab,
+body.is-windows[data-windows-backdrop="mica"] .floating-bubble-tab,
+html.is-windows[data-windows-backdrop="acrylic"] .floating-bubble-tab,
+body.is-windows[data-windows-backdrop="acrylic"] .floating-bubble-tab {
+  background: rgba(var(--glass-rgb), var(--windows-surface-alpha));
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
 }
@@ -440,7 +453,7 @@ body.is-windows .title-controls .tabs { right: 120px; }
 }
 .period-calendar-button.active {
   border-color: rgba(var(--accent-rgb), 0.58);
-  color: var(--green);
+  color: var(--success);
   background: rgba(var(--accent-rgb), 0.08);
   box-shadow: inset 0 1px 0 rgba(var(--overlay-rgb), 0.075);
 }
@@ -3738,19 +3751,43 @@ html.is-windows .limit-live-badge {
 }
 html.is-windows[data-windows-backdrop="mica"] .view-switcher-menu,
 body.is-windows[data-windows-backdrop="mica"] .view-switcher-menu {
-  background: rgba(var(--glass-rgb), 0.35);
+  background:
+    linear-gradient(180deg, rgba(var(--overlay-rgb), 0.075), rgba(var(--overlay-rgb), 0.025)),
+    rgba(var(--glass-rgb), var(--windows-popover-alpha));
   border: 1px solid rgba(var(--line-rgb), 0.3);
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
-  -webkit-backdrop-filter: none;
-  backdrop-filter: none;
+  -webkit-backdrop-filter: blur(18px) saturate(112%);
+  backdrop-filter: blur(18px) saturate(112%);
 }
 html.is-windows[data-windows-backdrop="acrylic"] .view-switcher-menu,
 body.is-windows[data-windows-backdrop="acrylic"] .view-switcher-menu {
-  background: rgba(var(--glass-rgb), 0.45);
+  background:
+    linear-gradient(180deg, rgba(var(--overlay-rgb), 0.075), rgba(var(--overlay-rgb), 0.025)),
+    rgba(var(--glass-rgb), var(--windows-popover-alpha));
   border: 1px solid rgba(var(--line-rgb), 0.3);
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
-  -webkit-backdrop-filter: none;
-  backdrop-filter: none;
+  -webkit-backdrop-filter: blur(30px) saturate(125%);
+  backdrop-filter: blur(30px) saturate(125%);
+}
+
+/* The same window-level native material is also behind tooltips and the two
+   fixed popovers. Give them the same readable themed surface so they do not
+   become accidental see-through layers on Windows. */
+html.is-windows[data-windows-backdrop="mica"] :is(.limit-detail-tooltip, .app-update-popover, .tray-composer-popover, .tray-composer-picker-menu),
+body.is-windows[data-windows-backdrop="mica"] :is(.limit-detail-tooltip, .app-update-popover, .tray-composer-popover, .tray-composer-picker-menu),
+html.is-windows[data-windows-backdrop="acrylic"] :is(.limit-detail-tooltip, .app-update-popover, .tray-composer-popover, .tray-composer-picker-menu),
+body.is-windows[data-windows-backdrop="acrylic"] :is(.limit-detail-tooltip, .app-update-popover, .tray-composer-popover, .tray-composer-picker-menu) {
+  background:
+    linear-gradient(180deg, rgba(var(--overlay-rgb), 0.075), rgba(var(--overlay-rgb), 0.025)),
+    rgba(var(--glass-rgb), var(--windows-popover-alpha));
+  -webkit-backdrop-filter: blur(26px) saturate(120%);
+  backdrop-filter: blur(26px) saturate(120%);
+}
+html.is-windows[data-windows-backdrop="mica"] .limit-detail-tooltip::after,
+body.is-windows[data-windows-backdrop="mica"] .limit-detail-tooltip::after,
+html.is-windows[data-windows-backdrop="acrylic"] .limit-detail-tooltip::after,
+body.is-windows[data-windows-backdrop="acrylic"] .limit-detail-tooltip::after {
+  background: rgba(var(--glass-rgb), var(--windows-popover-alpha));
 }
 .view-switcher-menu.hidden {
   visibility: hidden;
@@ -4810,7 +4847,7 @@ body.is-windows[data-windows-backdrop="acrylic"] .view-switcher-menu {
   border-color: rgba(var(--accent-rgb), 0.08);
 }
 .custom-range-day.range-endpoint {
-  color: var(--green);
+  color: var(--success);
   background: rgba(var(--accent-rgb), 0.2);
   border-color: rgba(var(--accent-rgb), 0.45);
   font-weight: 600;
@@ -4873,7 +4910,7 @@ body.is-windows[data-windows-backdrop="acrylic"] .view-switcher-menu {
 .custom-range-primary {
   background: rgba(var(--accent-rgb), 0.16);
   border-color: rgba(var(--accent-rgb), 0.42);
-  color: var(--green);
+  color: var(--success);
 }
 .custom-range-primary:hover {
   background: rgba(var(--accent-rgb), 0.24);

@@ -5274,10 +5274,11 @@ function applyAppearanceSettings(settings) {
   const systemGlassDisabled = settings?.systemGlass === false;
   const isWindows = navigator.userAgent.toLowerCase().includes('windows');
   const windowsGlass = windowsGlassApi.appearanceState(settings, { isWindows });
-  document.documentElement.style.setProperty('--glass-alpha', opacity.toFixed(2));
-  document.documentElement.style.setProperty('--line-alpha', (0.1 + depth * 0.09).toFixed(3));
-  document.documentElement.style.setProperty('--line-strong-alpha', (0.18 + depth * 0.14).toFixed(3));
-  document.documentElement.style.setProperty('--control-alpha', (0.03 + depth * 0.045).toFixed(3));
+  const rootStyle = document.documentElement.style;
+  rootStyle.setProperty('--glass-alpha', opacity.toFixed(2));
+  rootStyle.setProperty('--line-alpha', (0.1 + depth * 0.09).toFixed(3));
+  rootStyle.setProperty('--line-strong-alpha', (0.18 + depth * 0.14).toFixed(3));
+  rootStyle.setProperty('--control-alpha', (0.03 + depth * 0.045).toFixed(3));
   document.documentElement.classList.toggle('system-glass-disabled', systemGlassDisabled);
   els.windowsBackdropRow?.classList.toggle('hidden', !windowsGlass.showBackdropControl);
   if (els.windowsBackdropInput) {
@@ -5295,7 +5296,30 @@ function applyAppearanceSettings(settings) {
     els.windowsBackdropNote.classList.toggle('error', accentFallback);
     els.windowsBackdropNote.classList.toggle('hidden', !showNote);
   }
-  if (isWindows && windowsGlass.backdropMode) {
+  // Theme colours must be applied before calculating the Windows material
+  // surface. Native Mica/Acrylic follows the OS theme, so a light preset needs
+  // a light enough renderer surface even when Windows itself is in dark mode.
+  // Preview patches omit themeColors; in that case the already-applied theme is
+  // intentionally retained while sliders update the material alpha.
+  if (settings && 'themeColors' in settings) applyThemeColors(settings.themeColors);
+  const lightTheme = themePresetsApi.isLightHex(resolvedThemeColor('bg'));
+  const windowsAlphas = windowsGlassApi.nativeSurfaceAlphas({
+    glassOpacity: opacity * 100,
+    windowsBackdrop: windowsGlass.backdropMode,
+    lightTheme
+  });
+  rootStyle.setProperty('--windows-surface-alpha', windowsAlphas.surfaceAlpha.toFixed(3));
+  rootStyle.setProperty('--windows-popover-alpha', windowsAlphas.popoverAlpha.toFixed(3));
+
+  // The data attribute activates native-material-specific CSS only when the
+  // BrowserWindow actually has a native Windows backdrop. When system glass is
+  // off the window is a transparent CSS fallback and must keep the normal
+  // blur/surface rules instead of inheriting the low-alpha native rules.
+  const nativeWindowsBackdropEnabled = isWindows
+    && !systemGlassDisabled
+    && windowsGlass.showBackdropControl
+    && windowsGlass.backdropMode;
+  if (nativeWindowsBackdropEnabled) {
     document.documentElement.dataset.windowsBackdrop = windowsGlass.backdropMode;
     document.body.dataset.windowsBackdrop = windowsGlass.backdropMode;
   } else {
@@ -5303,9 +5327,6 @@ function applyAppearanceSettings(settings) {
     delete document.body.dataset.windowsBackdrop;
   }
   applyReduceMotionPreference(settings?.reduceMotion);
-  // Only full settings objects carry themeColors; glass/zoom preview patches
-  // omit it, so we must not wipe theme overrides mid-slider-drag.
-  if (settings && 'themeColors' in settings) applyThemeColors(settings.themeColors);
   els.liveDot.style.display = (settings?.showLiveDot !== false) ? '' : 'none';
   els.shell.classList.toggle('desktop-mode', settings?.windowBehavior === 'desktop');
   els.shell.classList.toggle('title-icon-only', settings?.titleIconOnly === true);

@@ -4,12 +4,8 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <path android:fillColor="#081026" android:pathData="M14,0h80c7.7,0 14,6.3 14,14v80c0,7.7 -6.3,14 -14,14H14C6.3,108 0,101.7 0,94V14C0,6.3 6.3,0 14,0z"/>
-    <!-- Outer Arc -->
+    <!-- Adaptive-icon foreground; the launcher supplies the background mask. -->
     <path android:strokeColor="#1599F5" android:strokeWidth="7" android:strokeLineCap="round" android:pathData="M31.2,67.1A34,34 0 1,1 78.1,78.1"/>
-    <!-- Token Dot -->
     <path android:fillColor="#1599F5" android:pathData="M31.2,67.1m-5.5,0a5.5,5.5 0 1,1 11,0a5.5,5.5 0 1,1 -11,0"/>
-    <!-- Inner T Mark -->
     <path android:strokeColor="#1599F5" android:strokeWidth="7" android:strokeLineCap="round" android:strokeLineJoin="round" android:pathData="M41,44h26M54,44v18c0,4 3,7 7,7h3"/>
 </vector>
-

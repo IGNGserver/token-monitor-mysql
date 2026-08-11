@@ -20,6 +20,7 @@ const {
 const { normalizeWindowsBackdropMode } = require('../../src/electron/windowsBackdropMode');
 const {
   appearanceState,
+  nativeSurfaceAlphas,
   normalizeWindowsBackdropMode: normalizeRendererMode
 } = require('../../src/electron/renderer/windowsGlass');
 
@@ -52,6 +53,22 @@ test('Windows glass appearance state covers platform boundaries', () => {
     showMicaNote: true,
     backdropMode: 'mica'
   });
+});
+
+test('Windows material surfaces keep both theme tones readable', () => {
+  const darkAcrylic = nativeSurfaceAlphas({ windowsBackdrop: 'acrylic', glassOpacity: 68, lightTheme: false });
+  const darkMica = nativeSurfaceAlphas({ windowsBackdrop: 'mica', glassOpacity: 68, lightTheme: false });
+  const lightAcrylic = nativeSurfaceAlphas({ windowsBackdrop: 'acrylic', glassOpacity: 68, lightTheme: true });
+  const lightMica = nativeSurfaceAlphas({ windowsBackdrop: 'mica', glassOpacity: 68, lightTheme: true });
+
+  for (const value of [darkAcrylic, darkMica, lightAcrylic, lightMica]) {
+    assert.ok(value.surfaceAlpha >= 0.84);
+    assert.ok(value.popoverAlpha >= value.surfaceAlpha);
+    assert.ok(value.popoverAlpha <= 0.99);
+  }
+  assert.ok(darkMica.surfaceAlpha > darkAcrylic.surfaceAlpha);
+  assert.ok(lightMica.surfaceAlpha > lightAcrylic.surfaceAlpha);
+  assert.ok(lightAcrylic.surfaceAlpha > darkAcrylic.surfaceAlpha);
 });
 
 test('Accent blur passes the native HWND and configured tint to the native adapter', () => {
@@ -180,6 +197,11 @@ test('Windows exposes an accessible Acrylic and Mica selector', () => {
   assert.equal((i18n.match(/'settings\.appearance\.windowsBackdropMicaNote':/g) || []).length, 5);
   assert.match(i18n, /Keeps the background translucent and blurred, even when the window is not focused\./);
   assert.doesNotMatch(css, /windows-native-blur-only/);
+  assert.match(css, /--windows-surface-alpha/);
+  assert.match(css, /--windows-popover-alpha/);
+  assert.doesNotMatch(css, /background:\s*rgba\(var\(--glass-rgb\),\s*0\.35\)/);
+  assert.doesNotMatch(css, /background:\s*rgba\(var\(--glass-rgb\),\s*0\.45\)/);
+  assert.match(app, /!systemGlassDisabled[\s\S]*windowsGlass\.showBackdropControl/);
 });
 
 test('experimental Accent mode uses the shared glass surface treatment', () => {
