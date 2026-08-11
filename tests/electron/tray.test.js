@@ -2,6 +2,8 @@
 
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
+const { EventEmitter } = require('node:events');
+const Module = require('node:module');
 const path = require('node:path');
 const test = require('node:test');
 const zlib = require('node:zlib');
@@ -9,9 +11,11 @@ const zlib = require('node:zlib');
 const {
   buildTrayIcon,
   buildTrayMenuTemplate,
+  createTray,
   formatTrayText,
   reconcileCodexAccountSelection,
   pickUsageTrayIconId,
+  refreshTrayMenu,
   shouldUseTemplateTrayIcon,
   sortCodexAccountsForDisplay
 } = require('../../src/electron/tray');
@@ -103,6 +107,44 @@ test('non-macOS tray icon keeps the resized full-color app asset', () => {
 
   assert.match(calls[0][1], /assets[\\/]icon\.png$/);
   assert.deepEqual(calls.slice(1), [['resize', { width: 20, height: 20 }]]);
+});
+
+test('Linux trays bind the context menu and refresh its state without right-click events', () => {
+  const nativeImage = { createFromPath: () => ({ resize: () => ({}) }) };
+  const fakeElectron = {
+    Menu: { buildFromTemplate: (template) => ({ template }) },
+    Tray: class FakeTray extends EventEmitter {
+      constructor(icon) {
+        super();
+        this.icon = icon;
+        this.contextMenus = [];
+      }
+      isDestroyed() { return false; }
+      setContextMenu(menu) { this.contextMenus.push(menu); }
+      setToolTip() {}
+    },
+    nativeImage
+  };
+  const originalLoad = Module._load;
+  Module._load = function load(request, parent, isMain) {
+    if (request === 'electron') return fakeElectron;
+    return originalLoad.call(this, request, parent, isMain);
+  };
+
+  try {
+    let state = { appVersion: '1.0.0', trayContent: 'tokens', trayMode: true, windowBehavior: 'floating' };
+    const tray = createTray({ platform: 'linux', getMenuState: () => state, onToggle: () => {} });
+    assert.equal(tray.contextMenus.length, 1);
+    assert.equal(tray.contextMenus[0].template[0].enabled, true);
+    assert.equal(tray.listenerCount('right-click'), 0);
+
+    state = { ...state, refreshing: true };
+    refreshTrayMenu(tray);
+    assert.equal(tray.contextMenus.length, 2);
+    assert.equal(tray.contextMenus[1].template[0].enabled, false);
+  } finally {
+    Module._load = originalLoad;
+  }
 });
 
 test('tray context menu complements the primary click with useful commands', () => {

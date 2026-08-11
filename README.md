@@ -18,10 +18,11 @@ Token Monitor 是一个用来查看 AI 编程工具用量的桌面小组件。�
 如果你只想使用，不想安装 Node.js 或执行命令，请前往 [GitHub Releases](https://github.com/IGNGserver/token-monitor-mysql/releases) 下载：
 
 - **Windows**：下载 `Token-Monitor-Setup-版本号.exe`，双击安装。
+- **Linux**：下载 `Token-Monitor-版本号.AppImage`，赋予执行权限后运行。
 - **Android**：下载 `Token-Monitor-Android-版本号.apk`，在手机上安装。
 - **Hub（Docker）**：下载 `Token-Monitor-Hub-Compose-版本号.zip`，或直接拉取镜像 `ghcr.io/igngserver/token-monitor-hub:latest`（也可用指定版本标签）。
 
-安装客户端后仍需要先部署一个 Hub，再在 Windows 小组件或 Android 应用中填写 Hub 地址和共享密钥。没有 Hub 时，Windows 小组件也可以选择“仅本机”模式使用。
+安装客户端后仍需要先部署一个 Hub，再在桌面小组件或 Android 应用中填写 Hub 地址和共享密钥。没有 Hub 时，桌面小组件也可以选择“仅本机”模式使用。
 
 ## 你需要准备什么
 
@@ -122,7 +123,7 @@ curl http://127.0.0.1:17321/api/health
 
 ### 安装
 
-当前仓库提供源码运行方式。电脑需要 Node.js 22.13 或更高版本：
+当前仓库提供 Windows 安装包、Linux AppImage 和源码运行方式。Linux AppImage 无需安装 Node.js；源码运行需要 Node.js 22.13 或更高版本：
 
 ```bash
 git clone https://github.com/IGNGserver/token-monitor-mysql.git

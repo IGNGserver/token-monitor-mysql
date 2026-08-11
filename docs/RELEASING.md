@@ -26,11 +26,12 @@ Android 正式包必须使用长期保存的签名密钥。不要把 keystore �
    git push origin v0.31.0
    ```
 
-4. GitHub Actions 会构建 Windows 安装包和 Android release APK。
+4. GitHub Actions 会构建 Windows 安装包、Linux AppImage 和 Android release APK，并同步发布 Hub 镜像。
 5. Release 资产中会包含：
 
-   - `Token-Monitor-Setup-0.31.0.exe`
-   - `Token-Monitor-Android-0.31.0.apk`
+   - `Token-Monitor-Setup-0.37.13.exe`
+   - `Token-Monitor-0.37.13.AppImage`
+   - `Token-Monitor-Android-0.37.13.apk`
 
 Android 的 `versionName` 和 `versionCode` 会根据 tag 自动生成，保证 Windows 与 Android 版本保持一致。
 
@@ -61,4 +62,3 @@ node scripts/package-hub-compose.js 0.34.2
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.build.yml build hub
 ```
-

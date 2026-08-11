@@ -1,6 +1,6 @@
 # English
 
-**Open-source build.** Windows and Android artifacts are published for this fork. Windows may show a SmartScreen warning until a trusted signing certificate is configured. Android releases are signed with the project's release key.
+**Open-source build.** Windows, Linux, and Android artifacts are published for this fork. Windows may show a SmartScreen warning until a trusted signing certificate is configured. Android releases are signed with the project's release key.
 
 ## What's changed
 
@@ -20,6 +20,7 @@
 Open the release's **Assets** section and download the file for your device:
 
 - **Windows** — `Token-Monitor-Setup-<version>.exe` (recommended) or the portable `.exe`.
+- **Linux** — `Token-Monitor-<version>.AppImage`.
 - **Android** — `Token-Monitor-Android-<version>.apk`.
 - **Hub (Docker)** — image `ghcr.io/igngserver/token-monitor-hub:<version>` (also `:latest`) and optional `Token-Monitor-Hub-Compose-<version>.zip`.
 
@@ -35,13 +36,13 @@ Open the release's **Assets** section and download the file for your device:
 **Linux:** mark the AppImage executable, then run it:
 
 ```bash
-chmod +x "Token Monitor"*.AppImage
-./"Token Monitor"*.AppImage
+chmod +x Token-Monitor-*.AppImage
+./Token-Monitor-*.AppImage
 ```
 
 ### Other notes
 
-This fork publishes Windows, Android, and the Hub Docker image (GHCR). Desktop platforms without a package can still run from source per the [README](https://github.com/IGNGserver/token-monitor-mysql#readme).
+This fork publishes Windows, Linux, Android, and the Hub Docker image (GHCR). Desktop platforms without a package can still run from source per the [README](https://github.com/IGNGserver/token-monitor-mysql#readme).
 
 ### tokscale dependency
 
@@ -55,7 +56,7 @@ open-source: https://github.com/junhoyeo/tokscale
 
 # 中文
 
-**这是开源构建。** 本 fork 发布 Windows 和 Android 安装包。Windows 在配置受信任的代码签名证书前可能会出现 SmartScreen 提示；Android 发布包使用项目签名密钥签名。
+**这是开源构建。** 本 fork 发布 Windows、Linux 和 Android 安装包。Windows 在配置受信任的代码签名证书前可能会出现 SmartScreen 提示；Android 发布包使用项目签名密钥签名。
 
 ## 更新内容
 
@@ -75,6 +76,7 @@ open-source: https://github.com/junhoyeo/tokscale
 打开 Release 页面中的 **Assets**，下载对应设备的文件：
 
 - **Windows** — `Token-Monitor-Setup-<version>.exe`（推荐）或便携版 `.exe`。
+- **Linux** — `Token-Monitor-<version>.AppImage`。
 - **Android** — `Token-Monitor-Android-<version>.apk`。
 - **Hub（Docker）** — 镜像 `ghcr.io/igngserver/token-monitor-hub:<version>`（同时有 `:latest`），以及可选的 `Token-Monitor-Hub-Compose-<version>.zip`。
 
@@ -90,13 +92,13 @@ open-source: https://github.com/junhoyeo/tokscale
 **Linux：** 先给 AppImage 执行权限，然后运行：
 
 ```bash
-chmod +x "Token Monitor"*.AppImage
-./"Token Monitor"*.AppImage
+chmod +x Token-Monitor-*.AppImage
+./Token-Monitor-*.AppImage
 ```
 
 ### 其他说明
 
-本 fork 发布 Windows、Android 安装包以及 Hub Docker 镜像（GHCR）。其他桌面平台可参考 [README](https://github.com/IGNGserver/token-monitor-mysql#readme) 从源码运行。
+本 fork 发布 Windows、Linux、Android 安装包以及 Hub Docker 镜像（GHCR）。其他桌面平台可参考 [README](https://github.com/IGNGserver/token-monitor-mysql#readme) 从源码运行。
 
 ### tokscale 依赖
 

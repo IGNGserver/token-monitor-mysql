@@ -133,6 +133,7 @@ const {
   pickUsageTrayIconId,
   popoverBounds,
   reconcileCodexAccountSelection,
+  refreshTrayMenu,
   sortCodexAccountsForDisplay,
   shouldUseTemplateTrayIcon
 } = require('./tray');
@@ -183,8 +184,10 @@ const {
   normalizeWindowsBackdropMode,
   windowsElectronBackgroundMaterial
 } = require('./windowsBackdropMode');
+const { configureLinuxDisplayBackend } = require('./linuxDisplay');
 
 if (!app.isPackaged) loadDotEnv();
+configureLinuxDisplayBackend({ app, platform: process.platform, env: process.env, argv: process.argv });
 
 const APP_NAME = 'Token Monitor';
 const WIN_ICON_PATH = path.join(__dirname, '..', '..', 'build', 'icons', 'icon.ico');
@@ -1978,9 +1981,11 @@ function currentLoginItemState() {
   catch (_) { return false; }
 }
 
-function applyLoginItem(startAtLogin) {
+function applyLoginItem(startAtLogin, startedAtLogin = settings?.startInTray) {
   if (!loginItemEnabledHere()) return false;
-  if (process.platform === 'linux') return linuxAutostart.setAutostartEnabled(Boolean(startAtLogin));
+  if (process.platform === 'linux') {
+    return linuxAutostart.setAutostartEnabled(Boolean(startAtLogin), { startedAtLogin: Boolean(startedAtLogin) });
+  }
   app.setLoginItemSettings({ openAtLogin: Boolean(startAtLogin) });
   return currentLoginItemState();
 }
@@ -2633,6 +2638,7 @@ function updateTrayDisplay() {
     if (usageIconId) icon = providerTrayIcons[usageIconId];
   }
   tray.setImage(icon || getDefaultTrayIcon());
+  refreshTrayMenu(tray);
 }
 
 function sendStatus(connected, extra) {
@@ -2992,6 +2998,7 @@ function sendMainWindowEvent(channel, payload) {
 async function refreshFromTray() {
   if (trayRefreshInFlight) return;
   trayRefreshInFlight = true;
+  updateTrayDisplay();
   try {
     const stats = await fetchStats({ force: true });
     // Collector ticks normally publish their own final snapshot. Only bridge the
@@ -3005,6 +3012,7 @@ async function refreshFromTray() {
     showTrayRefreshError(error?.message || error);
   } finally {
     trayRefreshInFlight = false;
+    updateTrayDisplay();
   }
 }
 
@@ -4067,12 +4075,17 @@ app.whenReady().then(() => {
     });
   });
   applyMacActivationPolicy();
-  // Login-item launches can start directly in the tray when requested. Electron
-  // reports this only for launches initiated by the OS login-item mechanism.
+  // Login-item launches can start directly in the tray when requested. Linux
+  // carries an explicit marker in the XDG desktop entry because Electron's
+  // login-item API is only available on macOS and Windows.
   if (settings.startAtLogin && settings.startInTray) {
-    try {
-      if (app.getLoginItemSettings().wasOpenedAtLogin) settings.trayMode = true;
-    } catch (_) { /* unsupported on this platform */ }
+    if (process.platform === 'linux') {
+      if (linuxAutostart.startedAtLoginFromArgs()) settings.trayMode = true;
+    } else {
+      try {
+        if (app.getLoginItemSettings().wasOpenedAtLogin) settings.trayMode = true;
+      } catch (_) { /* unsupported on this platform */ }
+    }
   }
   createWindow();
   syncLoginItemSettingFromOs();
@@ -4126,6 +4139,7 @@ app.whenReady().then(() => {
     const previousShowTrayProviderBadge = settings.showTrayProviderBadge;
     const previousCurrency = settings.currency;
     const previousStartAtLogin = settings.startAtLogin;
+    const previousStartInTray = settings.startInTray;
     const previousAutomaticAppUpdates = settings.automaticAppUpdates;
     const previousCustomModelPricing = JSON.stringify(settings.customModelPricing || []);
     const normalizedCurrency = patch.currency !== undefined ? normalizeCurrency(patch.currency, settings.currency) : normalizeCurrency(settings.currency);
@@ -4259,8 +4273,10 @@ app.whenReady().then(() => {
       refreshAfterPricingChange();
     }
     configureWindowToggleShortcut();
-    if (settings.startAtLogin !== previousStartAtLogin) {
-      settings.startAtLogin = applyLoginItem(settings.startAtLogin);
+    const loginItemConfigurationChanged = settings.startAtLogin !== previousStartAtLogin
+      || (process.platform === 'linux' && settings.startAtLogin && settings.startInTray !== previousStartInTray);
+    if (loginItemConfigurationChanged) {
+      settings.startAtLogin = applyLoginItem(settings.startAtLogin, settings.startInTray);
       saveSettings({ throwOnError: true });
     }
     if (settings.automaticAppUpdates && !previousAutomaticAppUpdates) {

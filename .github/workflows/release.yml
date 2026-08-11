@@ -8,7 +8,7 @@ on:
       version:
         description: "Release version without the v prefix"
         required: true
-        default: "0.31.1"
+        default: "0.37.13"
 
 permissions:
   contents: read
@@ -198,6 +198,26 @@ jobs:
             dist/latest.yml
             dist/*.blockmap
 
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Build Linux AppImage
+        run: xvfb-run -a npm run dist:linux
+      - uses: actions/upload-artifact@v4
+        with:
+          name: token-monitor-linux
+          if-no-files-found: error
+          path: |
+            dist/*.AppImage
+            dist/latest-linux.yml
+            dist/*.blockmap
+
   android:
     runs-on: ubuntu-latest
     steps:
@@ -297,7 +317,7 @@ jobs:
           path: dist-hub-compose/Token-Monitor-Hub-Compose-*.zip
 
   release:
-    needs: [windows, android, hub-image]
+    needs: [windows, linux, android, hub-image]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -348,8 +368,10 @@ jobs:
           name: Token Monitor ${{ steps.ver.outputs.tag }}
           files: |
             artifacts/*.exe
+            artifacts/*.AppImage
             artifacts/Token-Monitor-Android-*.apk
             artifacts/latest.yml
+            artifacts/latest-linux.yml
             artifacts/*.blockmap
             artifacts/Token-Monitor-Hub-Compose-*.zip
           body_path: release-body.md

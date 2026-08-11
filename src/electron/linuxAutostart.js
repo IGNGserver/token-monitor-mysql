@@ -10,6 +10,7 @@ const os = require('os');
 const path = require('path');
 
 const DESKTOP_FILE_NAME = 'token-monitor.desktop';
+const STARTED_AT_LOGIN_ARG = '--started-at-login';
 
 function autostartSupported({ platform = process.platform, env = process.env } = {}) {
   return platform === 'linux' && Boolean(env.APPIMAGE);
@@ -30,12 +31,13 @@ function quoteExecArgument(value) {
   return `"${quoted.replace(/\\/g, '\\\\')}"`;
 }
 
-function desktopFileContents(appImagePath) {
+function desktopFileContents(appImagePath, { startedAtLogin = false } = {}) {
+  const exec = `${quoteExecArgument(appImagePath)}${startedAtLogin ? ` ${STARTED_AT_LOGIN_ARG}` : ''}`;
   return [
     '[Desktop Entry]',
     'Type=Application',
     'Name=Token Monitor',
-    `Exec=${quoteExecArgument(appImagePath)}`,
+    `Exec=${exec}`,
     'X-GNOME-Autostart-enabled=true',
     ''
   ].join('\n');
@@ -47,7 +49,8 @@ function isAutostartEnabled(options) {
   try {
     const contents = fs.readFileSync(desktopFilePath({ env }), 'utf8');
     const execLine = contents.split(/\r?\n/).find((line) => line.startsWith('Exec='));
-    return execLine === `Exec=${quoteExecArgument(env.APPIMAGE)}`;
+    const expected = `Exec=${quoteExecArgument(env.APPIMAGE)}`;
+    return execLine === expected || execLine === `${expected} ${STARTED_AT_LOGIN_ARG}`;
   }
   catch (_) { return false; }
 }
@@ -59,7 +62,9 @@ function setAutostartEnabled(enabled, options = {}) {
     if (enabled) {
       if (!env.APPIMAGE) return false;
       fs.mkdirSync(path.dirname(filePath), { recursive: true });
-      fs.writeFileSync(filePath, desktopFileContents(env.APPIMAGE), 'utf8');
+      fs.writeFileSync(filePath, desktopFileContents(env.APPIMAGE, {
+        startedAtLogin: Boolean(options.startedAtLogin)
+      }), 'utf8');
     } else {
       fs.rmSync(filePath, { force: true });
     }
@@ -67,10 +72,16 @@ function setAutostartEnabled(enabled, options = {}) {
   return isAutostartEnabled({ env });
 }
 
+function startedAtLoginFromArgs(argv = process.argv) {
+  return Array.isArray(argv) && argv.some((arg) => String(arg) === STARTED_AT_LOGIN_ARG);
+}
+
 module.exports = {
   autostartSupported,
   desktopFilePath,
   desktopFileContents,
   isAutostartEnabled,
-  setAutostartEnabled
+  setAutostartEnabled,
+  startedAtLoginFromArgs,
+  STARTED_AT_LOGIN_ARG
 };

@@ -9,7 +9,7 @@ const semver = require('semver');
 const { readJson, sharedDataDir } = require('./config');
 const { appVersion } = require('./appVersion');
 const { normalizeClientsCsv } = require('./clientTracking');
-const { tokscalePackageNameForPlatform, tokscalePlatformKey } = require('./tokscalePlatform');
+const { tokscalePackageNamesForPlatform, tokscalePlatformKey } = require('./tokscalePlatform');
 const { customPricingPath } = require('./tokscaleConfig');
 const { applyPeriodDelta, emptyPeriod, extractUsageFromTokscale, mergePeriods } = require('./usage');
 const { collectWslUsage: collectWslUsageImpl, emptyWslBundle, probeWslState: probeWslStateImpl } = require('./wslUsage');
@@ -46,13 +46,7 @@ function toUnpackedPath(p) {
 const TOKSCALE_BIN_JS = toUnpackedPath(require.resolve('tokscale/bin.js'));
 
 function bundledPackageCandidates() {
-  const primary = tokscalePackageNameForPlatform();
-  if (primary) return [primary];
-  if (process.platform === 'linux') {
-    if (process.arch === 'arm64') return ['@tokscale/cli-linux-arm64-gnu', '@tokscale/cli-linux-arm64-musl'];
-    if (process.arch === 'x64') return ['@tokscale/cli-linux-x64-gnu', '@tokscale/cli-linux-x64-musl'];
-  }
-  return [];
+  return tokscalePackageNamesForPlatform();
 }
 
 function locateBundledBinary() {

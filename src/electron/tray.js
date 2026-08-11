@@ -13,6 +13,7 @@ const { translate: translateMessage } = require('./renderer/i18n');
 
 const ICON_PATH = path.join(__dirname, '..', '..', 'assets', 'icon.png');
 const TRAY_ICON_PATH = path.join(__dirname, '..', '..', 'assets', 'icons', 'tray-token-monitor.png');
+const trayMenuRefreshers = new WeakMap();
 
 function buildTrayIcon(options = {}) {
   const platform = options.platform || process.platform;
@@ -181,29 +182,46 @@ function createTray({
   onSetWindowPresentation,
   onSwitchCodexAccount,
   onToggle,
-  translateMenu
+  translateMenu,
+  platform = process.platform
 }) {
   const { Tray, Menu } = require('electron');
-  const tray = new Tray(buildTrayIcon());
+  const tray = new Tray(buildTrayIcon({ platform }));
   tray.setToolTip('Token Monitor');
 
+  const buildMenu = () => Menu.buildFromTemplate(buildTrayMenuTemplate({
+    state: typeof getMenuState === 'function' ? getMenuState() : {},
+    onOpenSettings,
+    onOpenView,
+    onQuit,
+    onRefresh,
+    onSetTrayContent,
+    onSetWindowPresentation,
+    onSwitchCodexAccount,
+    translate: translateMenu
+  }));
+
+  const refreshMenu = () => {
+    if (tray.isDestroyed?.()) return;
+    tray.setContextMenu(buildMenu());
+  };
+
   tray.on('click', () => onToggle(tray));
-  tray.on('right-click', () => {
-    const menu = Menu.buildFromTemplate(buildTrayMenuTemplate({
-      state: typeof getMenuState === 'function' ? getMenuState() : {},
-      onOpenSettings,
-      onOpenView,
-      onQuit,
-      onRefresh,
-      onSetTrayContent,
-      onSetWindowPresentation,
-      onSwitchCodexAccount,
-      translate: translateMenu
-    }));
-    tray.popUpContextMenu(menu);
-  });
+  if (platform === 'linux') {
+    // Linux tray implementations do not consistently emit Electron's
+    // right-click event. Binding the menu natively is the portable SNI path.
+    refreshMenu();
+    trayMenuRefreshers.set(tray, refreshMenu);
+  } else {
+    tray.on('right-click', () => tray.popUpContextMenu(buildMenu()));
+  }
 
   return tray;
+}
+
+function refreshTrayMenu(tray) {
+  const refresh = trayMenuRefreshers.get(tray);
+  if (typeof refresh === 'function') refresh();
 }
 
 function popoverBounds(tray, popoverWidth, popoverHeight) {
@@ -242,6 +260,7 @@ module.exports = {
   pickWorstLimit,
   popoverBounds,
   reconcileCodexAccountSelection,
+  refreshTrayMenu,
   shouldUseTemplateTrayIcon,
   sortCodexAccountsForDisplay
 };
