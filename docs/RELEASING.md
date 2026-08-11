@@ -29,12 +29,14 @@ Android 正式包必须使用长期保存的签名密钥。不要把 keystore �
 4. GitHub Actions 会构建 Windows 安装包、Linux AppImage、Debian `.deb` 包和 Android release APK，并同步发布 Hub 镜像。
 5. Release 资产中会包含：
 
-   - `Token-Monitor-Setup-0.37.17.exe`
-   - `Token-Monitor-0.37.17.AppImage`
-   - `Token-Monitor-0.37.17.deb`
-   - `Token-Monitor-Android-0.37.17.apk`
+   - `Token-Monitor-Setup-0.37.18.exe`
+   - `Token-Monitor-0.37.18.AppImage`
+   - `Token-Monitor-0.37.18.deb`
+   - `Token-Monitor-Android-0.37.18.apk`
 
 Android 的 `versionName` 和 `versionCode` 会根据 tag 自动生成，保证 Windows 与 Android 版本保持一致。
+
+已安装的 Debian 版本通过应用内更新使用系统 `dpkg`/`apt` 完成升级，首次安装新版本时会按系统策略请求管理员权限；也可以手动执行 `sudo apt install ./Token-Monitor-<version>.deb`。
 
 ## Windows 签名
 

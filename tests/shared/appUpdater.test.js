@@ -46,6 +46,8 @@ test('appUpdateInstallSupport only enables packaged auto-updatable targets', () 
   }), { supported: false, reason: 'windows-portable' });
   assert.deepEqual(appUpdateInstallSupport({ isPackaged: true, platform: 'linux', env: {} }), { supported: false, reason: 'linux-not-appimage' });
   assert.deepEqual(appUpdateInstallSupport({ isPackaged: true, platform: 'linux', env: { APPIMAGE: '/tmp/Token Monitor.AppImage' } }), { supported: true, reason: '' });
+  assert.deepEqual(appUpdateInstallSupport({ isPackaged: true, platform: 'linux', env: {}, packageType: 'deb' }), { supported: true, reason: '' });
+  assert.deepEqual(appUpdateInstallSupport({ isPackaged: true, platform: 'linux', env: {}, packageType: ' DEB ' }), { supported: true, reason: '' });
 });
 
 test('shouldSkipAppUpdateCheck refreshes cached update prompts sooner than the normal cooldown', () => {

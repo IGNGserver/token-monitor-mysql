@@ -17,7 +17,8 @@ const TRAILING_PULL_REQUEST_REFERENCES_RE = /\s*(?:\(\s*#\d+(?:\s*,\s*#\d+)*\s*\
 function appUpdateInstallSupport({
   isPackaged = false,
   platform = process.platform,
-  env = process.env
+  env = process.env,
+  packageType = ''
 } = {}) {
   if (!isPackaged) return { supported: false, reason: 'unpackaged' };
   if (platform === 'darwin') return { supported: true, reason: '' };
@@ -27,7 +28,9 @@ function appUpdateInstallSupport({
       : { supported: true, reason: '' };
   }
   if (platform === 'linux') {
-    return env?.APPIMAGE ? { supported: true, reason: '' } : { supported: false, reason: 'linux-not-appimage' };
+    if (env?.APPIMAGE) return { supported: true, reason: '' };
+    if (String(packageType || '').trim().toLowerCase() === 'deb') return { supported: true, reason: '' };
+    return { supported: false, reason: 'linux-not-appimage' };
   }
   return { supported: false, reason: 'unsupported-platform' };
 }

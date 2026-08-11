@@ -3515,6 +3515,22 @@ function rememberLatestAppUpdate(latest, checkedAt = new Date().toISOString()) {
   return merged;
 }
 
+function linuxPackageType() {
+  if (process.platform !== 'linux' || !app.isPackaged) return '';
+  try {
+    return fs.readFileSync(path.join(process.resourcesPath, 'package-type'), 'utf8').trim().toLowerCase();
+  } catch (_) { return ''; }
+}
+
+function nativeAppUpdateInstallSupport() {
+  return appUpdateInstallSupport({
+    isPackaged: app.isPackaged,
+    platform: process.platform,
+    env: process.env,
+    packageType: linuxPackageType()
+  });
+}
+
 function setNativeAppUpdateState(patch = {}) {
   appUpdateNativeState = { ...appUpdateNativeState, ...patch };
   sendAppUpdatePush();
@@ -3561,7 +3577,7 @@ function deriveAppUpdateState() {
   const currentVersion = app.getVersion();
   const latest = block.lastKnownLatest || null;
   const dismissedVersion = block.dismissedVersion || null;
-  const installSupport = appUpdateInstallSupport({ isPackaged: app.isPackaged, platform: process.platform, env: process.env });
+  const installSupport = nativeAppUpdateInstallSupport();
   const availability = deriveAppUpdateAvailability({
     currentVersion,
     latest,
@@ -3695,7 +3711,7 @@ function dismissAppUpdateVersion(version) {
 }
 
 async function downloadAndPrepareAppUpdate() {
-  const support = appUpdateInstallSupport({ isPackaged: app.isPackaged, platform: process.platform, env: process.env });
+  const support = nativeAppUpdateInstallSupport();
   if (!support.supported) {
     setNativeAppUpdateState({ phase: 'error', error: support.reason || 'unsupported-platform', progress: null });
     return deriveAppUpdateState();
