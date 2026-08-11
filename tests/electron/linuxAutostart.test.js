@@ -20,8 +20,9 @@ function tmpConfigHome() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'token-monitor-autostart-'));
 }
 
-test('autostartSupported requires linux and a running AppImage', () => {
+test('autostartSupported accepts AppImage and native-package executable paths on Linux', () => {
   assert.equal(autostartSupported({ platform: 'linux', env: { APPIMAGE: '/opt/Token Monitor.AppImage' } }), true);
+  assert.equal(autostartSupported({ platform: 'linux', env: {}, appPath: '/opt/Token Monitor/token-monitor' }), true);
   assert.equal(autostartSupported({ platform: 'linux', env: {} }), false);
   assert.equal(autostartSupported({ platform: 'linux', env: { APPIMAGE: '' } }), false);
   assert.equal(autostartSupported({ platform: 'darwin', env: { APPIMAGE: '/x.AppImage' } }), false);
@@ -39,7 +40,7 @@ test('desktopFilePath honors XDG_CONFIG_HOME and falls back to ~/.config', () =>
   );
 });
 
-test('desktopFileContents produces a desktop entry pointing at the AppImage', () => {
+test('desktopFileContents produces a desktop entry pointing at the executable', () => {
   const contents = desktopFileContents('/opt/apps/Token Monitor.AppImage');
   assert.match(contents, /^\[Desktop Entry\]\n/);
   assert.match(contents, /\nType=Application\n/);
@@ -76,6 +77,17 @@ test('setAutostartEnabled(true) writes the desktop file, creating the autostart 
   assert.match(written, /Exec="\/opt\/Token Monitor\.AppImage"/);
 });
 
+test('setAutostartEnabled(true) writes a native .deb executable path without APPIMAGE', () => {
+  const configHome = tmpConfigHome();
+  const env = { XDG_CONFIG_HOME: configHome };
+  const appPath = '/opt/Token Monitor/token-monitor';
+  assert.equal(isAutostartEnabled({ env, appPath }), false);
+  assert.equal(setAutostartEnabled(true, { env, appPath }), true);
+  assert.equal(isAutostartEnabled({ env, appPath }), true);
+  const written = fs.readFileSync(path.join(configHome, 'autostart', 'token-monitor.desktop'), 'utf8');
+  assert.match(written, /Exec="\/opt\/Token Monitor\/token-monitor"/);
+});
+
 test('setAutostartEnabled(true) preserves the login-item marker', () => {
   const configHome = tmpConfigHome();
   const env = { XDG_CONFIG_HOME: configHome, APPIMAGE: '/opt/Token Monitor.AppImage' };
@@ -95,6 +107,14 @@ test('isAutostartEnabled requires the desktop file to target the current AppImag
   assert.equal(isAutostartEnabled({ env }), true);
 });
 
+test('isAutostartEnabled detects a stale native-package executable path', () => {
+  const configHome = tmpConfigHome();
+  const env = { XDG_CONFIG_HOME: configHome };
+  setAutostartEnabled(true, { env, appPath: '/opt/Token Monitor/token-monitor' });
+  assert.equal(isAutostartEnabled({ env, appPath: '/opt/Token Monitor/old-token-monitor' }), false);
+  assert.equal(setAutostartEnabled(true, { env, appPath: '/opt/Token Monitor/old-token-monitor' }), true);
+});
+
 test('setAutostartEnabled(false) removes the desktop file and is idempotent', () => {
   const configHome = tmpConfigHome();
   const env = { XDG_CONFIG_HOME: configHome, APPIMAGE: '/opt/Token Monitor.AppImage' };
@@ -104,7 +124,7 @@ test('setAutostartEnabled(false) removes the desktop file and is idempotent', ()
   assert.equal(setAutostartEnabled(false, { env }), false); // no file present — must not throw
 });
 
-test('setAutostartEnabled(true) without an AppImage path reports failure', () => {
+test('setAutostartEnabled(true) without an executable path reports failure', () => {
   const configHome = tmpConfigHome();
   const env = { XDG_CONFIG_HOME: configHome };
   assert.equal(setAutostartEnabled(true, { env }), false);

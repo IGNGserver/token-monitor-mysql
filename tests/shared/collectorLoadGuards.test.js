@@ -86,6 +86,53 @@ test('watchPathsForClients watches the Antigravity CLI data dir but not the IDE 
   }
 });
 
+test('watchPathsForClients honors CODEX_HOME and GEMINI_CLI_HOME for packaged desktop launches', () => {
+  const tmp = withTmpHome([]);
+  const codexHome = path.join(tmp, 'custom-codex');
+  const geminiHome = path.join(tmp, 'custom-gemini');
+  fs.mkdirSync(path.join(codexHome, 'sessions'), { recursive: true });
+  fs.mkdirSync(path.join(geminiHome, 'antigravity-cli', 'conversations'), { recursive: true });
+  const originalHomedir = os.homedir;
+  const previousCodexHome = process.env.CODEX_HOME;
+  const previousGeminiHome = process.env.GEMINI_CLI_HOME;
+  os.homedir = () => tmp;
+  try {
+    process.env.CODEX_HOME = codexHome;
+    process.env.GEMINI_CLI_HOME = geminiHome;
+    const { clientDataDirPresence, watchPathsForClients } = freshCollector();
+    const dirs = watchPathsForClients('codex,antigravity');
+    assert.ok(dirs.includes(path.join(codexHome, 'sessions')));
+    assert.ok(dirs.includes(path.join(geminiHome, 'antigravity-cli', 'conversations')));
+    assert.deepEqual(clientDataDirPresence('codex,antigravity'), { codex: true, antigravity: true });
+  } finally {
+    os.homedir = originalHomedir;
+    if (previousCodexHome === undefined) delete process.env.CODEX_HOME;
+    else process.env.CODEX_HOME = previousCodexHome;
+    if (previousGeminiHome === undefined) delete process.env.GEMINI_CLI_HOME;
+    else process.env.GEMINI_CLI_HOME = previousGeminiHome;
+    delete require.cache[collectorPath];
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('tokscale subprocess filters include the native Antigravity CLI source', () => {
+  const { tokscaleClientFilter, tokscaleEnvironment } = freshCollector();
+  assert.equal(
+    tokscaleClientFilter('codex,antigravity,antigravity-cli'),
+    'codex,antigravity,antigravity-cli'
+  );
+  assert.deepEqual(
+    tokscaleEnvironment({ platform: 'linux', homeDir: '/home/example', env: { PATH: '/usr/bin' } }),
+    {
+      PATH: '/usr/bin',
+      HOME: '/home/example',
+      CODEX_HOME: '/home/example/.codex',
+      GEMINI_CLI_HOME: '/home/example/.gemini'
+    }
+  );
+  delete require.cache[collectorPath];
+});
+
 test('watchPathsForClients watches only Proma data that is currently parsed', () => {
   const tmp = withTmpHome([
     path.join('.proma', 'agent-sessions'),

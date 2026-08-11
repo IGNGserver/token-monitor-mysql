@@ -45,6 +45,37 @@ function toUnpackedPath(p) {
 
 const TOKSCALE_BIN_JS = toUnpackedPath(require.resolve('tokscale/bin.js'));
 
+function nonEmptyEnvPath(env, name, fallback) {
+  const value = String(env?.[name] || '').trim();
+  return value || fallback;
+}
+
+function homeRelativePath(homeDir, relative, platform = process.platform) {
+  const join = platform === 'linux' || platform === 'darwin' ? path.posix.join : path.join;
+  return join(homeDir, relative);
+}
+
+function codexDataHome(homeDir = os.homedir(), env = process.env, platform = process.platform) {
+  return nonEmptyEnvPath(env, 'CODEX_HOME', homeRelativePath(homeDir, '.codex', platform));
+}
+
+function geminiDataHome(homeDir = os.homedir(), env = process.env, platform = process.platform) {
+  return nonEmptyEnvPath(env, 'GEMINI_CLI_HOME', homeRelativePath(homeDir, '.gemini', platform));
+}
+
+// Desktop launchers and XDG autostart entries do not necessarily inherit the
+// shell environment that started Codex or agy. Tokscale defaults to these same
+// locations, but making the fallback explicit keeps the native child process
+// independent of the launcher and still preserves an explicitly configured
+// CODEX_HOME/GEMINI_CLI_HOME.
+function tokscaleEnvironment({ env = process.env, homeDir = os.homedir(), platform = process.platform } = {}) {
+  const next = { ...env };
+  if (platform === 'linux' && !String(next.HOME || '').trim()) next.HOME = homeDir;
+  if (!String(next.CODEX_HOME || '').trim()) next.CODEX_HOME = codexDataHome(homeDir, next, platform);
+  if (!String(next.GEMINI_CLI_HOME || '').trim()) next.GEMINI_CLI_HOME = geminiDataHome(homeDir, next, platform);
+  return next;
+}
+
 function bundledPackageCandidates() {
   return tokscalePackageNamesForPlatform();
 }
@@ -105,8 +136,9 @@ function resolvePlatformBinary() {
 function tokscaleCommand() {
   const resolved = resolvePlatformBinary();
   const useDirect = Boolean(resolved && resolved.source !== 'shim');
-  if (useDirect) return { bin: resolved.path, prefixArgs: [], env: process.env };
-  return { bin: process.execPath, prefixArgs: [TOKSCALE_BIN_JS], env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' } };
+  const env = tokscaleEnvironment();
+  if (useDirect) return { bin: resolved.path, prefixArgs: [], env };
+  return { bin: process.execPath, prefixArgs: [TOKSCALE_BIN_JS], env: { ...env, ELECTRON_RUN_AS_NODE: '1' } };
 }
 
 function parseJsonOutput(stdout) {
@@ -442,13 +474,14 @@ function sessionTimestampMap(periods, home = os.homedir(), deps = {}) {
   for (const [sessionId, filePath] of claudeFiles) applyFile('claude', sessionId, filePath);
 
   const codexIds = byClient.get('codex') || new Set();
+  const codexRoot = deps.scopedHome ? path.join(home, '.codex') : codexDataHome(home);
   const missingCodexIds = new Set();
   for (const sessionId of codexIds) {
-    const filePath = codexSessionFile(home, sessionId);
+    const filePath = codexSessionFile(home, sessionId, codexRoot);
     if (filePath) applyFile('codex', sessionId, filePath);
     else missingCodexIds.add(sessionId);
   }
-  const codexFiles = findSessionFiles(path.join(home, '.codex', 'sessions'), missingCodexIds);
+  const codexFiles = findSessionFiles(path.join(codexRoot, 'sessions'), missingCodexIds);
   for (const [sessionId, filePath] of codexFiles) applyFile('codex', sessionId, filePath);
 
   for (const ref of refs.values()) {
@@ -535,7 +568,8 @@ async function maybeSyncCursor(clientsCsv, logger, options = {}) {
 const ANTIGRAVITY_DATA_ROOTS = ['antigravity', 'antigravity-ide', 'antigravity-backup'];
 
 function antigravityDataPresent(home) {
-  return ANTIGRAVITY_DATA_ROOTS.some((name) => dirExists(path.join(home, '.gemini', name)));
+  const geminiHome = geminiDataHome(home);
+  return ANTIGRAVITY_DATA_ROOTS.some((name) => dirExists(path.join(geminiHome, name)));
 }
 
 async function maybeSyncAntigravity(clientsCsv, logger, home = os.homedir()) {
@@ -917,7 +951,7 @@ function clientWatchCandidates(clientsCsv) {
   const byClient = {};
   const add = (client, ...dirs) => { if (enabled.has(client)) byClient[client] = dirs; };
   add('claude', path.join(home, '.claude', 'projects'), path.join(home, '.claude', 'transcripts'));
-  add('codex', path.join(home, '.codex', 'sessions'));
+  add('codex', path.join(codexDataHome(home), 'sessions'));
   const hermesHome = resolveHermesHome({ env: process.env, homeDir: home });
   add('hermes', hermesHome, ...hermesProfileWatchDirs(hermesHome));
   add('opencode', path.join(home, '.local', 'share', 'opencode'));
@@ -1036,8 +1070,8 @@ const SELF_SYNCED_CLIENTS = new Set(['cursor', 'antigravity']);
 // It belongs to the umbrella `antigravity` client but, unlike that client's IDE
 // sync cache, is written by `agy` and never by us — so it is both watchable and a
 // real presence signal, sharing this single source of truth.
-function antigravityCliDataDir() {
-  const geminiHome = process.env.GEMINI_CLI_HOME || path.join(os.homedir(), '.gemini');
+function antigravityCliDataDir(homeDir = os.homedir()) {
+  const geminiHome = geminiDataHome(homeDir);
   return path.join(geminiHome, 'antigravity-cli', 'conversations');
 }
 
@@ -1577,7 +1611,9 @@ module.exports = {
   resetPromaPricingCache,
   shouldIncludeHistory,
   startCollector,
+  tokscaleClientFilter,
   tokscaleCommand,
+  tokscaleEnvironment,
   watchIgnoreMatcher,
   watchPathsForClients
 };

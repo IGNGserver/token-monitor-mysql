@@ -29,10 +29,10 @@ function findSessionFiles(root, sessionIds) {
   return found;
 }
 
-function codexSessionFile(home, sessionId) {
+function codexSessionFile(home, sessionId, codexHome = path.join(home, '.codex')) {
   const match = String(sessionId || '').match(/^rollout-(\d{4})-(\d{2})-(\d{2})T/);
   if (!match) return '';
-  const filePath = path.join(home, '.codex', 'sessions', match[1], match[2], match[3], `${sessionId}.jsonl`);
+  const filePath = path.join(codexHome, 'sessions', match[1], match[2], match[3], `${sessionId}.jsonl`);
   try { return fs.statSync(filePath).isFile() ? filePath : ''; } catch (_) { return ''; }
 }
 

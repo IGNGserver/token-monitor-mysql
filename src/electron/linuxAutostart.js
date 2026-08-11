@@ -1,9 +1,8 @@
 'use strict';
 
-// Linux "start at login" for AppImage builds. Electron's app.setLoginItemSettings
-// is a no-op on Linux, so we manage an XDG autostart entry ourselves:
-// ~/.config/autostart/token-monitor.desktop pointing Exec= at $APPIMAGE
-// (the absolute path the AppImage runtime exports for the running image).
+// Linux "start at login". Electron's app.setLoginItemSettings is a no-op on
+// Linux, so we manage an XDG autostart entry ourselves. AppImage builds use
+// $APPIMAGE; native packages such as .deb pass their installed executable path.
 
 const fs = require('fs');
 const os = require('os');
@@ -12,8 +11,12 @@ const path = require('path');
 const DESKTOP_FILE_NAME = 'token-monitor.desktop';
 const STARTED_AT_LOGIN_ARG = '--started-at-login';
 
-function autostartSupported({ platform = process.platform, env = process.env } = {}) {
-  return platform === 'linux' && Boolean(env.APPIMAGE);
+function launchPath({ env = process.env, appPath = '' } = {}) {
+  return String(appPath || env.APPIMAGE || '').trim();
+}
+
+function autostartSupported({ platform = process.platform, env = process.env, appPath = '' } = {}) {
+  return platform === 'linux' && Boolean(launchPath({ env, appPath }));
 }
 
 // posix join on purpose: XDG paths are POSIX paths, and this keeps the module's
@@ -31,8 +34,8 @@ function quoteExecArgument(value) {
   return `"${quoted.replace(/\\/g, '\\\\')}"`;
 }
 
-function desktopFileContents(appImagePath, { startedAtLogin = false } = {}) {
-  const exec = `${quoteExecArgument(appImagePath)}${startedAtLogin ? ` ${STARTED_AT_LOGIN_ARG}` : ''}`;
+function desktopFileContents(executablePath, { startedAtLogin = false } = {}) {
+  const exec = `${quoteExecArgument(executablePath)}${startedAtLogin ? ` ${STARTED_AT_LOGIN_ARG}` : ''}`;
   return [
     '[Desktop Entry]',
     'Type=Application',
@@ -43,13 +46,14 @@ function desktopFileContents(appImagePath, { startedAtLogin = false } = {}) {
   ].join('\n');
 }
 
-function isAutostartEnabled(options) {
+function isAutostartEnabled(options = {}) {
   const env = options?.env || process.env;
-  if (!env.APPIMAGE) return false;
+  const appPath = launchPath({ env, appPath: options?.appPath });
+  if (!appPath) return false;
   try {
     const contents = fs.readFileSync(desktopFilePath({ env }), 'utf8');
     const execLine = contents.split(/\r?\n/).find((line) => line.startsWith('Exec='));
-    const expected = `Exec=${quoteExecArgument(env.APPIMAGE)}`;
+    const expected = `Exec=${quoteExecArgument(appPath)}`;
     return execLine === expected || execLine === `${expected} ${STARTED_AT_LOGIN_ARG}`;
   }
   catch (_) { return false; }
@@ -57,19 +61,20 @@ function isAutostartEnabled(options) {
 
 function setAutostartEnabled(enabled, options = {}) {
   const env = options.env || process.env;
+  const appPath = launchPath({ env, appPath: options.appPath });
   const filePath = desktopFilePath({ env });
   try {
     if (enabled) {
-      if (!env.APPIMAGE) return false;
+      if (!appPath) return false;
       fs.mkdirSync(path.dirname(filePath), { recursive: true });
-      fs.writeFileSync(filePath, desktopFileContents(env.APPIMAGE, {
+      fs.writeFileSync(filePath, desktopFileContents(appPath, {
         startedAtLogin: Boolean(options.startedAtLogin)
       }), 'utf8');
     } else {
       fs.rmSync(filePath, { force: true });
     }
   } catch (_) { /* fall through to report the actual on-disk state */ }
-  return isAutostartEnabled({ env });
+  return isAutostartEnabled({ env, appPath });
 }
 
 function startedAtLoginFromArgs(argv = process.argv) {

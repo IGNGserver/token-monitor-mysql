@@ -1966,17 +1966,33 @@ function saveSettings(options = {}) {
   }
 }
 
+function linuxAutostartOptions() {
+  // AppImage exposes a stable image path through APPIMAGE. Native packages
+  // such as .deb do not, so use Electron's installed executable path instead
+  // of process.execPath when available (the latter can be a transient AppImage
+  // mount path during startup).
+  if (process.platform !== 'linux') return {};
+  const appImagePath = String(process.env.APPIMAGE || '').trim();
+  if (appImagePath) return { appPath: appImagePath };
+  try {
+    const executablePath = String(app.getPath('exe') || '').trim();
+    if (executablePath) return { appPath: executablePath };
+  } catch (_) { /* app.getPath('exe') may be unavailable before ready */ }
+  return { appPath: process.execPath };
+}
+
 function loginItemEnabledHere() {
   if (!app.isPackaged) return false;
   // Electron login items only cover macOS/Windows; on Linux we manage an XDG
-  // autostart entry ourselves, which needs the AppImage runtime ($APPIMAGE).
-  if (process.platform === 'linux') return linuxAutostart.autostartSupported();
+  // autostart entry ourselves. AppImage and native package builds use
+  // different executable-path sources.
+  if (process.platform === 'linux') return linuxAutostart.autostartSupported(linuxAutostartOptions());
   return true;
 }
 
 function currentLoginItemState() {
   if (!loginItemEnabledHere()) return false;
-  if (process.platform === 'linux') return linuxAutostart.isAutostartEnabled();
+  if (process.platform === 'linux') return linuxAutostart.isAutostartEnabled(linuxAutostartOptions());
   try { return Boolean(app.getLoginItemSettings().openAtLogin); }
   catch (_) { return false; }
 }
@@ -1984,7 +2000,10 @@ function currentLoginItemState() {
 function applyLoginItem(startAtLogin, startedAtLogin = settings?.startInTray) {
   if (!loginItemEnabledHere()) return false;
   if (process.platform === 'linux') {
-    return linuxAutostart.setAutostartEnabled(Boolean(startAtLogin), { startedAtLogin: Boolean(startedAtLogin) });
+    return linuxAutostart.setAutostartEnabled(Boolean(startAtLogin), {
+      ...linuxAutostartOptions(),
+      startedAtLogin: Boolean(startedAtLogin)
+    });
   }
   app.setLoginItemSettings({ openAtLogin: Boolean(startAtLogin) });
   return currentLoginItemState();
