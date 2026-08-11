@@ -24,12 +24,12 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Javis603/token-monitor.git",
+    "url": "git+https://github.com/IGNGserver/token-monitor-suite.git",
     "directory": "worker"
   },
-  "homepage": "https://github.com/Javis603/token-monitor/tree/main/worker#readme",
+  "homepage": "https://github.com/IGNGserver/token-monitor-suite/tree/main/worker#readme",
   "bugs": {
-    "url": "https://github.com/Javis603/token-monitor/issues"
+    "url": "https://github.com/IGNGserver/token-monitor-suite/issues"
   },
   "devDependencies": {
     "wrangler": "^4.0.0"

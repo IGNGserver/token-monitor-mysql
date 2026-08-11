@@ -120,7 +120,7 @@
       {
         "provider": "github",
         "owner": "IGNGserver",
-        "repo": "token-monitor-mysql"
+        "repo": "token-monitor-suite"
       }
     ]
   },
@@ -143,11 +143,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/IGNGserver/token-monitor-mysql.git"
+    "url": "git+https://github.com/IGNGserver/token-monitor-suite.git"
   },
-  "homepage": "https://github.com/IGNGserver/token-monitor-mysql#readme",
+  "homepage": "https://github.com/IGNGserver/token-monitor-suite#readme",
   "bugs": {
-    "url": "https://github.com/IGNGserver/token-monitor-mysql/issues"
+    "url": "https://github.com/IGNGserver/token-monitor-suite/issues"
   },
   "dependencies": {
     "@xhayper/discord-rpc": "^1.3.4",

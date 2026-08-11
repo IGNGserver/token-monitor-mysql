@@ -2,7 +2,7 @@
 
 const semver = require('semver');
 
-const GITHUB_REPO = 'IGNGserver/token-monitor-mysql';
+const GITHUB_REPO = 'IGNGserver/token-monitor-suite';
 const RELEASES_LATEST_URL = `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`;
 const RELEASE_HTML_PREFIX = `https://github.com/${GITHUB_REPO}/releases/`;
 const REQUEST_TIMEOUT_MS = 10 * 1000;

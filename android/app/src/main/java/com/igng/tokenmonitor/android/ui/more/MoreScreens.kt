@@ -1750,7 +1750,7 @@ fun SettingsScreen(
 
             haptics.perform(HapticEvent.Tap)
 
-            uriHandler.openUri("https://github.com/IGNGserver/token-monitor-mysql/releases/latest")
+            uriHandler.openUri("https://github.com/IGNGserver/token-monitor-suite/releases/latest")
 
           }
 

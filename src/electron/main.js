@@ -1466,7 +1466,7 @@ function ensureSettingsLoaded() {
     }
   }
   // Discard cached release metadata from older builds that queried upstream.
-  if (settings.appUpdate?.lastKnownLatest?.htmlUrl && !settings.appUpdate.lastKnownLatest.htmlUrl.startsWith('https://github.com/IGNGserver/token-monitor-mysql/releases/')) {
+  if (settings.appUpdate?.lastKnownLatest?.htmlUrl && !settings.appUpdate.lastKnownLatest.htmlUrl.startsWith('https://github.com/IGNGserver/token-monitor-suite/releases/')) {
     settings.appUpdate = { ...settings.appUpdate, lastKnownLatest: null, lastCheckedAt: null, dismissedVersion: null };
     saveSettings();
   }
@@ -3734,7 +3734,7 @@ function isAllowedExternalUrl(value) {
   if (isAllowedCodexLoginUrl(value)) return true;
   if (parsed.hostname === 'github.com' && parsed.pathname.startsWith('/junhoyeo/tokscale')) return true;
   if (parsed.hostname === 'www.npmjs.com' && parsed.pathname.startsWith('/package/@tokscale/')) return true;
-  if (parsed.hostname === 'github.com' && parsed.pathname.startsWith('/IGNGserver/token-monitor-mysql')) return true;
+  if (parsed.hostname === 'github.com' && parsed.pathname.startsWith('/IGNGserver/token-monitor-suite')) return true;
   if ((parsed.hostname === 'cursor.com' || parsed.hostname === 'www.cursor.com') && parsed.pathname.startsWith('/settings')) return true;
   if (parsed.hostname === 'opencode.ai' || parsed.hostname === 'www.opencode.ai') return true;
   if (parsed.hostname === 'openrouter.ai' && parsed.pathname.startsWith('/settings/keys')) return true;

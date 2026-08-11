@@ -62,8 +62,8 @@ Hermes Agent 运行在 WSL 中，其会话数据存储在 `~/.hermes/state.db`�
 ```bash
 # 在 WSL 中执行
 cd ~
-git clone https://github.com/Javis603/token-monitor.git
-cd token-monitor
+git clone https://github.com/IGNGserver/token-monitor-suite.git
+cd token-monitor-suite
 npm install
 ```
 

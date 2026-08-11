@@ -1,8 +1,8 @@
-# Token Monitor MySQL Hub
+# Token Monitor Suite
 
-Token Monitor 是一个用来查看 AI 编程工具用量的桌面小组件。它可以显示 Token、费用、模型和会话，也可以把多台电脑的数据汇总到一个 Hub，方便你在电脑或手机上查看。
+Token Monitor Suite 是一个用来查看 AI 编程工具用量的完整工具套件。它包含桌面小组件、无头 agent、Hub、Android 客户端和 Cloudflare Worker 部署，能够显示 Token、费用、模型、会话和额度，也可以把多台电脑的数据汇总到一个 Hub，方便你在电脑或手机上查看。
 
-本仓库 fork 自 [Javis603/token-monitor](https://github.com/Javis603/token-monitor)。它保留了原项目的桌面采集能力，同时增加了 MySQL Hub、Docker Compose 部署和 Android 客户端，并继续使用 [MIT License](LICENSE)。
+本仓库 fork 自 [Javis603/token-monitor](https://github.com/Javis603/token-monitor)，在保留原项目桌面采集能力的基础上持续扩展，并继续使用 [MIT License](LICENSE)。
 
 
 ## 支持的工具（节选）
@@ -15,7 +15,7 @@ Token Monitor 是一个用来查看 AI 编程工具用量的桌面小组件。�
 
 ## 直接下载安装
 
-如果你只想使用，不想安装 Node.js 或执行命令，请前往 [GitHub Releases](https://github.com/IGNGserver/token-monitor-mysql/releases) 下载：
+如果你只想使用，不想安装 Node.js 或执行命令，请前往 [GitHub Releases](https://github.com/IGNGserver/token-monitor-suite/releases) 下载：
 
 - **Windows**：下载 `Token-Monitor-Setup-版本号.exe`，双击安装。
 - **Linux**：下载 `Token-Monitor-版本号.AppImage`，赋予执行权限后运行。
@@ -64,12 +64,12 @@ docker compose version
 
 **推荐（拉取正式镜像，无需本地 build）：**
 
-- 从 [GitHub Releases](https://github.com/IGNGserver/token-monitor-mysql/releases) 下载 `Token-Monitor-Hub-Compose-<version>.zip` 并解压；或
+- 从 [GitHub Releases](https://github.com/IGNGserver/token-monitor-suite/releases) 下载 `Token-Monitor-Hub-Compose-<version>.zip` 并解压；或
 - 克隆仓库后使用根目录的 `docker-compose.yml`：
 
 ```bash
-git clone https://github.com/IGNGserver/token-monitor-mysql.git
-cd token-monitor-mysql
+git clone https://github.com/IGNGserver/token-monitor-suite.git
+cd token-monitor-suite
 ```
 
 ```bash
@@ -126,8 +126,8 @@ curl http://127.0.0.1:17321/api/health
 当前仓库提供 Windows 安装包、Linux AppImage 和源码运行方式。Linux AppImage 无需安装 Node.js；源码运行需要 Node.js 22.13 或更高版本：
 
 ```bash
-git clone https://github.com/IGNGserver/token-monitor-mysql.git
-cd token-monitor-mysql
+git clone https://github.com/IGNGserver/token-monitor-suite.git
+cd token-monitor-suite
 npm ci
 npm start
 ```
@@ -153,8 +153,8 @@ Windows 用户可以在 PowerShell 中运行相同的 git 和 npm 命令。
 不需要桌面窗口的电脑可以只运行后台 Agent：
 
 ```bash
-git clone https://github.com/IGNGserver/token-monitor-mysql.git
-cd token-monitor-mysql
+git clone https://github.com/IGNGserver/token-monitor-suite.git
+cd token-monitor-suite
 npm ci
 cp .env.example .env
 ```

@@ -42,7 +42,7 @@ chmod +x Token-Monitor-*.AppImage
 
 ### Other notes
 
-This fork publishes Windows, Linux, Android, and the Hub Docker image (GHCR). Desktop platforms without a package can still run from source per the [README](https://github.com/IGNGserver/token-monitor-mysql#readme).
+This fork publishes Windows, Linux, Android, and the Hub Docker image (GHCR). Desktop platforms without a package can still run from source per the [README](https://github.com/IGNGserver/token-monitor-suite#readme).
 
 ### tokscale dependency
 
@@ -98,7 +98,7 @@ chmod +x Token-Monitor-*.AppImage
 
 ### 其他说明
 
-本 fork 发布 Windows、Linux、Android 安装包以及 Hub Docker 镜像（GHCR）。其他桌面平台可参考 [README](https://github.com/IGNGserver/token-monitor-mysql#readme) 从源码运行。
+本 fork 发布 Windows、Linux、Android 安装包以及 Hub Docker 镜像（GHCR）。其他桌面平台可参考 [README](https://github.com/IGNGserver/token-monitor-suite#readme) 从源码运行。
 
 ### tokscale 依赖
 
