@@ -103,7 +103,21 @@ async function renderSvgToPng(win, svgContent, size) {
   fs.writeFileSync(TEMP_HTML, html, 'utf8');
   await win.loadFile(TEMP_HTML);
   await new Promise((r) => setTimeout(r, 60));
-  const image = await win.webContents.capturePage();
+  let image;
+  try {
+    // Explicitly keep the hidden page in the compositor. This avoids an
+    // UnknownVizError on hosted Windows runners while keeping CI headless.
+    image = await win.webContents.capturePage(undefined, { stayHidden: true });
+  } catch (_) {
+    // Older Electron builds may not support hidden capture options reliably;
+    // retry once after activating the off-screen helper window.
+    win.showInactive();
+    try {
+      image = await win.webContents.capturePage();
+    } finally {
+      win.hide();
+    }
+  }
   const pngBuf = image.resize({ width: size, height: size, quality: 'best' }).toPNG();
   return pngBuf;
 }

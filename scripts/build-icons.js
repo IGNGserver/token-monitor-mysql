@@ -17,7 +17,16 @@ try {
   electronBin = process.execPath;
 }
 
-const result = spawnSync(electronBin, [GENERATE_SCRIPT], {
+// Icon generation is a build-only Electron process. Linux CI runners do not
+// preserve Electron's SUID sandbox mode after npm extracts the binary, and
+// Windows hosted runners can fail Viz initialization with hardware capture.
+// Keep the packaged application sandboxed; these flags apply only to this
+// short-lived asset generator.
+const electronArgs = [];
+if (process.platform === 'linux') electronArgs.push('--no-sandbox');
+if (process.env.CI) electronArgs.push('--disable-gpu');
+
+const result = spawnSync(electronBin, [...electronArgs, GENERATE_SCRIPT], {
   stdio: 'inherit',
   cwd: ROOT,
   env: { ...process.env, ELECTRON_RUN_AS_NODE: undefined }
