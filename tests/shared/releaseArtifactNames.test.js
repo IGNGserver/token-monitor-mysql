@@ -31,6 +31,7 @@ test('release artifact templates use GitHub-safe names', () => {
 test('Linux releases include both AppImage and Debian targets', () => {
   const targets = rootPackage.build.linux.target.map((entry) => entry.target);
   assert.deepEqual(targets, ['AppImage', 'deb']);
+  assert.match(rootPackage.build.linux.maintainer, /<[^@<>\s]+@[^<>\s]+>/);
 
   const workflow = fs.readFileSync(path.join(__dirname, '../../.github/workflows/release.yml'), 'utf8');
   assert.match(workflow, /dist\/\*\.deb/);

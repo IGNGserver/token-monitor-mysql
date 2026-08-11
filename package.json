@@ -1,7 +1,7 @@
 {
   "name": "token-monitor",
   "productName": "Token Monitor",
-  "version": "0.37.15",
+  "version": "0.37.16",
   "description": "Live token & cost widget for Claude Code, Codex & Hermes — local-first, optional multi-device sync.",
   "main": "src/electron/main.js",
   "scripts": {
@@ -111,6 +111,7 @@
           ]
         }
       ],
+      "maintainer": "IGNGserver <176017966+IGNGserver@users.noreply.github.com>",
       "category": "Development",
       "icon": "build/icons",
       "synopsis": "Live token & cost widget for AI coding tools",
