@@ -111,7 +111,7 @@ Token Monitor 對「Token 用量」「帳戶額度」與「session 明細」分�
 
 - **macOS（Apple Silicon）** — `.dmg`，已簽章並 notarize
 - **Windows 10/11** — 安裝版 `.exe`；簽章還在準備中，可能會出現 SmartScreen
-- **Linux x64** — `.AppImage`
+- **Linux x64** — Debian/Ubuntu 使用 `.deb`；其他發行版使用 `.AppImage`
 
 打包版會自動檢查 GitHub Releases。有新版本時，介面會顯示更新提示；支援的平台也可在 設定 → 一般 中安裝更新。
 
@@ -172,7 +172,7 @@ App 狀態存在 OS 使用者資料目錄——解除安裝時一併刪除該資
 npm install
 npm run dist:mac   # macOS arm64 .dmg → dist/
 npm run dist:win   # Windows x64 安裝檔 .exe → dist/
-npm run dist:linux # Linux x64 AppImage → dist/
+npm run dist:linux # Linux x64 .deb + AppImage → dist/
 npm run pack       # 未封裝的 app 目錄（無安裝檔），方便本機快速測試
 ```
 

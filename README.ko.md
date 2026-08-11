@@ -111,7 +111,7 @@ Token Monitor는 **토큰 사용량**, **계정 한도**, **세션 상세**를 �
 
 - **macOS (Apple Silicon)** — `.dmg`, 서명 및 notarize 완료
 - **Windows 10/11** — 설치용 `.exe`; 서명은 준비 중이라 SmartScreen이 표시될 수 있습니다
-- **Linux x64** — `.AppImage`
+- **Linux x64** — Debian/Ubuntu는 `.deb`, 그 외 배포판은 `.AppImage`
 
 패키지 빌드는 GitHub Releases를 자동 확인합니다. 새 버전이 있으면 화면에 업데이트 표시가 나타나며, 지원되는 플랫폼에서는 설정 → 일반에서도 설치할 수 있습니다.
 
@@ -172,7 +172,7 @@ npx wrangler deploy
 npm install
 npm run dist:mac   # macOS arm64 .dmg          → dist/
 npm run dist:win   # Windows x64 installer .exe → dist/
-npm run dist:linux # Linux x64 AppImage        → dist/
+npm run dist:linux # Linux x64 .deb + AppImage  → dist/
 npm run pack       # 설치 없이 앱 디렉터리만 (로컬 테스트)
 ```
 

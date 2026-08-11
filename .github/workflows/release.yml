@@ -8,7 +8,7 @@ on:
       version:
         description: "Release version without the v prefix"
         required: true
-        default: "0.37.14"
+        default: "0.37.15"
 
 permissions:
   contents: read
@@ -207,7 +207,7 @@ jobs:
           node-version: '22'
           cache: npm
       - run: npm ci
-      - name: Build Linux AppImage
+      - name: Build Linux AppImage and Debian package
         run: xvfb-run -a npm run dist:linux
       - uses: actions/upload-artifact@v4
         with:
@@ -215,6 +215,7 @@ jobs:
           if-no-files-found: error
           path: |
             dist/*.AppImage
+            dist/*.deb
             dist/latest-linux.yml
             dist/*.blockmap
 
@@ -369,6 +370,7 @@ jobs:
           files: |
             artifacts/*.exe
             artifacts/*.AppImage
+            artifacts/*.deb
             artifacts/Token-Monitor-Android-*.apk
             artifacts/latest.yml
             artifacts/latest-linux.yml

@@ -20,7 +20,7 @@
 Open the release's **Assets** section and download the file for your device:
 
 - **Windows** — `Token-Monitor-Setup-<version>.exe` (recommended) or the portable `.exe`.
-- **Linux** — `Token-Monitor-<version>.AppImage`.
+- **Linux** — Debian/Ubuntu: `Token-Monitor-<version>.deb`; other distributions: `Token-Monitor-<version>.AppImage`.
 - **Android** — `Token-Monitor-Android-<version>.apk`.
 - **Hub (Docker)** — image `ghcr.io/igngserver/token-monitor-hub:<version>` (also `:latest`) and optional `Token-Monitor-Hub-Compose-<version>.zip`.
 
@@ -33,7 +33,13 @@ Open the release's **Assets** section and download the file for your device:
 
 **Windows:** SmartScreen → More info → Run anyway when you trust the downloaded release.
 
-**Linux:** mark the AppImage executable, then run it:
+**Debian/Ubuntu:** install the package from the directory containing the downloaded asset:
+
+```bash
+sudo apt install ./Token-Monitor-*.deb
+```
+
+**Other Linux distributions:** mark the AppImage executable, then run it:
 
 ```bash
 chmod +x Token-Monitor-*.AppImage
@@ -76,7 +82,7 @@ open-source: https://github.com/junhoyeo/tokscale
 打开 Release 页面中的 **Assets**，下载对应设备的文件：
 
 - **Windows** — `Token-Monitor-Setup-<version>.exe`（推荐）或便携版 `.exe`。
-- **Linux** — `Token-Monitor-<version>.AppImage`。
+- **Linux** — Debian/Ubuntu 使用 `Token-Monitor-<version>.deb`；其他发行版使用 `Token-Monitor-<version>.AppImage`。
 - **Android** — `Token-Monitor-Android-<version>.apk`。
 - **Hub（Docker）** — 镜像 `ghcr.io/igngserver/token-monitor-hub:<version>`（同时有 `:latest`），以及可选的 `Token-Monitor-Hub-Compose-<version>.zip`。
 
@@ -89,7 +95,13 @@ open-source: https://github.com/junhoyeo/tokscale
 
 **Windows：** SmartScreen → 更多信息 → 仍要运行。
 
-**Linux：** 先给 AppImage 执行权限，然后运行：
+**Debian/Ubuntu：** 在下载文件所在目录安装 `.deb`：
+
+```bash
+sudo apt install ./Token-Monitor-*.deb
+```
+
+**其他 Linux 发行版：** 先给 AppImage 执行权限，然后运行：
 
 ```bash
 chmod +x Token-Monitor-*.AppImage

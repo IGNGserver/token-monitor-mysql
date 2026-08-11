@@ -111,7 +111,7 @@ Token Monitor は **トークン使用量**、**アカウント制限**、**セ�
 
 - **macOS (Apple Silicon)** — `.dmg`、署名および notarize 済み
 - **Windows 10/11** — インストーラー `.exe`。署名は準備中のため SmartScreen が表示される場合があります
-- **Linux x64** — `.AppImage`
+- **Linux x64** — Debian/Ubuntu は `.deb`、その他のディストリビューションは `.AppImage`
 
 パッケージ版は GitHub Releases を自動確認します。新しいバージョンがある場合は画面に更新インジケーターが表示され、対応プラットフォームでは 設定 → 一般 からもインストールできます。
 
@@ -172,7 +172,7 @@ npx wrangler deploy
 npm install
 npm run dist:mac   # macOS arm64 .dmg          → dist/
 npm run dist:win   # Windows x64 installer .exe → dist/
-npm run dist:linux # Linux x64 AppImage        → dist/
+npm run dist:linux # Linux x64 .deb + AppImage  → dist/
 npm run pack       # インストーラーなしのアプリディレクトリ（ローカルテスト用）
 ```
 
