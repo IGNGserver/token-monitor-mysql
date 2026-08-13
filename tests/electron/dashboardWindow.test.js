@@ -108,6 +108,14 @@ test('dashboard keeps native Windows material as its base layer', () => {
   assert.match(main, /function rebuildDashboardWindow\(\)/);
 });
 
+test('dashboard reapplies theme colours when the system appearance changes', () => {
+  const js = read('src', 'electron', 'renderer', 'dashboard.js');
+  assert.match(js, /prefers-color-scheme: dark/);
+  assert.match(js, /systemDarkThemeMedia\?\.addEventListener/);
+  assert.match(js, /themeCssVarEntries\(overrides,\s*\{[\s\S]*nativeBackdrop/);
+  assert.match(js, /state\.settings = \{ \.\.\.state\.settings, \.\.\.next \}/);
+});
+
 test('dashboard.css declares chart classes and a flat theme override', () => {
   const css = read('src', 'electron', 'renderer', 'dashboard.css');
   assert.match(css, /\.candle-up/);

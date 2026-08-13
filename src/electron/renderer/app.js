@@ -7,6 +7,7 @@ const windowsGlassApi = window.TokenMonitorWindowsGlass;
 const glassRenderingApi = window.TokenMonitorGlassRendering;
 const wslStatusPresentationApi = window.TokenMonitorWslStatusPresentation;
 const reducedMotionMedia = window.matchMedia?.('(prefers-reduced-motion: reduce)');
+const systemDarkThemeMedia = window.matchMedia?.('(prefers-color-scheme: dark)');
 const clientsWithIcon = new Set([
   'claude', 'codex', 'gemini', 'cursor', 'opencode', 'openclaw', 'hermes', 'antigravity', 'cline', 'kimi', 'qwen', 'grok', 'copilot', 'pi', 'zed', 'kilocode', 'micode', 'zcode', 'kiro', 'codebuddy', 'workbuddy', 'proma', 'claude-desktop',
   'xai', 'openrouter', 'deepseek', 'meta', 'mistral', 'qwen', 'moonshot', 'zai', 'zaiteam', 'cohere', 'xiaomi', 'mimo', 'minimax', 'doubao', 'volcengine', 'qoder', 'ollama'
@@ -5279,6 +5280,11 @@ function applyAppearanceSettings(settings) {
     isWindows,
     backdropSupported: !windowsBackdropUnsupported
   });
+  const nativeWindowsBackdropEnabled = isWindows
+    && !systemGlassDisabled
+    && !windowsBackdropUnsupported
+    && windowsGlass.showBackdropControl
+    && windowsGlass.backdropMode;
   const rootStyle = document.documentElement.style;
   rootStyle.setProperty('--glass-alpha', opacity.toFixed(2));
   rootStyle.setProperty('--line-alpha', (0.1 + depth * 0.09).toFixed(3));
@@ -5304,10 +5310,15 @@ function applyAppearanceSettings(settings) {
   // Theme colours must be applied before calculating transient Windows
   // surfaces. Native Mica/Acrylic follows the OS theme, while menus and
   // tooltips still need a theme-aware fill when a custom light preset is used.
-  // Preview patches omit themeColors; in that case the already-applied theme is
-  // intentionally retained while sliders update the non-native fallback.
-  if (settings && 'themeColors' in settings) applyThemeColors(settings.themeColors);
-  const lightTheme = themePresetsApi.isLightHex(resolvedThemeColor('bg'));
+  // Preview patches omit themeColors, so reuse the saved palette while still
+  // recalculating it for the preview's native/non-native backdrop state.
+  const themeColors = settings && 'themeColors' in settings
+    ? settings.themeColors
+    : state.settings?.themeColors;
+  applyThemeColors(themeColors, { nativeBackdrop: nativeWindowsBackdropEnabled });
+  const lightTheme = nativeWindowsBackdropEnabled
+    ? systemDarkThemeMedia?.matches !== true
+    : themePresetsApi.isLightHex(resolvedThemeColor('bg'));
   rootStyle.setProperty('--windows-popover-alpha', windowsGlassApi.nativePopoverAlpha({ lightTheme }).toFixed(3));
 
   // The data attribute activates native-material-specific CSS only when the
@@ -5315,11 +5326,6 @@ function applyAppearanceSettings(settings) {
   // off, or the OS build cannot host one (main passes windowsBackdropUnsupported),
   // the window is a transparent CSS fallback and must keep the normal
   // blur/surface rules instead of inheriting the low-alpha native rules.
-  const nativeWindowsBackdropEnabled = isWindows
-    && !systemGlassDisabled
-    && !windowsBackdropUnsupported
-    && windowsGlass.showBackdropControl
-    && windowsGlass.backdropMode;
   if (nativeWindowsBackdropEnabled) {
     document.documentElement.dataset.windowsBackdrop = windowsGlass.backdropMode;
     document.body.dataset.windowsBackdrop = windowsGlass.backdropMode;
@@ -5387,14 +5393,23 @@ function matchingThemePresetId(overrides) {
 }
 
 function applyThemeColors(overrides) {
+  const options = arguments[1] || {};
+  const nativeBackdrop = options.nativeBackdrop ?? Boolean(document.documentElement.dataset.windowsBackdrop);
   appliedThemeOverrides = themePresetsApi.normalizeOverrides(overrides, themePresetsApi.INTERFACE_COLOR_KEYS);
   const root = document.documentElement.style;
-  for (const { name, value } of themePresetsApi.themeCssVarEntries(appliedThemeOverrides)) {
+  for (const { name, value } of themePresetsApi.themeCssVarEntries(appliedThemeOverrides, {
+    nativeBackdrop,
+    systemDark: systemDarkThemeMedia?.matches === true
+  })) {
     if (value) root.setProperty(name, value);
     else root.removeProperty(name);
   }
   renderFloatingBubbleContent();
 }
+
+systemDarkThemeMedia?.addEventListener?.('change', () => {
+  if (state.settings) applyAppearanceSettings(state.settings);
+});
 
 function applyVendorColorOverrides(overrides) {
   const merged = themePresetsApi.mergeVendorColors(BRAND_VENDOR_COLORS, overrides);

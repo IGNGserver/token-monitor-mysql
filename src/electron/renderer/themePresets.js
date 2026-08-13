@@ -33,6 +33,18 @@
     muted: '#a3adbb'
   };
 
+  // Native Windows Mica/Acrylic follows the OS appearance rather than the
+  // saved interface background. Keep a readable light companion palette so a
+  // saved dark theme cannot leave dark text on a light system backdrop (or the
+  // reverse) when the native material changes with Windows.
+  const SYSTEM_LIGHT_THEME = {
+    accent: '#2563eb',
+    bg: '#f6f7f9',
+    text: '#1c1f26',
+    muted: '#5b626d'
+  };
+  const SYSTEM_DARK_THEME = { ...DEFAULT_THEME };
+
   // Curated one-click themes. Each is a full palette — accent + background tint
   // + text + muted swap together, so picking one changes the whole mood, not
   // just the accent. The shipped graphite default and near-black "Carbon" are
@@ -42,7 +54,7 @@
   const THEME_PRESETS = [
     { id: 'default', colors: { ...DEFAULT_THEME } },
     { id: 'obsidian', colors: { accent: '#e6e8ec', bg: '#0b0c0e', text: '#eceef2', muted: '#8f949c' } },
-    { id: 'porcelain', colors: { accent: '#2563eb', bg: '#f6f7f9', text: '#1c1f26', muted: '#5b626d' } }
+    { id: 'porcelain', colors: { ...SYSTEM_LIGHT_THEME } }
   ];
 
   // Surface RGBs used when the background is light, so overlays/borders read as
@@ -176,16 +188,45 @@
     return (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.6;
   }
 
+  function isReadableTextHex(hex, { dark = false } = {}) {
+    if (!isValidHex(hex)) return false;
+    const v = hex.replace('#', '');
+    const r = parseInt(v.slice(0, 2), 16), g = parseInt(v.slice(2, 4), 16), b = parseInt(v.slice(4, 6), 16);
+    const brightness = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+    return dark ? brightness >= 0.6 : brightness <= 0.45;
+  }
+
+  // Native material owns the window backdrop, so its effective light/dark
+  // mode comes from Windows. Preserve custom colours only when their tone is
+  // compatible with that backdrop; otherwise use the matching system palette.
+  function systemThemeColors(overrides, { dark = false } = {}) {
+    const clean = normalizeOverrides(overrides, INTERFACE_COLOR_KEYS);
+    const system = dark ? SYSTEM_DARK_THEME : SYSTEM_LIGHT_THEME;
+    const compatibleSurface = (value, fallback, expectedLight) => (
+      value && isLightHex(value) === expectedLight ? value : fallback
+    );
+    const compatibleText = (value, fallback) => (
+      value && isReadableTextHex(value, { dark }) ? value : fallback
+    );
+    return {
+      accent: compatibleText(clean.accent, system.accent),
+      bg: compatibleSurface(clean.bg, system.bg, !dark),
+      text: compatibleText(clean.text, system.text),
+      muted: compatibleText(clean.muted, system.muted)
+    };
+  }
+
   // The list of CSS custom properties to set for a given override set. A null
   // value means "remove the property" so it falls back to the stylesheet
   // default. Handles the two special cases: `bg` becomes an --glass-rgb triplet,
   // and `text` is mirrored onto --number (the big TOTAL figure). Both renderers
   // consume this so the mapping lives in exactly one place.
-  function themeCssVarEntries(overrides) {
+  function themeCssVarEntries(overrides, { nativeBackdrop = false, systemDark = false } = {}) {
     const clean = normalizeOverrides(overrides, INTERFACE_COLOR_KEYS);
+    const resolved = nativeBackdrop ? systemThemeColors(clean, { dark: systemDark }) : clean;
     const entries = [];
     for (const key of INTERFACE_COLOR_KEYS) {
-      const value = clean[key] || null;
+      const value = resolved[key] || null;
       if (key === 'bg') {
         entries.push({ name: '--glass-rgb', value: value ? hexToRgbTriplet(value) : null });
         continue;
@@ -200,7 +241,7 @@
     // background is light, so a white theme (or any light custom bg) doesn't
     // render with invisible borders and washed-out panels. Null falls back to
     // the dark :root defaults.
-    const light = isLightHex(clean.bg);
+    const light = isLightHex(resolved.bg);
     entries.push({ name: '--overlay-rgb', value: light ? LIGHT_OVERLAY_RGB : null });
     entries.push({ name: '--line-rgb', value: light ? LIGHT_LINE_RGB : null });
     entries.push({ name: '--panel-rgb', value: light ? LIGHT_PANEL_RGB : null });
@@ -246,6 +287,8 @@
     THEME_CODE_VERSION,
     THEME_VAR_MAP,
     DEFAULT_THEME,
+    SYSTEM_LIGHT_THEME,
+    SYSTEM_DARK_THEME,
     THEME_PRESETS,
     VENDOR_ORDER,
     VENDOR_LABELS,
@@ -257,6 +300,7 @@
     decodeThemeCode,
     hexToRgbTriplet,
     isLightHex,
+    systemThemeColors,
     themeCssVarEntries,
     mergeVendorColors,
     orderedVendorIds,

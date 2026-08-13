@@ -205,6 +205,8 @@ test('Windows exposes an accessible Acrylic and Mica selector', () => {
   assert.match(css, /html\.is-windows\[data-windows-backdrop\] \.shell[\s\S]*background:\s*transparent/);
   assert.match(css, /html\.is-windows\[data-windows-backdrop\] \.floating-bubble-tab[\s\S]*background:\s*transparent/);
   assert.match(app, /nativePopoverAlpha/);
+  assert.match(app, /const themeColors = settings && 'themeColors' in settings/);
+  assert.match(app, /applyThemeColors\(themeColors, \{ nativeBackdrop: nativeWindowsBackdropEnabled \}\)/);
   assert.doesNotMatch(app, /nativeSurfaceAlphas/);
   assert.doesNotMatch(css, /background:\s*rgba\(var\(--glass-rgb\),\s*0\.35\)/);
   assert.doesNotMatch(css, /background:\s*rgba\(var\(--glass-rgb\),\s*0\.45\)/);

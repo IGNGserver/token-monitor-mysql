@@ -10,6 +10,7 @@ const {
   THEME_CODE_VERSION,
   THEME_VAR_MAP,
   DEFAULT_THEME,
+  SYSTEM_LIGHT_THEME,
   THEME_PRESETS,
   VENDOR_ORDER,
   VENDOR_LABELS,
@@ -146,6 +147,26 @@ test('themeCssVarEntries flips the overlay/border system for light backgrounds',
 
   // No bg override resolves to the dark default, so no flip.
   assert.equal(byName(themeCssVarEntries({})) ['color-scheme'], null);
+});
+
+test('native backdrop theme follows system brightness instead of a conflicting saved palette', () => {
+  const byName = (entries) => Object.fromEntries(entries.map((e) => [e.name, e.value]));
+
+  const dark = byName(themeCssVarEntries({
+    accent: '#2563eb', bg: '#f6f7f9', text: '#1c1f26', muted: '#5b626d'
+  }, { nativeBackdrop: true, systemDark: true }));
+  assert.equal(dark['--glass-rgb'], '48, 52, 56');
+  assert.equal(dark['--text'], DEFAULT_THEME.text);
+  assert.equal(dark['--muted'], DEFAULT_THEME.muted);
+  assert.equal(dark['color-scheme'], null);
+
+  const light = byName(themeCssVarEntries({
+    accent: '#e6e8ec', bg: '#0b0c0e', text: '#eceef2', muted: '#8f949c'
+  }, { nativeBackdrop: true, systemDark: false }));
+  assert.equal(light['--glass-rgb'], '246, 247, 249');
+  assert.equal(light['--text'], SYSTEM_LIGHT_THEME.text);
+  assert.equal(light['--muted'], SYSTEM_LIGHT_THEME.muted);
+  assert.equal(light['color-scheme'], 'light');
 });
 
 test('every preset is a full palette of valid hex for all four keys', () => {

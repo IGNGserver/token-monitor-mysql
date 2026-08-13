@@ -7,6 +7,7 @@ const currencyApi = window.TokenMonitorCurrency;
 const motionPreferenceApi = window.TokenMonitorMotionPreference;
 const windowsBackdropModeApi = window.TokenMonitorWindowsBackdropMode;
 const reducedMotionMedia = window.matchMedia?.('(prefers-reduced-motion: reduce)');
+const systemDarkThemeMedia = window.matchMedia?.('(prefers-color-scheme: dark)');
 
 // Canonical brand colours, captured before any override (clientColors is shared
 // by reference and mutated in place to apply vendor overrides).
@@ -38,7 +39,7 @@ const state = {
   tab: 'activity', range: '30', stackBy: 'client', mode: 'bars', flat: false,
   locale: 'en', currency: 'USD', history: null, chartModel: null,
   chartKind: 'bars', motion: 'none', reduceMotion: 'system',
-  heatmapMetric: 'cost'
+  heatmapMetric: 'cost', settings: {}
 };
 
 const DATA_MOTION_MS = 800;
@@ -218,9 +219,11 @@ function applyWindowsBackdrop(settings) {
     delete document.documentElement.dataset.windowsBackdrop;
     delete document.body.dataset.windowsBackdrop;
   }
+  return nativeBackdrop;
 }
 
 function applyAppearance(settings) {
+  state.settings = settings || {};
   let opacity = Math.min(100, Math.max(0, settings?.glassOpacity ?? 68)) / 100;
   const depth = Math.min(100, Math.max(0, settings?.glassBlur ?? 32)) / 100;
   // Same Linux readability floor as the main window: no compositor blur there.
@@ -228,16 +231,19 @@ function applyAppearance(settings) {
   const root = document.documentElement.style;
   root.setProperty('--glass-alpha', opacity.toFixed(2));
   root.setProperty('--line-alpha', (0.1 + depth * 0.09).toFixed(3));
-  applyWindowsBackdrop(settings);
+  const nativeBackdrop = applyWindowsBackdrop(settings);
   applyReduceMotionPreference(settings?.reduceMotion);
-  applyThemeColors(settings?.themeColors);
+  applyThemeColors(settings?.themeColors, { nativeBackdrop });
   applyVendorColorOverrides(settings?.vendorColors);
   els.body.classList.toggle('flat', state.flat);
 }
 
-function applyThemeColors(overrides) {
+function applyThemeColors(overrides, { nativeBackdrop = Boolean(document.documentElement.dataset.windowsBackdrop) } = {}) {
   const root = document.documentElement.style;
-  for (const { name, value } of themePresetsApi.themeCssVarEntries(overrides)) {
+  for (const { name, value } of themePresetsApi.themeCssVarEntries(overrides, {
+    nativeBackdrop,
+    systemDark: systemDarkThemeMedia?.matches === true
+  })) {
     if (value) root.setProperty(name, value);
     else root.removeProperty(name);
   }
@@ -631,7 +637,12 @@ async function boot() {
 // dashboard shares the main window's preload, so it receives the same push.
 window.tokenMonitor.onSettingsPush?.((next) => {
   if (!next) return;
+  state.settings = { ...state.settings, ...next };
   let needsRender = false;
+  if (next.themeColors || next.systemGlass !== undefined || next.windowsBackdrop !== undefined) {
+    applyAppearance(state.settings);
+    needsRender = true;
+  }
   if (next.currencyRatesEffective && window.TokenMonitorCurrency?.configureRates) {
     window.TokenMonitorCurrency.configureRates(next.currencyRatesEffective);
     // A rate-only change (auto refresh / same-currency manual override) keeps
@@ -659,6 +670,11 @@ window.tokenMonitor.onSettingsPush?.((next) => {
 reducedMotionMedia?.addEventListener?.('change', () => {
   if (state.reduceMotion !== 'system') return;
   applyReduceMotionPreference('system');
+  render();
+});
+
+systemDarkThemeMedia?.addEventListener?.('change', () => {
+  applyAppearance(state.settings);
   render();
 });
 
