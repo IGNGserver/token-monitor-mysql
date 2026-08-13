@@ -2151,6 +2151,16 @@ function nativeBlurEnabled(source = settings) {
   return floatingBubbleNativeGlassEnabled(source);
 }
 
+// Electron's backgroundMaterial requires Windows 11 22H2 (build 22621); on
+// older Windows it is silently ignored and the window stays opaque, which
+// reads as a solid white slab behind the translucent surface. Fall back to
+// the transparent CSS-blur window there instead of forcing the material.
+function windowsNativeBackdropSupported() {
+  if (process.platform !== 'win32') return false;
+  const build = Number(String(os.release()).split('.')[2] || 0);
+  return Number.isFinite(build) && build >= 22621;
+}
+
 function keepNativeBlurActive() {
   if (!mainWindow) return;
   if (!nativeBlurEnabled()) return;
@@ -3846,6 +3856,7 @@ function createWindow(boundsOverride, options = {}) {
   const glass = nativeBlurEnabled();
   const windowsBackdrop = normalizeWindowsBackdropMode(settings?.windowsBackdrop);
   const windowsMaterial = windowsElectronBackgroundMaterial(windowsBackdrop);
+  const nativeWindowsBackdrop = glass && windowsNativeBackdropSupported();
   const bounds = boundsOverride || restoredBounds() || DEFAULT_WINDOW;
   const collapsedSizeLimits = {
     minWidth: bounds.width,
@@ -3859,7 +3870,7 @@ function createWindow(boundsOverride, options = {}) {
     ...(typeof bounds.x === 'number' ? { x: bounds.x, y: bounds.y } : {}),
     ...(collapsedFloatingBubble ? collapsedSizeLimits : WINDOW_LIMITS),
     frame: false,
-    transparent: !(process.platform === 'win32' && glass),
+    transparent: !(process.platform === 'win32' && nativeWindowsBackdrop),
     resizable: !collapsedFloatingBubble,
     show: false,
     backgroundColor: '#00000000',
@@ -3868,7 +3879,7 @@ function createWindow(boundsOverride, options = {}) {
     ...(collapsedFloatingBubble ? { fullscreenable: false, maximizable: false, minimizable: false } : {}),
     ...floatingBubbleWindowChrome(process.platform, collapsedFloatingBubble),
     ...(process.platform === 'darwin' && glass ? { vibrancy: 'hud', visualEffectState: 'active' } : {}),
-    ...(process.platform === 'win32' && glass ? { backgroundMaterial: windowsMaterial } : {}),
+    ...(process.platform === 'win32' && nativeWindowsBackdrop ? { backgroundMaterial: windowsMaterial } : {}),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -3924,7 +3935,8 @@ function createWindow(boundsOverride, options = {}) {
         suppressInitialNumberAnimation: options.suppressInitialNumberAnimation === true,
         viewState: rendererViewState
       }),
-      ...(settings?.systemGlass === false ? { systemGlassDisabled: '1' } : {})
+      ...(settings?.systemGlass === false ? { systemGlassDisabled: '1' } : {}),
+      ...(process.platform === 'win32' && glass && !nativeWindowsBackdrop ? { windowsBackdropUnsupported: '1' } : {})
     }
   });
 }
@@ -3979,19 +3991,20 @@ function createDashboardWindow() {
     return dashboardWindow;
   }
   const glass = nativeBlurEnabled();
+  const nativeWindowsBackdrop = glass && windowsNativeBackdropSupported();
   const win = new BrowserWindow({
     width: 920,
     height: 620,
     minWidth: 560,
     minHeight: 420,
     frame: false,
-    transparent: !(process.platform === 'win32' && glass),
+    transparent: !(process.platform === 'win32' && nativeWindowsBackdrop),
     show: false,
     backgroundColor: '#00000000',
     icon: APP_ICON_PATH,
     skipTaskbar: false,
     ...(process.platform === 'darwin' && glass ? { vibrancy: 'hud', visualEffectState: 'active' } : {}),
-    ...(process.platform === 'win32' && glass ? { backgroundMaterial: windowsElectronBackgroundMaterial(settings?.windowsBackdrop) } : {}),
+    ...(process.platform === 'win32' && nativeWindowsBackdrop ? { backgroundMaterial: windowsElectronBackgroundMaterial(settings?.windowsBackdrop) } : {}),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,

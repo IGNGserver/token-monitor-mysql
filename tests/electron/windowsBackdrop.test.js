@@ -53,22 +53,38 @@ test('Windows glass appearance state covers platform boundaries', () => {
     showMicaNote: true,
     backdropMode: 'mica'
   });
+  assert.deepEqual(appearanceState({ windowsBackdrop: 'mica' }, { isWindows: true, backdropSupported: false }), {
+    showBackdropControl: false,
+    showAccentNote: false,
+    showMicaNote: false,
+    backdropMode: 'mica'
+  });
 });
 
-test('Windows material surfaces keep both theme tones readable', () => {
+test('Windows material surfaces keep Mica visible across both theme tones', () => {
   const darkAcrylic = nativeSurfaceAlphas({ windowsBackdrop: 'acrylic', glassOpacity: 68, lightTheme: false });
   const darkMica = nativeSurfaceAlphas({ windowsBackdrop: 'mica', glassOpacity: 68, lightTheme: false });
   const lightAcrylic = nativeSurfaceAlphas({ windowsBackdrop: 'acrylic', glassOpacity: 68, lightTheme: true });
   const lightMica = nativeSurfaceAlphas({ windowsBackdrop: 'mica', glassOpacity: 68, lightTheme: true });
 
   for (const value of [darkAcrylic, darkMica, lightAcrylic, lightMica]) {
-    assert.ok(value.surfaceAlpha >= 0.84);
+    assert.ok(value.surfaceAlpha >= 0.56, 'surface must stay translucent enough to show the material');
+    assert.ok(value.surfaceAlpha <= 0.94, 'surface must keep a readable floor');
     assert.ok(value.popoverAlpha >= value.surfaceAlpha);
-    assert.ok(value.popoverAlpha <= 0.99);
+    assert.ok(value.popoverAlpha <= 0.98);
   }
-  assert.ok(darkMica.surfaceAlpha > darkAcrylic.surfaceAlpha);
-  assert.ok(lightMica.surfaceAlpha > lightAcrylic.surfaceAlpha);
+  // Mica follows the wallpaper tint, so it needs a lighter surface than
+  // Acrylic's heavier blur; a near-opaque shell reads as flat white instead.
+  assert.ok(darkMica.surfaceAlpha < darkAcrylic.surfaceAlpha);
+  assert.ok(lightMica.surfaceAlpha < lightAcrylic.surfaceAlpha);
   assert.ok(lightAcrylic.surfaceAlpha > darkAcrylic.surfaceAlpha);
+  assert.ok(lightMica.surfaceAlpha > darkMica.surfaceAlpha);
+  assert.ok(darkMica.surfaceAlpha < 0.85, 'default mica surface must not hide the wallpaper tint');
+
+  const dim = nativeSurfaceAlphas({ windowsBackdrop: 'mica', glassOpacity: 0, lightTheme: false });
+  const bright = nativeSurfaceAlphas({ windowsBackdrop: 'mica', glassOpacity: 100, lightTheme: false });
+  assert.ok(bright.surfaceAlpha > darkMica.surfaceAlpha, 'surface tracks the Glass slider');
+  assert.ok(darkMica.surfaceAlpha > dim.surfaceAlpha, 'surface tracks the Glass slider');
 });
 
 test('Accent blur passes the native HWND and configured tint to the native adapter', () => {
@@ -178,7 +194,9 @@ test('main process configures backgroundMaterial from windowsBackdrop', () => {
 });
 
 test('Windows exposes an accessible Acrylic and Mica selector', () => {
-  assert.doesNotMatch(html, /name="systemGlassOption"/);
+  assert.match(html, /name="systemGlassOption"/);
+  assert.match(html, /id="glassInput"/);
+  assert.match(html, /id="blurInput"/);
   assert.match(html, /id="windowsBackdropRow" class="settings-item hidden"/);
   assert.match(html, /id="windowsBackdropInput"/);
   assert.match(html, /option value="acrylic"/);
@@ -202,6 +220,9 @@ test('Windows exposes an accessible Acrylic and Mica selector', () => {
   assert.doesNotMatch(css, /background:\s*rgba\(var\(--glass-rgb\),\s*0\.35\)/);
   assert.doesNotMatch(css, /background:\s*rgba\(var\(--glass-rgb\),\s*0\.45\)/);
   assert.match(app, /!systemGlassDisabled[\s\S]*windowsGlass\.showBackdropControl/);
+  assert.match(app, /windowsBackdropUnsupported/);
+  assert.match(main, /windowsNativeBackdropSupported\(\)/);
+  assert.match(main, /build >= 22621/);
 });
 
 test('experimental Accent mode uses the shared glass surface treatment', () => {

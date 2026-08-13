@@ -13,31 +13,33 @@
     normalizeWindowsBackdropMode
   } = backdropModeApi;
 
-  function appearanceState(settings = {}, { isWindows = false } = {}) {
+  function appearanceState(settings = {}, { isWindows = false, backdropSupported = true } = {}) {
     const backdropMode = normalizeWindowsBackdropMode(settings?.windowsBackdrop);
     return {
-      showBackdropControl: isWindows,
+      showBackdropControl: isWindows && backdropSupported !== false,
       showAccentNote: false,
-      showMicaNote: isWindows && backdropMode === 'mica',
+      showMicaNote: isWindows && backdropSupported !== false && backdropMode === 'mica',
       backdropMode
     };
   }
 
-  // The native Windows backdrop belongs to the whole BrowserWindow. Child
-  // menus therefore need a substantially more opaque themed surface of their
-  // own, otherwise the widget's content (or the desktop material underneath)
-  // remains legible through the menu. Keep a little room for Mica/Acrylic to
-  // show through, while enforcing a readable floor for both theme tones.
+  // The native Windows backdrop belongs to the whole BrowserWindow, so the
+  // renderer surface sits between the widget content and the DWM material.
+  // Mica follows the wallpaper tint and must stay fairly translucent or it is
+  // indistinguishable from a flat solid (which is how a near-opaque surface
+  // reads as pure white on light themes). Acrylic's heavier blur tolerates a
+  // denser surface. Both scale with the Glass slider so the material stays
+  // visible across the whole range while keeping a readable floor for both
+  // theme tones. Child menus get their own more opaque surface.
   function nativeSurfaceAlphas({ glassOpacity = 68, windowsBackdrop = 'acrylic', lightTheme = false } = {}) {
     const parsed = Number(glassOpacity);
     const opacity = (Number.isFinite(parsed) ? Math.max(0, Math.min(100, parsed)) : 68) / 100;
     const mode = normalizeWindowsBackdropMode(windowsBackdrop);
-    const base = lightTheme
-      ? (mode === WINDOWS_BACKDROP_MICA ? 0.96 : 0.93)
-      : (mode === WINDOWS_BACKDROP_MICA ? 0.91 : 0.88);
-    const floor = lightTheme ? 0.90 : 0.84;
-    const surfaceAlpha = Math.max(floor, Math.min(0.98, base - ((1 - opacity) * 0.06)));
-    const popoverAlpha = Math.max(lightTheme ? 0.95 : 0.93, Math.min(0.99, surfaceAlpha + 0.05));
+    const isMica = mode === WINDOWS_BACKDROP_MICA;
+    const base = isMica ? 0.58 : 0.64;
+    const tone = lightTheme ? 0.05 : 0;
+    const surfaceAlpha = Math.min(0.94, base + tone + opacity * 0.28);
+    const popoverAlpha = Math.max(lightTheme ? 0.92 : 0.88, Math.min(0.98, surfaceAlpha + 0.07));
     return {
       surfaceAlpha: Number(surfaceAlpha.toFixed(3)),
       popoverAlpha: Number(popoverAlpha.toFixed(3))

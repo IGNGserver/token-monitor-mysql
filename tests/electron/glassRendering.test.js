@@ -51,10 +51,15 @@ test('system glass and other platforms retain true zero opacity', () => {
     { glassOpacity: 0, systemGlass: false },
     { platform: 'win32', userAgent: 'Windows' }
   ), 0);
-  assert.equal(renderedGlassOpacity(
-    { glassOpacity: 0, systemGlass: false },
-    { platform: 'linux' }
-  ), 0);
+});
+
+test('Linux keeps a readable floor because compositors do not blur there', () => {
+  assert.equal(renderedGlassOpacity({ glassOpacity: 0, systemGlass: false }, { platform: 'linux' }), 0.55);
+  assert.equal(renderedGlassOpacity({ glassOpacity: 20, systemGlass: true }, { platform: 'linux' }), 0.55);
+  assert.equal(renderedGlassOpacity({ glassOpacity: 55, systemGlass: false }, { platform: 'linux' }), 0.55);
+  assert.equal(renderedGlassOpacity({ glassOpacity: 68 }, { platform: 'linux' }), 0.68);
+  assert.equal(renderedGlassOpacity({ glassOpacity: 100 }, { platform: 'linux' }), 1);
+  assert.equal(renderedGlassOpacity({ glassOpacity: 0 }, { platform: 'freebsd' }), 0);
 });
 
 test('glass renderer normalizes invalid and out-of-range settings', () => {

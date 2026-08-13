@@ -15,11 +15,11 @@
   --line-strong-alpha: 0.238;
   --control-alpha: 0.049;
   /* Windows' native backdrop is behind the complete BrowserWindow. These
-     surfaces stay opaque enough to keep the selected theme readable while
-     preserving a restrained amount of Mica/Acrylic texture. The renderer
-     adjusts them for the selected mode, tone, and glass-opacity control. */
-  --windows-surface-alpha: 0.88;
-  --windows-popover-alpha: 0.94;
+     surfaces stay translucent enough to let Mica/Acrylic texture show while
+     keeping the selected theme readable; the renderer adjusts them for the
+     selected mode, tone, and glass-opacity control. */
+  --windows-surface-alpha: 0.77;
+  --windows-popover-alpha: 0.88;
   --glass: rgba(var(--glass-rgb), var(--glass-alpha));
   --glass-filter: blur(32px) saturate(115%);
   --floating-bubble-radius: 17px;

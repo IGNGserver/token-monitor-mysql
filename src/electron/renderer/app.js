@@ -5273,7 +5273,12 @@ function applyAppearanceSettings(settings) {
   const depth = clamp(settings?.glassBlur ?? 32, 0, 100) / 100;
   const systemGlassDisabled = settings?.systemGlass === false;
   const isWindows = navigator.userAgent.toLowerCase().includes('windows');
-  const windowsGlass = windowsGlassApi.appearanceState(settings, { isWindows });
+  const windowsBackdropUnsupported = isWindows
+    && new URLSearchParams(window.location.search).get('windowsBackdropUnsupported') === '1';
+  const windowsGlass = windowsGlassApi.appearanceState(settings, {
+    isWindows,
+    backdropSupported: !windowsBackdropUnsupported
+  });
   const rootStyle = document.documentElement.style;
   rootStyle.setProperty('--glass-alpha', opacity.toFixed(2));
   rootStyle.setProperty('--line-alpha', (0.1 + depth * 0.09).toFixed(3));
@@ -5313,10 +5318,12 @@ function applyAppearanceSettings(settings) {
 
   // The data attribute activates native-material-specific CSS only when the
   // BrowserWindow actually has a native Windows backdrop. When system glass is
-  // off the window is a transparent CSS fallback and must keep the normal
+  // off, or the OS build cannot host one (main passes windowsBackdropUnsupported),
+  // the window is a transparent CSS fallback and must keep the normal
   // blur/surface rules instead of inheriting the low-alpha native rules.
   const nativeWindowsBackdropEnabled = isWindows
     && !systemGlassDisabled
+    && !windowsBackdropUnsupported
     && windowsGlass.showBackdropControl
     && windowsGlass.backdropMode;
   if (nativeWindowsBackdropEnabled) {
@@ -5936,7 +5943,9 @@ function handleFloatingBubblePointerUp(event) {
 }
 
 function appearancePatchFromControls() {
+  const systemGlass = els.systemGlassInputs?.find((input) => input.checked)?.value !== 'off';
   return {
+    systemGlass,
     windowsBackdrop: windowsGlassApi.normalizeWindowsBackdropMode(els.windowsBackdropInput?.value),
     reduceMotion: els.reduceMotionInputs?.find((input) => input.checked)?.value || 'system',
     showLiveDot: Boolean(els.liveDotInput.checked),
@@ -5944,9 +5953,9 @@ function appearancePatchFromControls() {
     titleIconOnly: Boolean(els.titleIconInput.checked),
     showCompactTotalTokens: Boolean(els.showCompactTotalTokensInput.checked),
     settingsInTitlebar: Boolean(els.swapSettingsRefreshInput.checked),
-    ...(els.glassInput ? { glassOpacity: Number(els.glassInput.value === '' ? defaultAppearance.glassOpacity : els.glassInput.value) } : {}),
-    ...(els.blurInput ? { glassBlur: Number(els.blurInput.value === '' ? defaultAppearance.glassBlur : els.blurInput.value) } : {}),
-    zoomFactor: Number(els.zoomInput?.value === '' || !els.zoomInput ? defaultAppearance.zoomFactor * 100 : els.zoomInput.value) / 100
+    glassOpacity: Number(els.glassInput.value === '' ? defaultAppearance.glassOpacity : els.glassInput.value),
+    glassBlur: Number(els.blurInput.value === '' ? defaultAppearance.glassBlur : els.blurInput.value),
+    zoomFactor: Number(els.zoomInput.value === '' ? defaultAppearance.zoomFactor * 100 : els.zoomInput.value) / 100
   };
 }
 
@@ -5957,9 +5966,9 @@ function syncSliderRow(input) {
 }
 
 function syncSliderRows() {
-  if (els.glassInput) syncSliderRow(els.glassInput);
-  if (els.blurInput) syncSliderRow(els.blurInput);
-  if (els.zoomInput) syncSliderRow(els.zoomInput);
+  syncSliderRow(els.glassInput);
+  syncSliderRow(els.blurInput);
+  syncSliderRow(els.zoomInput);
 }
 
 function applyAppearanceFromControls() {
@@ -6224,9 +6233,9 @@ function syncSettingsForm() {
         ? t('settings.startup.appimageNote')
         : t('settings.startup.launchAtSignIn');
   }
-  if (els.glassInput) els.glassInput.value = String(state.settings.glassOpacity ?? 68);
-  if (els.blurInput) els.blurInput.value = String(state.settings.glassBlur ?? 32);
-  if (els.zoomInput) els.zoomInput.value = String(Math.round((Number(state.settings.zoomFactor) || 1) * 100));
+  els.glassInput.value = String(state.settings.glassOpacity ?? 68);
+  els.blurInput.value = String(state.settings.glassBlur ?? 32);
+  els.zoomInput.value = String(Math.round((Number(state.settings.zoomFactor) || 1) * 100));
   syncSliderRows();
   renderDeepseekStatus();
   renderMinimaxStatus();
@@ -7915,22 +7924,22 @@ els.resetClientDisplayOrderButton?.addEventListener('click', resetClientDisplayO
 els.showAllClientsButton?.addEventListener('click', showAllClients);
 els.resetViewDisplayOrderButton?.addEventListener('click', resetViewDisplayOrder);
 els.showAllViewsButton?.addEventListener('click', showAllViews);
-els.resetGlassButton?.addEventListener('click', async () => {
-  if (els.glassInput) els.glassInput.value = String(defaultAppearance.glassOpacity);
+els.resetGlassButton.addEventListener('click', async () => {
+  els.glassInput.value = String(defaultAppearance.glassOpacity);
   applyAppearanceFromControls();
   await saveSettings({ glassOpacity: defaultAppearance.glassOpacity });
 });
-els.resetDepthButton?.addEventListener('click', async () => {
-  if (els.blurInput) els.blurInput.value = String(defaultAppearance.glassBlur);
+els.resetDepthButton.addEventListener('click', async () => {
+  els.blurInput.value = String(defaultAppearance.glassBlur);
   applyAppearanceFromControls();
   await saveSettings({ glassBlur: defaultAppearance.glassBlur });
 });
-els.glassInput?.addEventListener('input', applyAppearanceFromControls);
-els.blurInput?.addEventListener('input', applyAppearanceFromControls);
-els.zoomInput?.addEventListener('input', applyAppearanceFromControls);
-els.glassInput?.addEventListener('change', saveAppearanceFromControls);
-els.blurInput?.addEventListener('change', saveAppearanceFromControls);
-els.zoomInput?.addEventListener('change', saveAppearanceFromControls);
+els.glassInput.addEventListener('input', applyAppearanceFromControls);
+els.blurInput.addEventListener('input', applyAppearanceFromControls);
+els.zoomInput.addEventListener('input', applyAppearanceFromControls);
+els.glassInput.addEventListener('change', saveAppearanceFromControls);
+els.blurInput.addEventListener('change', saveAppearanceFromControls);
+els.zoomInput.addEventListener('change', saveAppearanceFromControls);
 els.resetThemeColorsButton?.addEventListener('click', () => commitThemeColors({}));
 els.resetVendorColorsButton?.addEventListener('click', () => commitVendorColors({}));
 els.applyThemeCodeButton?.addEventListener('click', () => { void pasteAndApplyThemeCode(); });

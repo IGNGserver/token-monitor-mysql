@@ -203,8 +203,10 @@ function applyTranslations() {
 }
 
 function applyAppearance(settings) {
-  const opacity = Math.min(100, Math.max(0, settings?.glassOpacity ?? 68)) / 100;
+  let opacity = Math.min(100, Math.max(0, settings?.glassOpacity ?? 68)) / 100;
   const depth = Math.min(100, Math.max(0, settings?.glassBlur ?? 32)) / 100;
+  // Same Linux readability floor as the main window: no compositor blur there.
+  if (navigator.userAgent.toLowerCase().includes('linux')) opacity = Math.max(opacity, 0.55);
   const root = document.documentElement.style;
   root.setProperty('--glass-alpha', opacity.toFixed(2));
   root.setProperty('--line-alpha', (0.1 + depth * 0.09).toFixed(3));

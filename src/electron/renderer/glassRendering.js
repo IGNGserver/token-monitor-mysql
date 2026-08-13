@@ -20,7 +20,14 @@
     const requested = clampOpacity(settings?.glassOpacity);
     const transparentMacFallback = settings?.systemGlass === false
       && isMacPlatform(context.platform, context.userAgent);
-    return transparentMacFallback && requested < 0.05 ? 0.05 : requested;
+    let opacity = transparentMacFallback && requested < 0.05 ? 0.05 : requested;
+    // Linux compositors generally do not blur transparent window chrome, so a
+    // very low alpha leaves the widget reading as an unreadable see-through
+    // panel. Keep a readable floor there; the Glass slider covers the range.
+    if (String(context.platform || '').toLowerCase() === 'linux') {
+      opacity = Math.max(opacity, 0.55);
+    }
+    return opacity;
   }
 
   return { renderedGlassOpacity };
