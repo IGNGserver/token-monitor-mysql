@@ -24,6 +24,13 @@ body {
   overflow: hidden;
 }
 body.flat { background: rgb(var(--glass-rgb)); }
+/* The native BrowserWindow backdrop is the dashboard's base layer too. Keep
+   the document transparent so the dashboard does not cover Mica/Acrylic with
+   the legacy full-window CSS glass fill. */
+html.is-windows[data-windows-backdrop] body,
+body.is-windows[data-windows-backdrop] {
+  background: transparent;
+}
 
 .dash-header {
   -webkit-app-region: drag;
@@ -134,4 +141,3 @@ body.flat { background: rgb(var(--glass-rgb)); }
   :root:not([data-reduce-motion="off"]) .range-btn,
   :root:not([data-reduce-motion="off"]) .bar-seg { transition: none; }
 }
-

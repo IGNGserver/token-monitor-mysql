@@ -85,6 +85,7 @@ test('dashboard.html wires the shared modules and the two panels', () => {
   assert.match(html, /<script src="i18n\.js"><\/script>/);
   assert.match(html, /<script src="\.\.\/\.\.\/shared\/currency\.js"><\/script>/);
   assert.match(html, /<script src="dashboard\.js"><\/script>/);
+  assert.match(html, /<script src="\.\.\/windowsBackdropMode\.js"><\/script>[\s\S]*<script src="dashboard\.js"><\/script>/);
   assert.match(html, /id="trendsTab"/);
   assert.match(html, /id="activityTab"/);
   assert.match(html, /id="dashChart"/);
@@ -93,6 +94,18 @@ test('dashboard.html wires the shared modules and the two panels', () => {
   assert.match(html, /data-control="mode"/);
   assert.match(html, /data-control="stack"/);
   assert.match(html, /id="rangeSelect"/);
+});
+
+test('dashboard keeps native Windows material as its base layer', () => {
+  const css = read('src', 'electron', 'renderer', 'dashboard.css');
+  const js = read('src', 'electron', 'renderer', 'dashboard.js');
+  const main = read('src', 'electron', 'main.js');
+  assert.match(css, /html\.is-windows\[data-windows-backdrop\] body[\s\S]*background:\s*transparent/);
+  assert.match(js, /function applyWindowsBackdrop\(settings\)/);
+  assert.match(js, /windowsBackdropUnsupported/);
+  assert.match(js, /document\.documentElement\.dataset\.windowsBackdrop/);
+  assert.match(main, /const dashboardQuery = process\.platform === 'win32' && glass && !nativeWindowsBackdrop/);
+  assert.match(main, /function rebuildDashboardWindow\(\)/);
 });
 
 test('dashboard.css declares chart classes and a flat theme override', () => {

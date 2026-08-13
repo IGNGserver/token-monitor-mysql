@@ -5301,20 +5301,14 @@ function applyAppearanceSettings(settings) {
     els.windowsBackdropNote.classList.toggle('error', accentFallback);
     els.windowsBackdropNote.classList.toggle('hidden', !showNote);
   }
-  // Theme colours must be applied before calculating the Windows material
-  // surface. Native Mica/Acrylic follows the OS theme, so a light preset needs
-  // a light enough renderer surface even when Windows itself is in dark mode.
+  // Theme colours must be applied before calculating transient Windows
+  // surfaces. Native Mica/Acrylic follows the OS theme, while menus and
+  // tooltips still need a theme-aware fill when a custom light preset is used.
   // Preview patches omit themeColors; in that case the already-applied theme is
-  // intentionally retained while sliders update the material alpha.
+  // intentionally retained while sliders update the non-native fallback.
   if (settings && 'themeColors' in settings) applyThemeColors(settings.themeColors);
   const lightTheme = themePresetsApi.isLightHex(resolvedThemeColor('bg'));
-  const windowsAlphas = windowsGlassApi.nativeSurfaceAlphas({
-    glassOpacity: opacity * 100,
-    windowsBackdrop: windowsGlass.backdropMode,
-    lightTheme
-  });
-  rootStyle.setProperty('--windows-surface-alpha', windowsAlphas.surfaceAlpha.toFixed(3));
-  rootStyle.setProperty('--windows-popover-alpha', windowsAlphas.popoverAlpha.toFixed(3));
+  rootStyle.setProperty('--windows-popover-alpha', windowsGlassApi.nativePopoverAlpha({ lightTheme }).toFixed(3));
 
   // The data attribute activates native-material-specific CSS only when the
   // BrowserWindow actually has a native Windows backdrop. When system glass is
@@ -11611,5 +11605,3 @@ setupCursorAccountUI();
 setupCustomPricingUI();
 setupCustomRangeUI();
 init();
-
-

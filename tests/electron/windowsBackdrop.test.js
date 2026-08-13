@@ -20,7 +20,7 @@ const {
 const { normalizeWindowsBackdropMode } = require('../../src/electron/windowsBackdropMode');
 const {
   appearanceState,
-  nativeSurfaceAlphas,
+  nativePopoverAlpha,
   normalizeWindowsBackdropMode: normalizeRendererMode
 } = require('../../src/electron/renderer/windowsGlass');
 
@@ -59,32 +59,17 @@ test('Windows glass appearance state covers platform boundaries', () => {
     showMicaNote: false,
     backdropMode: 'mica'
   });
+  assert.deepEqual(appearanceState({ systemGlass: false, windowsBackdrop: 'mica' }, { isWindows: true }), {
+    showBackdropControl: false,
+    showAccentNote: false,
+    showMicaNote: false,
+    backdropMode: 'mica'
+  });
 });
 
-test('Windows material surfaces keep Mica visible across both theme tones', () => {
-  const darkAcrylic = nativeSurfaceAlphas({ windowsBackdrop: 'acrylic', glassOpacity: 68, lightTheme: false });
-  const darkMica = nativeSurfaceAlphas({ windowsBackdrop: 'mica', glassOpacity: 68, lightTheme: false });
-  const lightAcrylic = nativeSurfaceAlphas({ windowsBackdrop: 'acrylic', glassOpacity: 68, lightTheme: true });
-  const lightMica = nativeSurfaceAlphas({ windowsBackdrop: 'mica', glassOpacity: 68, lightTheme: true });
-
-  for (const value of [darkAcrylic, darkMica, lightAcrylic, lightMica]) {
-    assert.ok(value.surfaceAlpha >= 0.56, 'surface must stay translucent enough to show the material');
-    assert.ok(value.surfaceAlpha <= 0.94, 'surface must keep a readable floor');
-    assert.ok(value.popoverAlpha >= value.surfaceAlpha);
-    assert.ok(value.popoverAlpha <= 0.98);
-  }
-  // Mica follows the wallpaper tint, so it needs a lighter surface than
-  // Acrylic's heavier blur; a near-opaque shell reads as flat white instead.
-  assert.ok(darkMica.surfaceAlpha < darkAcrylic.surfaceAlpha);
-  assert.ok(lightMica.surfaceAlpha < lightAcrylic.surfaceAlpha);
-  assert.ok(lightAcrylic.surfaceAlpha > darkAcrylic.surfaceAlpha);
-  assert.ok(lightMica.surfaceAlpha > darkMica.surfaceAlpha);
-  assert.ok(darkMica.surfaceAlpha < 0.85, 'default mica surface must not hide the wallpaper tint');
-
-  const dim = nativeSurfaceAlphas({ windowsBackdrop: 'mica', glassOpacity: 0, lightTheme: false });
-  const bright = nativeSurfaceAlphas({ windowsBackdrop: 'mica', glassOpacity: 100, lightTheme: false });
-  assert.ok(bright.surfaceAlpha > darkMica.surfaceAlpha, 'surface tracks the Glass slider');
-  assert.ok(darkMica.surfaceAlpha > dim.surfaceAlpha, 'surface tracks the Glass slider');
+test('Windows native material leaves the whole-window surface to DWM', () => {
+  assert.equal(nativePopoverAlpha({ lightTheme: false }), 0.88);
+  assert.equal(nativePopoverAlpha({ lightTheme: true }), 0.92);
 });
 
 test('Accent blur passes the native HWND and configured tint to the native adapter', () => {
@@ -215,8 +200,12 @@ test('Windows exposes an accessible Acrylic and Mica selector', () => {
   assert.equal((i18n.match(/'settings\.appearance\.windowsBackdropMicaNote':/g) || []).length, 5);
   assert.match(i18n, /Keeps the background translucent and blurred, even when the window is not focused\./);
   assert.doesNotMatch(css, /windows-native-blur-only/);
-  assert.match(css, /--windows-surface-alpha/);
   assert.match(css, /--windows-popover-alpha/);
+  assert.doesNotMatch(css, /--windows-surface-alpha/);
+  assert.match(css, /html\.is-windows\[data-windows-backdrop\] \.shell[\s\S]*background:\s*transparent/);
+  assert.match(css, /html\.is-windows\[data-windows-backdrop\] \.floating-bubble-tab[\s\S]*background:\s*transparent/);
+  assert.match(app, /nativePopoverAlpha/);
+  assert.doesNotMatch(app, /nativeSurfaceAlphas/);
   assert.doesNotMatch(css, /background:\s*rgba\(var\(--glass-rgb\),\s*0\.35\)/);
   assert.doesNotMatch(css, /background:\s*rgba\(var\(--glass-rgb\),\s*0\.45\)/);
   assert.match(app, /!systemGlassDisabled[\s\S]*windowsGlass\.showBackdropControl/);
@@ -243,7 +232,7 @@ test('normalizeWindowsBackdropMode accepts mica and acrylic', () => {
   assert.equal(normalizeWindowsBackdropMode('tabbed'), WINDOWS_BACKDROP_ACRYLIC);
   assert.equal(normalizeWindowsBackdropMode('accent'), WINDOWS_BACKDROP_ACRYLIC);
   assert.equal(normalizeWindowsBackdropMode('nope'), WINDOWS_BACKDROP_ACRYLIC);
-  assert.equal(windowsElectronBackgroundMaterial('mica'), 'tabbed');
+  assert.equal(windowsElectronBackgroundMaterial('mica'), 'mica');
   assert.equal(windowsElectronBackgroundMaterial('acrylic'), 'acrylic');
   assert.equal(windowsElectronBackgroundMaterial('tabbed'), 'acrylic');
 });

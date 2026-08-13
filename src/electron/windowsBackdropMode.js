@@ -17,7 +17,10 @@
   function windowsElectronBackgroundMaterial(mode) {
     const normalized = normalizeWindowsBackdropMode(mode);
     if (normalized === WINDOWS_BACKDROP_MICA) {
-      return 'tabbed';
+      // `tabbed` is Mica Alt, which applies the stronger tint intended for a
+      // window with a tabbed title bar. The setting exposed here is the base
+      // Mica material used by long-lived Windows surfaces such as Settings.
+      return 'mica';
     }
     return WINDOWS_BACKDROP_ACRYLIC;
   }

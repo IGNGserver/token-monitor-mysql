@@ -5,6 +5,7 @@ const themePresetsApi = window.TokenMonitorThemePresets;
 const i18n = window.TokenMonitorI18n;
 const currencyApi = window.TokenMonitorCurrency;
 const motionPreferenceApi = window.TokenMonitorMotionPreference;
+const windowsBackdropModeApi = window.TokenMonitorWindowsBackdropMode;
 const reducedMotionMedia = window.matchMedia?.('(prefers-reduced-motion: reduce)');
 
 // Canonical brand colours, captured before any override (clientColors is shared
@@ -202,6 +203,23 @@ function applyTranslations() {
   document.documentElement.lang = state.locale;
 }
 
+function applyWindowsBackdrop(settings) {
+  const isWindows = navigator.userAgent.toLowerCase().includes('windows');
+  const unsupported = isWindows
+    && new URLSearchParams(window.location.search).get('windowsBackdropUnsupported') === '1';
+  const nativeBackdrop = isWindows && settings?.systemGlass !== false && !unsupported;
+  document.documentElement.classList.toggle('is-windows', isWindows);
+  document.body.classList.toggle('is-windows', isWindows);
+  if (nativeBackdrop) {
+    const mode = windowsBackdropModeApi.normalizeWindowsBackdropMode(settings?.windowsBackdrop);
+    document.documentElement.dataset.windowsBackdrop = mode;
+    document.body.dataset.windowsBackdrop = mode;
+  } else {
+    delete document.documentElement.dataset.windowsBackdrop;
+    delete document.body.dataset.windowsBackdrop;
+  }
+}
+
 function applyAppearance(settings) {
   let opacity = Math.min(100, Math.max(0, settings?.glassOpacity ?? 68)) / 100;
   const depth = Math.min(100, Math.max(0, settings?.glassBlur ?? 32)) / 100;
@@ -210,6 +228,7 @@ function applyAppearance(settings) {
   const root = document.documentElement.style;
   root.setProperty('--glass-alpha', opacity.toFixed(2));
   root.setProperty('--line-alpha', (0.1 + depth * 0.09).toFixed(3));
+  applyWindowsBackdrop(settings);
   applyReduceMotionPreference(settings?.reduceMotion);
   applyThemeColors(settings?.themeColors);
   applyVendorColorOverrides(settings?.vendorColors);
@@ -706,4 +725,3 @@ window.addEventListener('resize', () => {
 window.addEventListener('focus', refresh);
 
 boot();
-

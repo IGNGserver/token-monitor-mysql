@@ -4035,9 +4035,32 @@ function createDashboardWindow() {
     if (!win.isVisible()) discardFailedDashboardWindow(win, 'renderer became unresponsive while opening');
   });
   win.on('closed', () => { dashboardWindow = null; });
-  win.loadFile(path.join(__dirname, 'renderer', 'dashboard.html'))
+  const dashboardQuery = process.platform === 'win32' && glass && !nativeWindowsBackdrop
+    ? { windowsBackdropUnsupported: '1' }
+    : undefined;
+  win.loadFile(
+    path.join(__dirname, 'renderer', 'dashboard.html'),
+    dashboardQuery ? { query: dashboardQuery } : undefined
+  )
     .catch((error) => discardFailedDashboardWindow(win, `load failed: ${error.message}`));
   return win;
+}
+
+function rebuildDashboardWindow() {
+  const old = dashboardWindow;
+  if (!old || old.isDestroyed()) return;
+  const bounds = old.getBounds();
+  const wasFocused = old.isFocused();
+  // Detach the old closed handler before destroying it so it cannot clear the
+  // reference to the replacement window created below.
+  old.removeAllListeners('closed');
+  dashboardWindow = null;
+  old.destroy();
+  const next = createDashboardWindow();
+  next.setBounds(bounds);
+  next.once('show', () => {
+    if (wasFocused && !next.isDestroyed()) next.focus();
+  });
 }
 
 async function getDashboardHistory() {
@@ -4345,6 +4368,7 @@ app.whenReady().then(() => {
       && (previousNativeMaterial || nextNativeMaterial);
     if (process.platform === 'win32' && (previousNativeMaterial !== nextNativeMaterial || windowsBackdropChanged)) {
       rebuildWindow();
+      rebuildDashboardWindow();
     } else {
       applyNativeMaterial();
     }
@@ -5249,5 +5273,4 @@ app.on('before-quit', () => { quitRequested = true; if (rateRefreshTimer) clearI
 for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
   process.once(signal, requestAppQuit);
 }
-
 

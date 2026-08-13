@@ -14,11 +14,8 @@
   --line-alpha: 0.138;
   --line-strong-alpha: 0.238;
   --control-alpha: 0.049;
-  /* Windows' native backdrop is behind the complete BrowserWindow. These
-     surfaces stay translucent enough to let Mica/Acrylic texture show while
-     keeping the selected theme readable; the renderer adjusts them for the
-     selected mode, tone, and glass-opacity control. */
-  --windows-surface-alpha: 0.77;
+  /* Native Mica/Acrylic owns the BrowserWindow base layer. This variable is
+     reserved for transient HTML surfaces such as menus and tooltips. */
   --windows-popover-alpha: 0.88;
   --glass: rgba(var(--glass-rgb), var(--glass-alpha));
   --glass-filter: blur(32px) saturate(115%);
@@ -97,15 +94,11 @@ html.is-windows .shell {
      blur) with proper anti-aliasing instead. */
   clip-path: none;
 }
-html.is-windows[data-windows-backdrop="mica"] .shell,
-body.is-windows[data-windows-backdrop="mica"] .shell {
-  background: rgba(var(--glass-rgb), var(--windows-surface-alpha));
-  -webkit-backdrop-filter: none;
-  backdrop-filter: none;
-}
-html.is-windows[data-windows-backdrop="acrylic"] .shell,
-body.is-windows[data-windows-backdrop="acrylic"] .shell {
-  background: rgba(var(--glass-rgb), var(--windows-surface-alpha));
+/* In native-material mode the OS backdrop is the app's base layer. Do not
+   paint a second full-window CSS surface over it. */
+html.is-windows[data-windows-backdrop] .shell,
+body.is-windows[data-windows-backdrop] .shell {
+  background: transparent;
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
 }
@@ -143,11 +136,9 @@ html.is-mac-legacy .shell {
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
 }
-html.is-windows[data-windows-backdrop="mica"] .floating-bubble-tab,
-body.is-windows[data-windows-backdrop="mica"] .floating-bubble-tab,
-html.is-windows[data-windows-backdrop="acrylic"] .floating-bubble-tab,
-body.is-windows[data-windows-backdrop="acrylic"] .floating-bubble-tab {
-  background: rgba(var(--glass-rgb), var(--windows-surface-alpha));
+html.is-windows[data-windows-backdrop] .floating-bubble-tab,
+body.is-windows[data-windows-backdrop] .floating-bubble-tab {
+  background: transparent;
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
 }
