@@ -132,6 +132,19 @@ html.is-mac-legacy .shell {
   -webkit-backdrop-filter: var(--glass-filter);
   backdrop-filter: var(--glass-filter);
 }
+/* macOS 26 Liquid Glass is supplied by NSGlassEffectView behind the web
+   contents. Keep the HTML shell transparent so the native refraction and
+   interactive highlights remain visible instead of being covered by a second
+   CSS surface. */
+html[data-macos-glass="liquid-glass"] .shell,
+body[data-macos-glass="liquid-glass"] .shell,
+html[data-macos-glass="liquid-glass"] .floating-bubble-tab,
+body[data-macos-glass="liquid-glass"] .floating-bubble-tab {
+  background: transparent;
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
 .system-glass-disabled .floating-bubble-tab {
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
@@ -673,6 +686,7 @@ body.is-windows #closeButton:focus-visible {
 }
 .settings-panel .settings-item.hidden { display: none; }
 #windowsBackdropNote.hidden { display: none; }
+#macosGlassNote.hidden { display: none; }
 .settings-item-text {
   flex: 1 1 auto;
   min-width: 0;

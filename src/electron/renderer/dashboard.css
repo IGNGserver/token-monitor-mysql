@@ -31,6 +31,10 @@ html.is-windows[data-windows-backdrop] body,
 body.is-windows[data-windows-backdrop] {
   background: transparent;
 }
+html[data-macos-glass="liquid-glass"] body,
+body[data-macos-glass="liquid-glass"] {
+  background: transparent;
+}
 
 .dash-header {
   -webkit-app-region: drag;

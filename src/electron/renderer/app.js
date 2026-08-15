@@ -4,6 +4,8 @@ const clientLabels = { claude: 'Claude Code', codex: 'Codex', hermes: 'Hermes', 
 const { clientColors, fallbackModelColors, modelVendorFor, modelColor } = window.TokenMonitorUsageCharts;
 const motionPreferenceApi = window.TokenMonitorMotionPreference;
 const windowsGlassApi = window.TokenMonitorWindowsGlass;
+const macosGlassApi = window.TokenMonitorMacosGlass;
+const macosGlassModeApi = window.TokenMonitorMacosGlassMode;
 const glassRenderingApi = window.TokenMonitorGlassRendering;
 const wslStatusPresentationApi = window.TokenMonitorWslStatusPresentation;
 const reducedMotionMedia = window.matchMedia?.('(prefers-reduced-motion: reduce)');
@@ -261,7 +263,7 @@ let directBreakdownOverride = null;
 state.projectSettingsExpanded = false;
 state.homeActivitySettingsExpanded = false;
 state.settingsSections = Object.fromEntries(SETTINGS_SECTION_IDS.map((id) => [id, false]));
-const defaultAppearance = { glassOpacity: 68, glassBlur: 32, zoomFactor: 1, systemGlass: true, windowsBackdrop: 'acrylic', reduceMotion: 'system', showLiveDot: true, showToolIcons: true, titleIconOnly: true, showCompactTotalTokens: false, settingsInTitlebar: false };
+const defaultAppearance = { glassOpacity: 68, glassBlur: 32, zoomFactor: 1, systemGlass: true, macosGlassStyle: macosGlassModeApi.MACOS_GLASS_LIQUID, windowsBackdrop: 'acrylic', reduceMotion: 'system', showLiveDot: true, showToolIcons: true, titleIconOnly: true, showCompactTotalTokens: false, settingsInTitlebar: false };
 let preferenceDrag = null;
 let viewSwitcherLongPressTimer = null;
 let viewSwitcherLongPressTriggered = false;
@@ -296,6 +298,9 @@ Object.assign(els, {
   windowsBackdropRow: document.getElementById('windowsBackdropRow'),
   windowsBackdropInput: document.getElementById('windowsBackdropInput'),
   windowsBackdropNote: document.getElementById('windowsBackdropNote'),
+  macosGlassRow: document.getElementById('macosGlassRow'),
+  macosGlassInput: document.getElementById('macosGlassInput'),
+  macosGlassNote: document.getElementById('macosGlassNote'),
   clearSessionUsageArchiveButton: document.getElementById('clearSessionUsageArchiveButton'),
   startupGroup: document.getElementById('startupGroup'),
   startAtLoginInput: document.getElementById('startAtLoginInput'),
@@ -5280,6 +5285,12 @@ function applyAppearanceSettings(settings) {
     isWindows,
     backdropSupported: !windowsBackdropUnsupported
   });
+  const macosGlass = macosGlassApi.appearanceState(settings, {
+    isMac: state.appInfo?.platform === 'darwin',
+    liquidAvailable: settings?.macosGlassLiquidAvailable
+      ?? state.settings?.macosGlassLiquidAvailable
+      ?? false
+  });
   const nativeWindowsBackdropEnabled = isWindows
     && !systemGlassDisabled
     && !windowsBackdropUnsupported
@@ -5307,6 +5318,11 @@ function applyAppearanceSettings(settings) {
     els.windowsBackdropNote.classList.toggle('error', accentFallback);
     els.windowsBackdropNote.classList.toggle('hidden', !showNote);
   }
+  els.macosGlassRow?.classList.toggle('hidden', !macosGlass.showStyleControl);
+  if (els.macosGlassInput) els.macosGlassInput.value = macosGlass.requestedStyle;
+  if (els.macosGlassNote) els.macosGlassNote.classList.toggle('hidden', !macosGlass.showLiquidNote);
+  if (macosGlass.showStyleControl) document.documentElement.dataset.macosGlass = macosGlass.effectiveStyle;
+  else delete document.documentElement.dataset.macosGlass;
   // Theme colours must be applied before calculating transient Windows
   // surfaces. Native Mica/Acrylic follows the OS theme, while menus and
   // tooltips still need a theme-aware fill when a custom light preset is used.
@@ -5955,6 +5971,7 @@ function appearancePatchFromControls() {
   const systemGlass = els.systemGlassInputs?.find((input) => input.checked)?.value !== 'off';
   return {
     systemGlass,
+    macosGlassStyle: macosGlassModeApi.normalizeMacosGlassStyle(els.macosGlassInput?.value),
     windowsBackdrop: windowsGlassApi.normalizeWindowsBackdropMode(els.windowsBackdropInput?.value),
     reduceMotion: els.reduceMotionInputs?.find((input) => input.checked)?.value || 'system',
     showLiveDot: Boolean(els.liveDotInput.checked),
@@ -6200,6 +6217,9 @@ function syncSettingsForm() {
   renderWslPanel();
   const systemGlass = state.settings.systemGlass === false ? 'off' : 'system';
   for (const input of els.systemGlassInputs || []) input.checked = input.value === systemGlass;
+  if (els.macosGlassInput) {
+    els.macosGlassInput.value = macosGlassModeApi.normalizeMacosGlassStyle(state.settings.macosGlassStyle);
+  }
   if (els.windowsBackdropInput) els.windowsBackdropInput.value = windowsGlassApi.normalizeWindowsBackdropMode(state.settings.windowsBackdrop);
   const reduceMotion = motionPreferenceApi.normalize(state.settings.reduceMotion);
   for (const input of els.reduceMotionInputs || []) input.checked = input.value === reduceMotion;
@@ -7980,6 +8000,7 @@ for (const input of els.systemGlassInputs || []) {
   });
 }
 els.windowsBackdropInput?.addEventListener('change', saveAppearanceFromControls);
+els.macosGlassInput?.addEventListener('change', saveAppearanceFromControls);
 for (const input of els.reduceMotionInputs || []) {
   input.addEventListener('change', async () => {
     if (!input.checked) return;

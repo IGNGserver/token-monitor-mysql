@@ -184,6 +184,18 @@ const {
   normalizeWindowsBackdropMode,
   windowsElectronBackgroundMaterial
 } = require('./windowsBackdropMode');
+const {
+  MACOS_GLASS_VIBRANCY,
+  MACOS_GLASS_LIQUID,
+  normalizeMacosGlassStyle,
+  effectiveMacosGlassStyle,
+  macosLiquidGlassAvailable
+} = require('./macosGlassMode');
+const {
+  applyMacosGlass,
+  clearMacosGlass,
+  macosLiquidGlassSupported
+} = require('./macosGlassNative');
 const { configureLinuxDisplayBackend } = require('./linuxDisplay');
 
 if (!app.isPackaged) loadDotEnv();
@@ -269,6 +281,9 @@ function defaultSettings() {
     glassOpacity: 68,
     glassBlur: 32,
     systemGlass: true,
+    macosGlassStyle: macosLiquidGlassAvailable({ platform: process.platform, osRelease: os.release() })
+      ? MACOS_GLASS_LIQUID
+      : MACOS_GLASS_VIBRANCY,
     windowsBackdrop: 'acrylic',
     reduceMotion: 'system',
     showLiveDot: true,
@@ -2151,6 +2166,22 @@ function nativeBlurEnabled(source = settings) {
   return floatingBubbleNativeGlassEnabled(source);
 }
 
+function macosGlassStyleFor(source = settings) {
+  const candidate = effectiveMacosGlassStyle(source, {
+    platform: process.platform,
+    osRelease: os.release()
+  });
+  if (candidate !== MACOS_GLASS_LIQUID) return MACOS_GLASS_VIBRANCY;
+  return macosLiquidGlassSupported() ? MACOS_GLASS_LIQUID : MACOS_GLASS_VIBRANCY;
+}
+
+function macosLiquidGlassIsAvailable() {
+  return macosLiquidGlassAvailable({
+    platform: process.platform,
+    osRelease: os.release()
+  }) && macosLiquidGlassSupported();
+}
+
 // Electron's backgroundMaterial requires Windows 11 22H2 (build 22621); on
 // older Windows it is silently ignored and the window stays opaque, which
 // reads as a solid white slab behind the translucent surface. Fall back to
@@ -2164,23 +2195,45 @@ function windowsNativeBackdropSupported() {
 function keepNativeBlurActive() {
   if (!mainWindow) return;
   if (!nativeBlurEnabled()) return;
-  if (process.platform === 'darwin' && typeof mainWindow.setVisualEffectState === 'function') {
+  if (
+    process.platform === 'darwin'
+    && macosGlassStyleFor() === MACOS_GLASS_VIBRANCY
+    && typeof mainWindow.setVisualEffectState === 'function'
+  ) {
     mainWindow.setVisualEffectState('active');
   }
 }
 
-function applyNativeMaterial(source = settings) {
-  if (!mainWindow) return;
+function applyNativeMaterialToWindow(win, source = settings) {
+  if (!win || win.isDestroyed?.()) return;
   const enabled = nativeBlurEnabled(source);
-  if (process.platform === 'darwin' && typeof mainWindow.setVibrancy === 'function') {
-    mainWindow.setVibrancy(enabled ? 'hud' : null);
-    if (typeof mainWindow.setVisualEffectState === 'function') {
-      mainWindow.setVisualEffectState(enabled ? 'active' : 'inactive');
+  if (process.platform === 'darwin') {
+    const style = enabled ? macosGlassStyleFor(source) : null;
+    if (style === MACOS_GLASS_LIQUID && applyMacosGlass(win, style)) {
+      if (typeof win.setVibrancy === 'function') win.setVibrancy(null);
+      if (typeof win.setVisualEffectState === 'function') win.setVisualEffectState('inactive');
+      return;
+    }
+    clearMacosGlass(win);
+    if (typeof win.setVibrancy === 'function') {
+      win.setVibrancy(enabled ? 'hud' : null);
+      if (typeof win.setVisualEffectState === 'function') {
+        win.setVisualEffectState(enabled ? 'active' : 'inactive');
+      }
     }
   }
   // Windows: backgroundMaterial is locked in at window creation. setBackgroundMaterial('none')
   // does not restore layered-window transparency once DWM SystemBackdrop has been engaged,
   // so toggling is handled by rebuildWindow() instead.
+}
+
+function applyNativeMaterial(source = settings) {
+  if (process.platform === 'darwin') {
+    applyNativeMaterialToWindow(mainWindow, source);
+    applyNativeMaterialToWindow(dashboardWindow, source);
+    return;
+  }
+  applyNativeMaterialToWindow(mainWindow, source);
 }
 
 function withHistoryPreview(stats, devices) {
@@ -2956,6 +3009,8 @@ function settingsForRenderer() {
     kimiCredentialSource: kimiWebAccessTokenSource || kimiApiKeySource,
     currencyRatesEffective: effectiveRates || resolveEffectiveRates(rateCache?.rates || {}, settings?.currencyRates || {}),
     currencyRateInfo: rateCache ? { source: rateCache.source, date: rateCache.date, fetchedAt: rateCache.fetchedAt } : null,
+    macosGlassEffectiveStyle: macosGlassStyleFor(settings),
+    macosGlassLiquidAvailable: macosLiquidGlassIsAvailable(),
     windowToggleShortcutStatus: currentWindowToggleShortcutStatus()
   };
 }
@@ -3854,6 +3909,7 @@ function createWindow(boundsOverride, options = {}) {
   ensureSettingsLoaded();
   const collapsedFloatingBubble = options.collapsedFloatingBubble === true;
   const glass = nativeBlurEnabled();
+  const macosGlassStyle = macosGlassStyleFor(settings);
   const windowsBackdrop = normalizeWindowsBackdropMode(settings?.windowsBackdrop);
   const windowsMaterial = windowsElectronBackgroundMaterial(windowsBackdrop);
   const nativeWindowsBackdrop = glass && windowsNativeBackdropSupported();
@@ -3878,7 +3934,9 @@ function createWindow(boundsOverride, options = {}) {
     skipTaskbar: collapsedFloatingBubble || Boolean(settings?.trayMode),
     ...(collapsedFloatingBubble ? { fullscreenable: false, maximizable: false, minimizable: false } : {}),
     ...floatingBubbleWindowChrome(process.platform, collapsedFloatingBubble),
-    ...(process.platform === 'darwin' && glass ? { vibrancy: 'hud', visualEffectState: 'active' } : {}),
+    ...(process.platform === 'darwin' && glass && macosGlassStyle === MACOS_GLASS_VIBRANCY
+      ? { vibrancy: 'hud', visualEffectState: 'active' }
+      : {}),
     ...(process.platform === 'win32' && nativeWindowsBackdrop ? { backgroundMaterial: windowsMaterial } : {}),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -3991,6 +4049,7 @@ function createDashboardWindow() {
     return dashboardWindow;
   }
   const glass = nativeBlurEnabled();
+  const macosGlassStyle = macosGlassStyleFor(settings);
   const nativeWindowsBackdrop = glass && windowsNativeBackdropSupported();
   const win = new BrowserWindow({
     width: 920,
@@ -4003,7 +4062,9 @@ function createDashboardWindow() {
     backgroundColor: '#00000000',
     icon: APP_ICON_PATH,
     skipTaskbar: false,
-    ...(process.platform === 'darwin' && glass ? { vibrancy: 'hud', visualEffectState: 'active' } : {}),
+    ...(process.platform === 'darwin' && glass && macosGlassStyle === MACOS_GLASS_VIBRANCY
+      ? { vibrancy: 'hud', visualEffectState: 'active' }
+      : {}),
     ...(process.platform === 'win32' && nativeWindowsBackdrop ? { backgroundMaterial: windowsElectronBackgroundMaterial(settings?.windowsBackdrop) } : {}),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -4255,6 +4316,7 @@ app.whenReady().then(() => {
       glassOpacity: Math.max(0, Math.min(100, Number(patch.glassOpacity ?? settings.glassOpacity ?? 68))),
       glassBlur: Math.max(0, Math.min(100, Number(patch.glassBlur ?? settings.glassBlur ?? 32))),
       systemGlass: patch.systemGlass ?? settings.systemGlass ?? true,
+      macosGlassStyle: normalizeMacosGlassStyle(patch.macosGlassStyle ?? settings.macosGlassStyle),
       windowsBackdrop: normalizeWindowsBackdropMode(patch.windowsBackdrop ?? settings.windowsBackdrop),
       reduceMotion: motionPreferenceApi.normalize(patch.reduceMotion ?? settings.reduceMotion),
       showLiveDot: patch.showLiveDot ?? settings.showLiveDot ?? true,
@@ -5273,4 +5335,3 @@ app.on('before-quit', () => { quitRequested = true; if (rateRefreshTimer) clearI
 for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
   process.once(signal, requestAppQuit);
 }
-

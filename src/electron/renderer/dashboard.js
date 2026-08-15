@@ -6,6 +6,7 @@ const i18n = window.TokenMonitorI18n;
 const currencyApi = window.TokenMonitorCurrency;
 const motionPreferenceApi = window.TokenMonitorMotionPreference;
 const windowsBackdropModeApi = window.TokenMonitorWindowsBackdropMode;
+const macosGlassModeApi = window.TokenMonitorMacosGlassMode;
 const reducedMotionMedia = window.matchMedia?.('(prefers-reduced-motion: reduce)');
 const systemDarkThemeMedia = window.matchMedia?.('(prefers-color-scheme: dark)');
 
@@ -222,6 +223,20 @@ function applyWindowsBackdrop(settings) {
   return nativeBackdrop;
 }
 
+function applyMacosGlass(settings) {
+  const isMac = navigator.userAgent.toLowerCase().includes('macintosh');
+  const effectiveStyle = settings?.macosGlassEffectiveStyle
+    || macosGlassModeApi.effectiveMacosGlassStyle(settings?.macosGlassStyle, {
+      platform: isMac ? 'darwin' : '',
+      osRelease: ''
+    });
+  if (isMac && settings?.systemGlass !== false && effectiveStyle === macosGlassModeApi.MACOS_GLASS_LIQUID) {
+    document.documentElement.dataset.macosGlass = macosGlassModeApi.MACOS_GLASS_LIQUID;
+  } else {
+    delete document.documentElement.dataset.macosGlass;
+  }
+}
+
 function applyAppearance(settings) {
   state.settings = settings || {};
   let opacity = Math.min(100, Math.max(0, settings?.glassOpacity ?? 68)) / 100;
@@ -232,6 +247,7 @@ function applyAppearance(settings) {
   root.setProperty('--glass-alpha', opacity.toFixed(2));
   root.setProperty('--line-alpha', (0.1 + depth * 0.09).toFixed(3));
   const nativeBackdrop = applyWindowsBackdrop(settings);
+  applyMacosGlass(settings);
   applyReduceMotionPreference(settings?.reduceMotion);
   applyThemeColors(settings?.themeColors, { nativeBackdrop });
   applyVendorColorOverrides(settings?.vendorColors);
@@ -639,7 +655,7 @@ window.tokenMonitor.onSettingsPush?.((next) => {
   if (!next) return;
   state.settings = { ...state.settings, ...next };
   let needsRender = false;
-  if (next.themeColors || next.systemGlass !== undefined || next.windowsBackdrop !== undefined) {
+  if (next.themeColors || next.systemGlass !== undefined || next.windowsBackdrop !== undefined || next.macosGlassStyle !== undefined || next.macosGlassEffectiveStyle !== undefined) {
     applyAppearance(state.settings);
     needsRender = true;
   }
