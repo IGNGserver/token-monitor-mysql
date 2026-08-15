@@ -82,7 +82,7 @@ Token Monitor は **トークン使用量**、**アカウント制限**、**セ�
 - **AI ツール制限検出** — Claude Code、Codex、Cursor、Antigravity、OpenCode、Grok、Minimax、MiMo、GitHub Copilot、Kiro、GLM、Volcengine、Qoder、Kimi、Ollama のプロバイダー固有の session/weekly/billing/credits、DeepSeek プリペイド残高・本日/今月の使用額。追跡済みの Codex アカウントは、再認証なしでローカル Codex アカウントに切り替えできます
 - **ステータスビュー**（任意） — Claude、OpenAI、Cursor、DeepSeek のステータスページを手動/定期確認
 - **ツールリストのカスタマイズ** — 追跡は維持したまま非表示、ピン留め、順序変更
-- **外観** — テーマ（ライトモード含む）、ツール別カラー、ガラス透明度・ぼかし、透明ウィンドウ
+- **外観** — テーマ（ライトモード含む）、ツール別カラー、ガラス透明度・ぼかし、透明ウィンドウ。macOS 26 より前はネイティブなすりガラス、macOS 26 以降はネイティブ Liquid Glass を選択可能
 - **メニューバー (macOS) / システムトレイ (Windows)** — コスト、トークン、Claude/Codex/Cursor/Antigravity/OpenCode/Grok/Minimax/MiMo/GitHub Copilot/Kiro/GLM/Volcengine/Qoder/Kimi/Ollama 制限 % など
 - **フローティングバブル** — ドラッグ可能なミニウィンドウ、クリック/ホバープレビュー
 - **グローバルショートカット** — どこからでもウィンドウの表示/非表示
@@ -109,7 +109,7 @@ Token Monitor は **トークン使用量**、**アカウント制限**、**セ�
 
 [GitHub Releases](https://github.com/IGNGserver/token-monitor-suite/releases) からダウンロードできます。
 
-- **macOS (Apple Silicon)** — `.dmg`、署名および notarize 済み
+- **macOS (Apple Silicon / Intel)** — `Token-Monitor-<version>-arm64.dmg` または `Token-Monitor-<version>-x64.dmg`。未署名ビルドのため、初回起動時は Finder で右クリックして「開く」を選択してください
 - **Windows 10/11** — インストーラー `.exe`。署名は準備中のため SmartScreen が表示される場合があります
 - **Linux x64** — Debian/Ubuntu は `.deb`、その他のディストリビューションは `.AppImage`
 
@@ -170,13 +170,14 @@ npx wrangler deploy
 
 ```bash
 npm install
-npm run dist:mac   # macOS arm64 .dmg          → dist/
+npm run dist:mac      # macOS arm64 .dmg + .zip  → dist/
+npm run dist:mac:x64  # Intel macOS x64 .dmg + .zip → dist/
 npm run dist:win   # Windows x64 installer .exe → dist/
 npm run dist:linux # Linux x64 .deb + AppImage  → dist/
 npm run pack       # インストーラーなしのアプリディレクトリ（ローカルテスト用）
 ```
 
-出力は `dist/` に生成されます。Windows と Linux は対象 OS 上で上記の対応する `dist:*` スクリプトを使います。macOS リリース版をパッケージングするには、この Mac に Developer ID Application の署名 ID が必要です。ローカル開発または未対応プラットフォームでは `npm start` を使ってください。
+出力は `dist/` に生成されます。Windows、Linux、macOS は対象 OS 上で上記の対応する `dist:*` スクリプトを使います。本プロジェクトの macOS ビルドはデフォルトで未署名のため、初回起動時は Finder で右クリックして「開く」を選択してください。ローカル開発または未対応プラットフォームでは `npm start` を使ってください。
 
 ## 動作の仕組み
 

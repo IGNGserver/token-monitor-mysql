@@ -82,7 +82,7 @@ Token Monitor 对「Token 用量」「账户额度」和「session 明细」分�
 - **AI 工具额度检测**：支持 Claude Code、Codex、Cursor、Antigravity、OpenCode、Grok、Minimax、MiMo、GitHub Copilot、Kiro、GLM、Volcengine、Qoder、Kimi 与 Ollama，涵盖各提供方不同的 session、每周、账单与 credits 窗口，以及 DeepSeek 预付余额与今日/本月消费。已加入追踪的 Codex 账号可一键设为本机 Codex 使用账号，无需重新登录授权。
 - **可选的状态视图**：追踪 Claude、OpenAI、Cursor 与 DeepSeek status 页，支持手动或定时重新检查
 - **工具列表自定义**：可隐藏、置顶和拖曳排序主列表中的工具，不影响实际追踪
-- **外观控制**：界面主题切换（含浅色模式）、各工具厂商色、玻璃透明度、模糊度、完全透明窗口
+- **外观控制**：界面主题切换（含浅色模式）、各工具厂商色、玻璃透明度、模糊度、完全透明窗口；macOS 26 以前与 macOS 26 及以后可分别选择原生毛玻璃或原生 Liquid Glass
 - **菜单栏（macOS）与系统托盘（Windows）弹出窗口**：图标旁可显示成本、token 数，或 Claude／Codex／Cursor／Antigravity／OpenCode／Grok／Minimax／MiMo／GitHub Copilot／Kiro／GLM／Volcengine／Qoder／Kimi／Ollama 最接近用完的剩余额度百分比
 - **悬浮小窗模式**：可将组件收成可拖动的紧凑小窗，支持点击或悬停预览展开，并可显示托盘同款内容
 - **可录制全局快捷键**：可从任何地方快速显示或隐藏窗口
@@ -109,7 +109,7 @@ Token Monitor 对「Token 用量」「账户额度」和「session 明细」分�
 
 从 [GitHub Releases](https://github.com/IGNGserver/token-monitor-suite/releases) 下载。
 
-- **macOS（Apple Silicon）** — `.dmg`，已签名并 notarize
+- **macOS（Apple Silicon / Intel）** — 分别下载 `Token-Monitor-<version>-arm64.dmg` 或 `Token-Monitor-<version>-x64.dmg`；这是未签名构建，首次打开时请在 Finder 中右键选择“打开”
 - **Windows 10/11** — 安装版 `.exe`；签名还在准备中，可能会出现 SmartScreen
 - **Linux x64** — Debian/Ubuntu 使用 `.deb`；其他发行版使用 `.AppImage`
 
@@ -170,13 +170,14 @@ App 状态保存在系统的用户数据目录——卸载时一并删除该目�
 
 ```bash
 npm install
-npm run dist:mac   # macOS arm64 .dmg → dist/
+npm run dist:mac      # macOS arm64 .dmg + .zip → dist/
+npm run dist:mac:x64  # Intel macOS x64 .dmg + .zip → dist/
 npm run dist:win   # Windows x64 安装包 .exe → dist/
 npm run dist:linux # Linux x64 .deb + AppImage → dist/
 npm run pack       # 未打包的 app 目录（无安装包），方便本机快速测试
 ```
 
-产物会放在 `dist/`。Windows 和 Linux 请在对应系统上使用上面的 `dist:*` 脚本。如果要打包 macOS 发布版，需要本机有 Developer ID Application 签名身份；本地开发或未列出的平台请用 `npm start` 运行。
+产物会放在 `dist/`。Windows、Linux 和 macOS 请在对应系统上使用上面的 `dist:*` 脚本；本项目 macOS 构建默认未签名，首次打开时需要在 Finder 中右键选择“打开”。本地开发或未列出的平台请用 `npm start` 运行。
 
 ## 工作原理
 
@@ -220,7 +221,7 @@ npm run pack       # 未打包的 app 目录（无安装包），方便本机快
 - **托盘模式**——切换为 macOS 菜单栏或 Windows 系统托盘的弹出窗口，并选择图标旁显示的内容：成本、今日 token 数、累计 token 数、成本＋token、最接近用完的 Claude／Codex／Cursor／Antigravity／OpenCode／Grok／Minimax／MiMo／GitHub Copilot／Kiro／GLM／Volcengine／Qoder／Kimi／Ollama 剩余额度百分比，或仅显示图标。
 - **悬浮小窗**——将组件收成可拖动的小窗，可用点击或悬停预览展开，并可选择显示图标、token、费用或 AI 工具额度条。
 - **快捷键**——录制全局快捷键，用来显示或隐藏窗口。
-- **外观**——界面主题切换，可选预设（默认、黑曜、瓷白浅色模式）或自定义色彩（强调色、背景、文字、次要文字）、各工具厂商色、系统玻璃、实时指示点、工具图标、Discord Rich Presence、玻璃透明度、玻璃模糊度。
+- **外观**——界面主题切换，可选预设（默认、黑曜、瓷白浅色模式）或自定义色彩（强调色、背景、文字、次要文字）、各工具厂商色、系统玻璃、macOS 原生毛玻璃 / Liquid Glass 样式、实时指示点、工具图标、Discord Rich Presence、玻璃透明度、玻璃模糊度。
 - **高级**——打开底层 `settings.json` 调整较少用的选项，例如 `allTimeSince`。
 
 小部件标题栏上的置顶按钮可切换「始终置顶」。

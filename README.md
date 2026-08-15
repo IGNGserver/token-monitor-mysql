@@ -18,6 +18,8 @@ Token Monitor Suite 是一个用来查看 AI 编程工具用量的完整工具�
 如果你只想使用，不想安装 Node.js 或执行命令，请前往 [GitHub Releases](https://github.com/IGNGserver/token-monitor-suite/releases) 下载：
 
 - **Windows**：下载 `Token-Monitor-Setup-版本号.exe`，双击安装。
+- **macOS**：Apple Silicon 下载 `Token-Monitor-版本号-arm64.dmg`，Intel Mac 下载 `Token-Monitor-版本号-x64.dmg`。这是未签名构建，首次打开时请在 Finder 中右键选择“打开”。
+- **macOS 原生玻璃样式**：在设置 → 外观中，可选择 macOS 26 以前的原生毛玻璃，或 macOS 26 及以后的原生 Liquid Glass；旧系统会自动回退到毛玻璃。
 - **Linux**：Debian/Ubuntu 下载 `Token-Monitor-版本号.deb` 后运行 `sudo apt install ./Token-Monitor-版本号.deb`；其他发行版可下载 `Token-Monitor-版本号.AppImage`，赋予执行权限后运行。
 - **Android**：下载 `Token-Monitor-Android-版本号.apk`，在手机上安装。
 - **Hub（Docker）**：下载 `Token-Monitor-Hub-Compose-版本号.zip`，或直接拉取镜像 `ghcr.io/igngserver/token-monitor-hub:latest`（也可用指定版本标签）。

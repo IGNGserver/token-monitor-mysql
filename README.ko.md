@@ -82,7 +82,7 @@ Token Monitor는 **토큰 사용량**, **계정 한도**, **세션 상세**를 �
 - **AI 도구 한도 감지** — Claude Code, Codex, Cursor, Antigravity, OpenCode, Grok, Minimax, MiMo, GitHub Copilot, Kiro, GLM, Volcengine, Qoder, Kimi, Ollama의 공급자별 session/weekly/billing/credits, DeepSeek 선불 잔액·오늘/이번 달 사용액. 추적 중인 Codex 계정을 재인증 없이 로컬 Codex 계정으로 전환할 수 있습니다
 - **상태 보기** (선택) — Claude, OpenAI, Cursor, DeepSeek 상태 페이지 수동/주기 확인
 - **도구 목록 커스터마이즈** — 추적은 유지한 채 숨기기, 고정, 순서 변경
-- **외관** — 테마(라이트 포함), 도구별 색, 글래스 투명도·블러, 투명 창
+- **외관** — 테마(라이트 포함), 도구별 색, 글래스 투명도·블러, 투명 창. macOS 26 이전에는 네이티브 프로스트 글래스, macOS 26 이후에는 네이티브 Liquid Glass를 선택 가능
 - **메뉴 막대(macOS) / 시스템 트레이(Windows)** — 비용, 토큰, Claude/Codex/Cursor/Antigravity/OpenCode/Grok/Minimax/MiMo/GitHub Copilot/Kiro/GLM/Volcengine/Qoder/Kimi/Ollama 한도 % 등
 - **플로팅 버블** — 드래그 가능한 미니 창, 클릭/호버 미리보기
 - **전역 단축키** — 어디서든 창 표시/숨김
@@ -109,7 +109,7 @@ Token Monitor는 **토큰 사용량**, **계정 한도**, **세션 상세**를 �
 
 [GitHub Releases](https://github.com/IGNGserver/token-monitor-suite/releases)에서 다운로드하세요.
 
-- **macOS (Apple Silicon)** — `.dmg`, 서명 및 notarize 완료
+- **macOS (Apple Silicon / Intel)** — `Token-Monitor-<version>-arm64.dmg` 또는 `Token-Monitor-<version>-x64.dmg`; 서명되지 않은 빌드이므로 처음 실행할 때 Finder에서 마우스 오른쪽 버튼으로 “열기”를 선택하세요
 - **Windows 10/11** — 설치용 `.exe`; 서명은 준비 중이라 SmartScreen이 표시될 수 있습니다
 - **Linux x64** — Debian/Ubuntu는 `.deb`, 그 외 배포판은 `.AppImage`
 
@@ -170,13 +170,14 @@ npx wrangler deploy
 
 ```bash
 npm install
-npm run dist:mac   # macOS arm64 .dmg          → dist/
+npm run dist:mac      # macOS arm64 .dmg + .zip  → dist/
+npm run dist:mac:x64  # Intel macOS x64 .dmg + .zip → dist/
 npm run dist:win   # Windows x64 installer .exe → dist/
 npm run dist:linux # Linux x64 .deb + AppImage  → dist/
 npm run pack       # 설치 없이 앱 디렉터리만 (로컬 테스트)
 ```
 
-결과물은 `dist/`에 생성됩니다. Windows와 Linux는 대상 OS에서 위의 해당 `dist:*` 스크립트를 사용하세요. macOS 릴리스 빌드를 패키징하려면 이 Mac에 Developer ID Application 서명 ID가 있어야 합니다. 로컬 개발 또는 지원되지 않는 플랫폼에서는 `npm start`를 사용하세요.
+결과물은 `dist/`에 생성됩니다. Windows, Linux, macOS는 대상 OS에서 위의 해당 `dist:*` 스크립트를 사용하세요. 이 프로젝트의 macOS 빌드는 기본적으로 서명되지 않으므로 처음 실행할 때 Finder에서 마우스 오른쪽 버튼으로 “열기”를 선택해야 합니다. 로컬 개발 또는 지원되지 않는 플랫폼에서는 `npm start`를 사용하세요.
 
 ## 동작 방식
 
