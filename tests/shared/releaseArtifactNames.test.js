@@ -7,6 +7,7 @@ const path = require('node:path');
 const test = require('node:test');
 
 const rootPackage = require('../../package.json');
+const { mergeMacUpdaterMetadata } = require('../../scripts/merge-mac-updater-metadata');
 const {
   referencedArtifactNames,
   verifyUpdaterArtifactNames
@@ -26,6 +27,24 @@ test('release artifact templates use GitHub-safe names', () => {
     'Token-Monitor-${version}.${ext}'
   ]);
   for (const pattern of patterns) assert.doesNotMatch(pattern, /\s/);
+});
+
+test('macOS releases build unsigned DMG and ZIP artifacts for both architectures', () => {
+  assert.deepEqual(rootPackage.build.mac.target, ['dmg', 'zip']);
+  assert.equal(rootPackage.build.mac.forceCodeSigning, false);
+  assert.equal(rootPackage.build.mac.minimumSystemVersion, '14.0');
+  assert.equal(rootPackage.build.mac.icon, 'assets/icon.png');
+  assert.match(rootPackage.scripts['dist:mac'], /--arm64/);
+  assert.match(rootPackage.scripts['dist:mac:x64'], /--x64/);
+  assert.equal(rootPackage.scripts['predist:mac:x64'], 'npm run icons');
+  assert.equal(rootPackage.devDependencies['electron-icon-builder'], undefined);
+
+  const workflow = fs.readFileSync(path.join(__dirname, '../../.github/workflows/release.yml'), 'utf8');
+  assert.match(workflow, /runs-on: macos-15\n/);
+  assert.match(workflow, /runs-on: macos-15-intel\n/);
+  assert.match(workflow, /name: token-monitor-macos-arm64/);
+  assert.match(workflow, /name: token-monitor-macos-x64/);
+  assert.match(workflow, /scripts\/merge-mac-updater-metadata\.js/);
 });
 
 test('Linux releases include both AppImage and Debian targets', () => {
@@ -70,4 +89,26 @@ test('fails when updater metadata references an asset that will not be uploaded'
   assert.deepEqual(verifyUpdaterArtifactNames(distDir), {
     metadataFiles: ['latest-mac.yml']
   });
+});
+
+test('merges ARM64 and Intel macOS updater metadata into one feed', () => {
+  const metadata = (arch) => [
+    'version: 0.37.21',
+    'files:',
+    `  - url: Token-Monitor-0.37.21-${arch}.zip`,
+    `    sha512: ${arch}-zip-hash`,
+    `    size: 123`,
+    `  - url: Token-Monitor-0.37.21-${arch}.dmg`,
+    `    sha512: ${arch}-dmg-hash`,
+    `    size: 456`,
+    `path: Token-Monitor-0.37.21-${arch}.zip`,
+    'sha512: feed-hash'
+  ].join('\n');
+
+  const merged = mergeMacUpdaterMetadata(metadata('arm64'), metadata('x64'));
+  assert.match(merged, /Token-Monitor-0\.37\.21-arm64\.zip/);
+  assert.match(merged, /Token-Monitor-0\.37\.21-arm64\.dmg/);
+  assert.match(merged, /Token-Monitor-0\.37\.21-x64\.zip/);
+  assert.match(merged, /Token-Monitor-0\.37\.21-x64\.dmg/);
+  assert.match(merged, /path: Token-Monitor-0\.37\.21-arm64\.zip/);
 });
