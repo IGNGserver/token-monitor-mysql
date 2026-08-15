@@ -179,6 +179,7 @@ const {
   moveFloatingBubbleBounds
 } = require('./floatingBubble');
 const { applyWindowsChrome } = require('./windowsChrome');
+const { applyMacosNativeWindowButtons } = require('./macosWindowChrome');
 const { setMoveToActiveSpace } = require('./macosSpaceBehavior');
 const {
   normalizeWindowsBackdropMode,
@@ -3946,6 +3947,7 @@ function createWindow(boundsOverride, options = {}) {
   });
   mainWindow = win;
   mainWindowChrome = { collapsedFloatingBubble };
+  applyMacosNativeWindowButtons(win, { visible: !collapsedFloatingBubble });
   applyMacSpaceBehavior();
   applyWindowsChrome(win, { round: true });
   win.webContents.setWindowOpenHandler(({ url }) => {
@@ -4073,6 +4075,7 @@ function createDashboardWindow() {
     }
   });
   dashboardWindow = win;
+  applyMacosNativeWindowButtons(win);
   applyWindowsChrome(win, { round: true });
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (isAllowedExternalUrl(url)) shell.openExternal(url);

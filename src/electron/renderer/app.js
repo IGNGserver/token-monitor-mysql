@@ -5372,6 +5372,11 @@ function applyAppearanceSettings(settings) {
   
   document.documentElement.classList.toggle('is-windows', isWindows);
   document.body.classList.toggle('is-windows', isWindows);
+
+  const isMac = state.appInfo?.platform === 'darwin'
+    || navigator.userAgent.toLowerCase().includes('macintosh');
+  document.documentElement.classList.toggle('is-macos', isMac);
+  document.body.classList.toggle('is-macos', isMac);
   
   document.documentElement.classList.toggle('is-mac-legacy', isMacLegacyRadius);
   document.body.classList.toggle('is-mac-legacy', isMacLegacyRadius);

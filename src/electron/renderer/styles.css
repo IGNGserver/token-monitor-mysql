@@ -345,6 +345,16 @@ body.is-windows .window-actions {
 body.is-windows .actions-hotspot {
   display: none;
 }
+/* macOS owns the close/minimize/full-screen controls in the native titlebar.
+   Keep the custom controls for Windows/Linux, where this window is intentionally
+   frameless without a native titlebar. */
+body.is-macos .titlebar > div:first-child {
+  padding-left: 76px;
+}
+body.is-macos .window-actions,
+body.is-macos .actions-hotspot {
+  display: none;
+}
 #footerActionSlot { display: contents; }
 /* Settings and Refresh move as one utility group. The selected primary action
    stays anchored while the other progressively discloses to its left. */

@@ -225,6 +225,8 @@ function applyWindowsBackdrop(settings) {
 
 function applyMacosGlass(settings) {
   const isMac = navigator.userAgent.toLowerCase().includes('macintosh');
+  document.documentElement.classList.toggle('is-macos', isMac);
+  document.body.classList.toggle('is-macos', isMac);
   const effectiveStyle = settings?.macosGlassEffectiveStyle
     || macosGlassModeApi.effectiveMacosGlassStyle(settings?.macosGlassStyle, {
       platform: isMac ? 'darwin' : '',

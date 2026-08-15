@@ -41,8 +41,11 @@ body[data-macos-glass="liquid-glass"] {
   display: flex; align-items: center; justify-content: space-between;
   padding: 10px 14px; border-bottom: 1px solid var(--line, rgba(var(--line-rgb), 0.14));
 }
+body.is-macos .dash-header { padding-left: 82px; }
 .dash-title { font-size: 13px; font-weight: 600; letter-spacing: 0.02em; }
 .dash-header-actions { -webkit-app-region: no-drag; display: flex; gap: 6px; }
+body.is-macos .dash-header-actions #minBtn,
+body.is-macos .dash-header-actions #closeBtn { display: none; }
 .icon-button {
   -webkit-app-region: no-drag;
   background: rgba(var(--overlay-rgb), 0.05); color: inherit; border: none; cursor: pointer;

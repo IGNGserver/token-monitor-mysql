@@ -15,28 +15,12 @@ function buildLogoSvg(size = 1024, isTray = false, androidIconDataUrl = '') {
   const scale = size / 1024;
 
   if (isTray) {
-    // Crisp standalone tray icon for OS menu bar / notification area
-    const s = size / 108;
-    const strokeWidth = 7.5 * s;
-    const dotR = 5.5 * s;
-
-    const pArc = `M ${31.2 * s},${67.1 * s} A ${34 * s},${34 * s} 0 1,1 ${78.1 * s},${78.1 * s}`;
-    const cxDot = 31.2 * s;
-    const cyDot = 67.1 * s;
-    const pTopBar = `M ${41 * s},${44 * s} H ${67 * s}`;
-    const pStem = `M ${54 * s},${44 * s} V ${62 * s} c 0,${4 * s} ${3 * s},${7 * s} ${7 * s},${7 * s} h ${3 * s}`;
-
-    return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
-  <defs>
-    <linearGradient id="trayGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#38BDF8" />
-      <stop offset="100%" stop-color="#0284C7" />
-    </linearGradient>
-  </defs>
-  <path d="${pArc}" fill="none" stroke="url(#trayGrad)" stroke-width="${strokeWidth}" stroke-linecap="round" />
-  <circle cx="${cxDot}" cy="${cyDot}" r="${dotR}" fill="#38BDF8" />
-  <path d="${pTopBar}" fill="none" stroke="url(#trayGrad)" stroke-width="${strokeWidth}" stroke-linecap="round" />
-  <path d="${pStem}" fill="none" stroke="url(#trayGrad)" stroke-width="${strokeWidth}" stroke-linecap="round" stroke-linejoin="round" />
+    // Use the same T mark as the renderer title. macOS template images use only
+    // alpha, so keep every visible pixel monochrome and leave the tint to the OS.
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="#000000">
+  <path d="M4 16 A 8.5 8.5 0 1 1 17.5 20" stroke-width="2.6" stroke-linecap="round" />
+  <circle cx="4" cy="16" r="1.5" fill="#000000" stroke="none" />
+  <path d="M9 9.5 h7 M12.5 9.5 v6 c0 1.8 1.2 2.8 2.8 2.8" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" />
 </svg>`;
   }
 

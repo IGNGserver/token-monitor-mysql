@@ -43,6 +43,41 @@ const stats = {
   }
 };
 
+function decodeRgbaScanlines(scanlines, width, height) {
+  const bytesPerPixel = 4;
+  const rowBytes = width * bytesPerPixel;
+  const rows = [];
+  let offset = 0;
+  let previous = Buffer.alloc(rowBytes);
+  for (let y = 0; y < height; y += 1) {
+    const filter = scanlines[offset++];
+    const filtered = scanlines.subarray(offset, offset + rowBytes);
+    offset += rowBytes;
+    const row = Buffer.alloc(rowBytes);
+    for (let i = 0; i < rowBytes; i += 1) {
+      const left = i >= bytesPerPixel ? row[i - bytesPerPixel] : 0;
+      const up = previous[i];
+      const upLeft = i >= bytesPerPixel ? previous[i - bytesPerPixel] : 0;
+      const value = filtered[i];
+      if (filter === 0) row[i] = value;
+      else if (filter === 1) row[i] = (value + left) & 0xff;
+      else if (filter === 2) row[i] = (value + up) & 0xff;
+      else if (filter === 3) row[i] = (value + Math.floor((left + up) / 2)) & 0xff;
+      else if (filter === 4) {
+        const estimate = left + up - upLeft;
+        const pa = Math.abs(estimate - left);
+        const pb = Math.abs(estimate - up);
+        const pc = Math.abs(estimate - upLeft);
+        const predictor = pa <= pb && pa <= pc ? left : pb <= pc ? up : upLeft;
+        row[i] = (value + predictor) & 0xff;
+      } else throw new Error(`unsupported PNG filter ${filter}`);
+    }
+    rows.push(row);
+    previous = row;
+  }
+  return rows;
+}
+
 test('fallback tray icon source stays transparent and high-resolution', () => {
   const icon = fs.readFileSync(path.join(__dirname, '..', '..', 'assets', 'icons', 'tray-token-monitor.png'));
   assert.equal(icon.toString('ascii', 1, 4), 'PNG');
@@ -58,7 +93,21 @@ test('fallback tray icon source stays transparent and high-resolution', () => {
     offset += 12 + length;
   }
   const scanlines = zlib.inflateSync(Buffer.concat(idat));
-  assert.equal(scanlines[4], 0, 'tray PNG corner should remain fully transparent');
+  const rows = decodeRgbaScanlines(scanlines, 44, 44);
+  assert.equal(rows[0][3], 0, 'tray PNG corner should remain fully transparent');
+
+  let visiblePixels = 0;
+  for (const row of rows) {
+    for (let x = 0; x < 44; x += 1) {
+      const offset = x * 4;
+      const alpha = row[offset + 3];
+      if (alpha === 0) continue;
+      visiblePixels += 1;
+      assert.equal(row[offset], row[offset + 1], 'template icon must not contain a red tint');
+      assert.equal(row[offset + 1], row[offset + 2], 'template icon must not contain a colored tint');
+    }
+  }
+  assert.ok(visiblePixels > 0, 'tray PNG should contain the T mark');
 });
 
 test('macOS tray icon downsamples the high-resolution template like provider icons', () => {
