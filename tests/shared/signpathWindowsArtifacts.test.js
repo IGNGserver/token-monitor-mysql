@@ -20,7 +20,7 @@ const {
   applySignedWindowsArtifacts
 } = require('../../scripts/signpath-windows-artifacts');
 
-const VERSION = '0.30.0';
+const VERSION = '0.30.0-rev.1';
 const APPLICATION = 'Token Monitor.exe';
 const INSTALLER = `Token-Monitor-Setup-${VERSION}.exe`;
 const PORTABLE = `Token-Monitor-${VERSION}.exe`;
@@ -186,7 +186,7 @@ test('expectedWindowsApplication resolves the branded executable from package.js
   const fixture = makeFixture(t);
   assert.deepEqual(expectedWindowsApplication(fixture.packageJsonPath, {}), {
     version: VERSION,
-    productVersion: `${VERSION}.0`,
+    productVersion: '0.30.0.1',
     productName: 'Token Monitor',
     application: APPLICATION
   });
@@ -194,11 +194,11 @@ test('expectedWindowsApplication resolves the branded executable from package.js
 
 test('windows application ProductVersion mirrors electron-builder four-part metadata', () => {
   const pkg = { version: VERSION, build: {} };
-  assert.equal(windowsApplicationProductVersion(pkg, {}), `${VERSION}.0`);
-  assert.equal(windowsApplicationProductVersion(pkg, { BUILD_NUMBER: '42' }), `${VERSION}.42`);
+  assert.equal(windowsApplicationProductVersion(pkg, {}), '0.30.0.1');
+  assert.equal(windowsApplicationProductVersion(pkg, { BUILD_NUMBER: '42' }), '0.30.0.42');
   assert.equal(
     windowsApplicationProductVersion({ ...pkg, build: { buildNumber: '7' } }, { BUILD_NUMBER: '42' }),
-    `${VERSION}.7`
+    '0.30.0.7'
   );
   assert.equal(
     windowsApplicationProductVersion({ ...pkg, shortVersionWindows: '3.2.1.9' }, {}),
@@ -272,16 +272,13 @@ test('refuses a platform publish override the prepackaged writer would ignore', 
   );
 });
 
-test('refuses prerelease versions whose update channel electron-builder would derive', (t) => {
+test('accepts project revision versions for the prepackaged updater config', (t) => {
   const fixture = makeFixture(t);
   const pkg = JSON.parse(fs.readFileSync(fixture.packageJsonPath, 'utf8'));
-  pkg.version = '0.31.0-beta.1';
+  pkg.version = '0.31.0-rev.2';
   fs.writeFileSync(fixture.packageJsonPath, JSON.stringify(pkg));
 
-  assert.throws(
-    () => windowsAppUpdateConfig(fixture.packageJsonPath),
-    /do not support prerelease update channels/
-  );
+  assert.match(windowsAppUpdateConfig(fixture.packageJsonPath), /provider: "github"/);
 });
 
 test('expectedWindowsArtifacts rejects unsafe output names and output-parameter versions', (t) => {

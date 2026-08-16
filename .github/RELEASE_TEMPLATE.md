@@ -1,6 +1,6 @@
 # English
 
-**Open-source build.** Windows, macOS, Linux, and Android artifacts are published for this fork. The Windows and macOS desktop builds are unsigned and may show a platform security warning on first launch. Android releases are signed with the project's release key.
+**Open-source build.** Windows, macOS, Linux, and Android artifacts are published for this project. The Windows and macOS desktop builds are unsigned and may show a platform security warning on first launch. Android releases are signed with the project's release key.
 
 ## What's changed
 
@@ -23,7 +23,7 @@ Open the release's **Assets** section and download the file for your device:
 - **macOS** — `Token-Monitor-<version>-arm64.dmg` for Apple Silicon or `Token-Monitor-<version>-x64.dmg` for Intel. These are unsigned builds; Control-click the app and choose **Open** on first launch.
 - **Linux** — Debian/Ubuntu: `Token-Monitor-<version>.deb`; other distributions: `Token-Monitor-<version>.AppImage`.
 - **Android** — `Token-Monitor-Android-<version>.apk`.
-- **Hub (Docker)** — image `ghcr.io/igngserver/token-monitor-hub:<version>` (also `:latest`) and optional `Token-Monitor-Hub-Compose-<version>.zip`.
+- **Hub (Docker)** — image `ghcr.io/igngserver/token-monitor-hub:<version>` and optional `Token-Monitor-Hub-Compose-<version>.zip`; formal releases also update `:latest`.
 
 <details>
 <summary><strong>First launch and other notes</strong></summary>
@@ -49,7 +49,7 @@ chmod +x Token-Monitor-*.AppImage
 
 ### Other notes
 
-This fork publishes Windows, macOS, Linux, Android, and the Hub Docker image (GHCR). Desktop platforms without a package can still run from source per the [README](https://github.com/IGNGserver/token-monitor-suite#readme).
+This project publishes Windows, macOS, Linux, Android, and the Hub Docker image (GHCR). Desktop platforms without a package can still run from source per the [README](https://github.com/IGNGserver/token-monitor-suite#readme).
 
 ### tokscale dependency
 
@@ -63,7 +63,7 @@ open-source: https://github.com/junhoyeo/tokscale
 
 # 中文
 
-**这是开源构建。** 本 fork 发布 Windows、macOS、Linux 和 Android 安装包。Windows 与 macOS 桌面构建未签名，首次启动时可能出现系统安全提示；Android 发布包使用项目签名密钥签名。
+**这是开源构建。** 本项目发布 Windows、macOS、Linux 和 Android 安装包。Windows 与 macOS 桌面构建未签名，首次启动时可能出现系统安全提示；Android 发布包使用项目签名密钥签名。
 
 ## 更新内容
 
@@ -86,7 +86,7 @@ open-source: https://github.com/junhoyeo/tokscale
 - **macOS** — Apple Silicon 使用 `Token-Monitor-<version>-arm64.dmg`，Intel 使用 `Token-Monitor-<version>-x64.dmg`。这是未签名构建，首次启动请按住 Control 点击应用并选择“打开”。
 - **Linux** — Debian/Ubuntu 使用 `Token-Monitor-<version>.deb`；其他发行版使用 `Token-Monitor-<version>.AppImage`。
 - **Android** — `Token-Monitor-Android-<version>.apk`。
-- **Hub（Docker）** — 镜像 `ghcr.io/igngserver/token-monitor-hub:<version>`（同时有 `:latest`），以及可选的 `Token-Monitor-Hub-Compose-<version>.zip`。
+- **Hub（Docker）** — 镜像 `ghcr.io/igngserver/token-monitor-hub:<version>`，以及可选的 `Token-Monitor-Hub-Compose-<version>.zip`；正式版 Release 还会更新 `:latest`。
 
 <details>
 <summary><strong>首次启动与其他说明</strong></summary>
@@ -112,7 +112,7 @@ chmod +x Token-Monitor-*.AppImage
 
 ### 其他说明
 
-本 fork 发布 Windows、macOS、Linux、Android 安装包以及 Hub Docker 镜像（GHCR）。其他桌面平台可参考 [README](https://github.com/IGNGserver/token-monitor-suite#readme) 从源码运行。
+本项目发布 Windows、macOS、Linux、Android 安装包以及 Hub Docker 镜像（GHCR）。其他桌面平台可参考 [README](https://github.com/IGNGserver/token-monitor-suite#readme) 从源码运行。
 
 ### tokscale 依赖
 

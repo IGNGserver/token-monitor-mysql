@@ -7,6 +7,7 @@ const path = require('node:path');
 // same implementation avoids producing a subtly incompatible differential
 // update after Authenticode changes the installer bytes.
 const { buildBlockMap } = require('app-builder-lib/out/targets/blockmap/blockmap');
+const { parseProjectVersion } = require('../src/shared/versioning');
 
 const BUILD_NUMBER_ENV_KEYS = [
   'BUILD_NUMBER',
@@ -41,7 +42,7 @@ function renderArtifactName(template, version) {
 function signingPackageMetadata(packageJsonPath) {
   const pkg = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
   const version = pkg.version;
-  if (typeof version !== 'string' || !/^[0-9A-Za-z][0-9A-Za-z.+-]*$/.test(version)) {
+  if (!parseProjectVersion(version)) {
     throw new Error(`Unsupported package version for signing: ${String(version)}`);
   }
   const productName = pkg.productName;
@@ -66,17 +67,21 @@ function windowsApplicationProductVersion(pkg, env = process.env) {
     return shortVersion;
   }
 
-  const [major, maybeMinor, maybePatch] = String(pkg.version || '').split('.').map((part) => parseInt(part, 10));
-  if ([major, maybeMinor, maybePatch].some((part) => Number.isNaN(part))) {
+  const parsedVersion = parseProjectVersion(pkg.version);
+  if (!parsedVersion) {
+    throw new Error(`Unsupported package version for Windows signing: ${String(pkg.version)}`);
+  }
+  const { major, minor, patch, revision } = parsedVersion;
+  if ([major, minor, patch, revision].some((part) => !Number.isSafeInteger(part))) {
     throw new Error(`Unsupported package version for Windows signing: ${String(pkg.version)}`);
   }
   const configuredBuildNumber = pkg.build?.buildNumber;
   const environmentBuildNumber = BUILD_NUMBER_ENV_KEYS.map((key) => env[key]).find(Boolean);
-  const candidateBuildNumber = configuredBuildNumber || environmentBuildNumber;
-  const buildNumber = /^\d+$/.test(String(candidateBuildNumber || ''))
+  const candidateBuildNumber = configuredBuildNumber ?? environmentBuildNumber;
+  const buildNumber = /^\d+$/.test(String(candidateBuildNumber ?? ''))
     ? String(candidateBuildNumber)
-    : '0';
-  return `${major}.${maybeMinor}.${maybePatch}.${buildNumber}`;
+    : '';
+  return `${major}.${minor}.${patch}.${buildNumber || revision}`;
 }
 
 function expectedWindowsApplication(packageJsonPath, env = process.env) {
@@ -100,7 +105,7 @@ function expectedWindowsArtifacts(packageJsonPath) {
 }
 
 function windowsAppUpdateConfig(packageJsonPath) {
-  const { pkg, version } = signingPackageMetadata(packageJsonPath);
+  const { pkg } = signingPackageMetadata(packageJsonPath);
   const build = pkg.build;
   const win = build?.win;
   if (Object.hasOwn(win || {}, 'publish')) {
@@ -137,13 +142,6 @@ function windowsAppUpdateConfig(packageJsonPath) {
     !publish.repo
   ) {
     throw new Error('Windows prepackaged builds require a GitHub publish owner and repo');
-  }
-  const versionWithoutBuildMetadata = version.split('+', 1)[0];
-  if (versionWithoutBuildMetadata.includes('-')) {
-    throw new Error(
-      'Windows prepackaged builds do not support prerelease update channels; ' +
-        'keep this writer aligned with electron-builder before publishing a prerelease'
-    );
   }
   const packageName = pkg.name;
   if (typeof packageName !== 'string' || !/^[A-Za-z0-9._-]+$/.test(packageName)) {

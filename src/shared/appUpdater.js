@@ -1,9 +1,11 @@
 'use strict';
 
 const semver = require('semver');
+const { compareProjectVersions, parseProjectVersion } = require('./versioning');
 
 const GITHUB_REPO = 'IGNGserver/token-monitor-suite';
-const RELEASES_LATEST_URL = `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`;
+const RELEASES_URL = `https://api.github.com/repos/${GITHUB_REPO}/releases?per_page=100`;
+const RELEASES_LATEST_URL = RELEASES_URL;
 const RELEASE_HTML_PREFIX = `https://github.com/${GITHUB_REPO}/releases/`;
 const REQUEST_TIMEOUT_MS = 10 * 1000;
 const APP_UPDATE_BACKGROUND_COOLDOWN_MS = 24 * 60 * 60 * 1000;
@@ -147,6 +149,20 @@ function parseLatestReleasePayload(payload) {
   };
 }
 
+function parseProjectReleasePayload(payload) {
+  if (!payload || typeof payload !== 'object' || payload.draft === true) return null;
+  const release = parseLatestReleasePayload(payload);
+  return release && parseProjectVersion(release.version) ? release : null;
+}
+
+function parseReleaseListPayload(payload) {
+  if (!Array.isArray(payload)) return [];
+  return payload
+    .map(parseProjectReleasePayload)
+    .filter(Boolean)
+    .sort((left, right) => compareProjectVersions(right.version, left.version));
+}
+
 function shouldSkipAppUpdateCheck({
   force = false,
   lastCheckedAt,
@@ -223,7 +239,7 @@ async function checkLatestRelease(currentVersion) {
   const checkedAt = new Date().toISOString();
   try {
     const payload = await withTimeout(REQUEST_TIMEOUT_MS, async (signal) => {
-      const response = await fetch(RELEASES_LATEST_URL, {
+      const response = await fetch(RELEASES_URL, {
         signal,
         headers: {
           'accept': 'application/vnd.github+json',
@@ -234,9 +250,9 @@ async function checkLatestRelease(currentVersion) {
       if (!response.ok) throw new Error(`GitHub responded ${response.status}`);
       return response.json();
     });
-    const latest = parseLatestReleasePayload(payload);
+    const latest = parseReleaseListPayload(payload)[0] || null;
     if (!latest) {
-      return { ok: false, newer: false, latest: null, error: 'Release payload missing or invalid', checkedAt };
+      return { ok: false, newer: false, latest: null, error: 'Release list missing a valid project release', checkedAt };
     }
     const current = semver.valid(currentVersion) ? currentVersion : '0.0.0';
     const newer = semver.gt(latest.version, current);
@@ -257,6 +273,9 @@ module.exports = {
   extractReleaseNotes,
   mergeLatestReleaseMetadata,
   checkLatestRelease,
+  parseProjectReleasePayload,
+  parseReleaseListPayload,
+  RELEASES_URL,
   RELEASES_LATEST_URL,
   GITHUB_REPO,
   APP_UPDATE_BACKGROUND_COOLDOWN_MS,

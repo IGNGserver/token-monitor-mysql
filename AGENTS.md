@@ -16,6 +16,13 @@ npm run verify     # lint + test (single local entry point)
 
 Automated verification is `npm run verify` (= `npm run lint && npm test`); CI (`.github/workflows/ci.yml`) runs lint + test on push/PR across Node 22 & 24. The toolchain (ESLint 10 + the node:test glob) needs Node 22.13+, which is why `engines.node` is `>=22.13.0` (Node 18 & 20 are both EOL as of 2026-06).
 
+### Version and release policy
+
+- Project versions use `<upstream-semver>-rev.<positive integer>`, for example `0.37.23-rev.1`. The first three components identify the compatible upstream version; `rev.N` distinguishes this project's successive updates for that upstream version. Do not use a fourth core component such as `0.37.23.1`, and do not put `fork` in the version or product name.
+- Root and Worker package metadata must stay aligned. `npm run verify:release-version` validates the project version format and all package/lock-file copies.
+- A normal request to “发布 release” means a GitHub prerelease. The release workflow defaults to `prerelease` for both pushed tags and manual dispatch. Only an explicit request to “发布正式版 release” may select the `release` workflow input. The Docker `latest` tag is updated only for a formal release; version-specific image tags are always published.
+- Release tags are `v<project-version>`, and release jobs must check out and validate the exact tag. Android receives the same version through `-PtokenMonitorVersion`; its `versionCode` includes `rev.N`.
+
 To dry-run the agent without posting: `node src/agent/agent.js --once --dry-run`.
 
 ## Architecture
@@ -125,4 +132,3 @@ Never add an AI `Co-Authored-By` trailer. **Do** keep the genuine human `Co-auth
 ### Authoring GitHub content via `gh`
 
 Write PR/issue bodies and comments to a file and pass it, rather than inline heredocs: `gh issue comment --body-file <path>`, `gh api -X PATCH … -F body=@<path>`. Inline `--body "$(cat <<EOF … EOF)"` mangles backtick escaping and renders as a literal `` \` `` in GitHub markdown. Same spirit for prose: write paragraphs as continuous lines and let GitHub wrap them — don't hard-wrap at 80 columns.
-

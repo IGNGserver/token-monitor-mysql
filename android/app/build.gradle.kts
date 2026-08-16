@@ -18,7 +18,7 @@ android {
     applicationId = "com.igng.tokenmonitor.android"
     minSdk = 26
     targetSdk = 36
-val releaseVersion = providers.gradleProperty("tokenMonitorVersion").orElse("0.37.22").get()
+    val releaseVersion = providers.gradleProperty("tokenMonitorVersion").orElse("0.37.23-rev.1").get()
     versionCode = releaseVersionCode(releaseVersion)
     versionName = releaseVersion
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -54,13 +54,23 @@ val releaseVersion = providers.gradleProperty("tokenMonitorVersion").orElse("0.3
 }
 
 private fun releaseVersionCode(version: String): Int {
-  val parts = Regex("\\d+").findAll(version).map { it.value.toInt() }.toList()
-  return (parts.getOrNull(0).orZero() * 10000 +
-    parts.getOrNull(1).orZero() * 100 +
-    parts.getOrNull(2).orZero()).coerceAtLeast(1)
+  val match = Regex("^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)-rev\\.([1-9]\\d*)$").matchEntire(version)
+    ?: error("Android release version must match <major>.<minor>.<patch>-rev.<revision>: $version")
+  val major = match.groupValues[1].toLongOrNull()
+    ?: error("Android release major version is too large: $version")
+  val minor = match.groupValues[2].toLongOrNull()
+    ?: error("Android release minor version is too large: $version")
+  val patch = match.groupValues[3].toLongOrNull()
+    ?: error("Android release patch version is too large: $version")
+  val revision = match.groupValues[4].toLongOrNull()
+    ?: error("Android release revision is too large: $version")
+  val baseVersionCode = major * 10000L + minor * 100L + patch
+  val versionCode = baseVersionCode * 10000L + revision
+  require(versionCode in 1..Int.MAX_VALUE.toLong()) {
+    "Android versionCode is outside the supported range: $version -> $versionCode"
+  }
+  return versionCode.toInt()
 }
-
-private fun Int?.orZero() = this ?: 0
 
 dependencies {
   implementation(libs.androidx.core.ktx)
@@ -148,4 +158,3 @@ val runUnitTests = registerJunitCoreTask(
 )
 
 tasks.withType<Test>().configureEach { enabled = false }
-

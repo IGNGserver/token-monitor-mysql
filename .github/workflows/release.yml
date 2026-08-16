@@ -8,7 +8,15 @@ on:
       version:
         description: "Release version without the v prefix"
         required: true
-        default: "0.37.18"
+        type: string
+      release_type:
+        description: "GitHub Release type; use release only for an explicit formal release"
+        required: true
+        type: choice
+        options:
+          - prerelease
+          - release
+        default: prerelease
 
 permissions:
   contents: read
@@ -21,11 +29,21 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', inputs.version) || github.ref }}
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: npm
       - run: npm ci
+      - name: Verify release version
+        shell: bash
+        env:
+          RELEASE_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
+        run: |
+          set -euo pipefail
+          version="${RELEASE_VERSION#v}"
+          npm run verify:release-version -- --version "$version"
       - name: Generate icon assets
         run: npm run icons
       # Sign the branded application executable before it is embedded into the
@@ -202,11 +220,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', inputs.version) || github.ref }}
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: npm
       - run: npm ci
+      - name: Verify release version
+        shell: bash
+        env:
+          RELEASE_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
+        run: |
+          set -euo pipefail
+          version="${RELEASE_VERSION#v}"
+          npm run verify:release-version -- --version "$version"
       - name: Build Linux AppImage and Debian package
         run: xvfb-run -a npm run dist:linux
       - uses: actions/upload-artifact@v4
@@ -223,11 +251,21 @@ jobs:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', inputs.version) || github.ref }}
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: npm
       - run: npm ci
+      - name: Verify release version
+        shell: bash
+        env:
+          RELEASE_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
+        run: |
+          set -euo pipefail
+          version="${RELEASE_VERSION#v}"
+          npm run verify:release-version -- --version "$version"
       - name: Build unsigned macOS arm64 artifacts
         run: npm run dist:mac
       - name: Verify updater artifact names
@@ -246,11 +284,21 @@ jobs:
     runs-on: macos-15-intel
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', inputs.version) || github.ref }}
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: npm
       - run: npm ci
+      - name: Verify release version
+        shell: bash
+        env:
+          RELEASE_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
+        run: |
+          set -euo pipefail
+          version="${RELEASE_VERSION#v}"
+          npm run verify:release-version -- --version "$version"
       - name: Build unsigned macOS x64 artifacts
         run: npm run dist:mac:x64
       - name: Verify updater artifact names
@@ -269,10 +317,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', inputs.version) || github.ref }}
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
+      - name: Verify release version
+        shell: bash
+        env:
+          RELEASE_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
+        run: |
+          set -euo pipefail
+          version="${RELEASE_VERSION#v}"
+          node scripts/verify-release-version.js --version "$version"
       - name: Prepare Android signing key
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
@@ -284,12 +342,13 @@ jobs:
           printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/token-monitor-release.jks"
       - name: Build signed Android release
         env:
+          RELEASE_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           chmod +x android/gradlew
-          version="${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}"
+          version="${RELEASE_VERSION#v}"
           ./android/gradlew --no-daemon -p android assembleRelease \
             -PtokenMonitorVersion="$version" \
             -PandroidKeystorePath="$RUNNER_TEMP/token-monitor-release.jks" \
@@ -311,18 +370,42 @@ jobs:
     outputs:
       version: ${{ steps.meta.outputs.version }}
       image: ${{ steps.meta.outputs.image }}
+      release_type: ${{ steps.meta.outputs.release_type }}
+      prerelease: ${{ steps.meta.outputs.prerelease }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', inputs.version) || github.ref }}
 
       - name: Resolve version and image name
         id: meta
+        env:
+          RELEASE_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
+          RELEASE_TYPE: ${{ github.event_name == 'workflow_dispatch' && inputs.release_type || 'prerelease' }}
         run: |
-          raw="${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}"
+          raw="$RELEASE_VERSION"
           version="${raw#v}"
+          release_type="$RELEASE_TYPE"
           owner="$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')"
           image="ghcr.io/${owner}/token-monitor-hub"
+          node scripts/verify-release-version.js --version "$version"
           echo "version=${version}" >> "$GITHUB_OUTPUT"
           echo "image=${image}" >> "$GITHUB_OUTPUT"
+          echo "release_type=${release_type}" >> "$GITHUB_OUTPUT"
+          if [ "$release_type" = "release" ]; then
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          fi
+          {
+            echo 'tags<<EOF'
+            echo "${image}:${version}"
+            echo "${image}:v${version}"
+            if [ "$release_type" = "release" ]; then
+              echo "${image}:latest"
+            fi
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
           echo "Resolved image=${image} version=${version}"
 
       - uses: docker/setup-qemu-action@v3
@@ -341,10 +424,7 @@ jobs:
           file: ./Dockerfile
           push: true
           platforms: linux/amd64,linux/arm64
-          tags: |
-            ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.version }}
-            ${{ steps.meta.outputs.image }}:v${{ steps.meta.outputs.version }}
-            ${{ steps.meta.outputs.image }}:latest
+          tags: ${{ steps.meta.outputs.tags }}
           labels: |
             org.opencontainers.image.title=Token Monitor Hub
             org.opencontainers.image.description=Multi-device token usage hub with web dashboard
@@ -372,6 +452,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', inputs.version) || github.ref }}
       - name: Download Windows artifacts
         uses: actions/download-artifact@v4
         with:
@@ -416,10 +497,11 @@ jobs:
       - name: Resolve release version
         id: ver
         run: |
-          raw="${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}"
-          version="${raw#v}"
+          version="${{ needs.hub-image.outputs.version }}"
+          release_type="${{ needs.hub-image.outputs.release_type }}"
           echo "version=${version}" >> "$GITHUB_OUTPUT"
           echo "tag=v${version}" >> "$GITHUB_OUTPUT"
+          echo "release_type=${release_type}" >> "$GITHUB_OUTPUT"
       - name: Render release notes from commits
         run: |
           version="${{ steps.ver.outputs.version }}"
@@ -437,16 +519,23 @@ jobs:
             echo
             echo '```bash'
             echo "docker pull ${image}:${version}"
-            echo "docker pull ${image}:latest"
+            if [ "${{ steps.ver.outputs.release_type }}" = "release" ]; then
+              echo "docker pull ${image}:latest"
+            fi
             echo '```'
             echo
-            echo "Compose: set \`TOKEN_MONITOR_VERSION=${version}\` (or \`latest\`) then \`docker compose pull && docker compose up -d\`."
+            if [ "${{ steps.ver.outputs.release_type }}" = "release" ]; then
+              echo "Compose: set \`TOKEN_MONITOR_VERSION=${version}\` (or \`latest\`) then \`docker compose pull && docker compose up -d\`."
+            else
+              echo "Compose: set \`TOKEN_MONITOR_VERSION=${version}\` then \`docker compose pull && docker compose up -d\`; this prerelease does not move the \`latest\` tag."
+            fi
             echo "Or download \`Token-Monitor-Hub-Compose-${version}.zip\` from Assets for a minimal deploy bundle."
           } >> release-body.md
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.ver.outputs.tag }}
           name: Token Monitor ${{ steps.ver.outputs.tag }}
+          prerelease: ${{ needs.hub-image.outputs.prerelease }}
           files: |
             artifacts/*.exe
             artifacts/*.AppImage

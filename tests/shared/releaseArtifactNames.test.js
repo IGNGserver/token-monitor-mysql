@@ -57,6 +57,15 @@ test('Linux releases include both AppImage and Debian targets', () => {
   assert.match(workflow, /artifacts\/\*\.deb/);
 });
 
+test('release workflow defaults to prereleases and gates formal release metadata', () => {
+  const workflow = fs.readFileSync(path.join(__dirname, '../../.github/workflows/release.yml'), 'utf8');
+  assert.match(workflow, /type: choice[\s\S]*?default: prerelease/);
+  assert.match(workflow, /node scripts\/verify-release-version\.js/);
+  assert.match(workflow, /format\('v\{0\}', inputs\.version\)/);
+  assert.match(workflow, /prerelease: \$\{\{ needs\.hub-image\.outputs\.prerelease \}\}/);
+  assert.doesNotMatch(workflow, /\$\{\{ steps\.meta\.outputs\.image \}\}:latest/);
+});
+
 test('extracts updater artifact names from url and path fields', () => {
   const names = referencedArtifactNames([
     'files:',

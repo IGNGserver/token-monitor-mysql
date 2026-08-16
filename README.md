@@ -2,12 +2,12 @@
 
 Token Monitor Suite 是一个用来查看 AI 编程工具用量的完整工具套件。它包含桌面小组件、无头 agent、Hub、Android 客户端和 Cloudflare Worker 部署，能够显示 Token、费用、模型、会话和额度，也可以把多台电脑的数据汇总到一个 Hub，方便你在电脑或手机上查看。
 
-本仓库 fork 自 [Javis603/token-monitor](https://github.com/Javis603/token-monitor)，在保留原项目桌面采集能力的基础上持续扩展，并继续使用 [MIT License](LICENSE)。
+本项目基于 [Javis603/token-monitor](https://github.com/Javis603/token-monitor)，在保留上游桌面采集能力的基础上持续扩展，并继续使用 [MIT License](LICENSE)。
 
 
 ## 支持的工具（节选）
 
-完整工具表见 [README.zh-CN.md](README.zh-CN.md)。本 fork 额外支持 **Claude Desktop Local Agent / Cowork**（`claude-desktop`）。
+完整工具表见 [README.zh-CN.md](README.zh-CN.md)。本项目额外支持 **Claude Desktop Local Agent / Cowork**（`claude-desktop`）。
 
 | | 工具 | 数据源 | 用量 | 额度 | Session |
 |---|---|---|---|---|---|
@@ -22,7 +22,7 @@ Token Monitor Suite 是一个用来查看 AI 编程工具用量的完整工具�
 - **macOS 原生玻璃样式**：在设置 → 外观中，可选择 macOS 26 以前的原生毛玻璃，或 macOS 26 及以后的原生 Liquid Glass；旧系统会自动回退到毛玻璃。
 - **Linux**：Debian/Ubuntu 下载 `Token-Monitor-版本号.deb` 后运行 `sudo apt install ./Token-Monitor-版本号.deb`；其他发行版可下载 `Token-Monitor-版本号.AppImage`，赋予执行权限后运行。
 - **Android**：下载 `Token-Monitor-Android-版本号.apk`，在手机上安装。
-- **Hub（Docker）**：下载 `Token-Monitor-Hub-Compose-版本号.zip`，或直接拉取镜像 `ghcr.io/igngserver/token-monitor-hub:latest`（也可用指定版本标签）。
+- **Hub（Docker）**：下载 `Token-Monitor-Hub-Compose-版本号.zip`，或直接拉取正式版镜像 `ghcr.io/igngserver/token-monitor-hub:latest`；预发布版本请使用指定版本标签。
 
 安装客户端后仍需要先部署一个 Hub，再在桌面小组件或 Android 应用中填写 Hub 地址和共享密钥。没有 Hub 时，桌面小组件也可以选择“仅本机”模式使用。
 

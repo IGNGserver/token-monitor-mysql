@@ -12,6 +12,8 @@ const {
   extractReleaseNotes,
   mergeLatestReleaseMetadata,
   parseLatestReleasePayload,
+  parseProjectReleasePayload,
+  parseReleaseListPayload,
   parseTag,
   shouldDownloadAutomaticAppUpdate,
   shouldSkipAppUpdateCheck
@@ -302,7 +304,7 @@ test('release template exposes marked English and Chinese app summaries', () => 
   assert.ok(notes.zh.every((group) => group.items.length > 0));
   assert.ok(notes.en.every((group) => group.items.every((item) => !/\(#\d/.test(item))));
   assert.ok(notes.zh.every((group) => group.items.every((item) => !/（#\d/.test(item))));
-  // PR trailers are optional for fork releases that do not cite GitHub PRs; when present
+  // PR trailers are optional for project releases that do not cite GitHub PRs; when present
   // they must use the bilingual trailer forms so extractReleaseNotes can strip them.
   if (/\(#\d/.test(template)) assert.match(template, /\(#\d+(?:, #\d+)*\)/);
   if (/（#\d/.test(template)) assert.match(template, /（#\d+(?:、#\d+)*）/);
@@ -378,4 +380,27 @@ test('parseLatestReleasePayload rejects payloads without an https html_url', () 
   assert.equal(parseLatestReleasePayload({
     tag_name: 'v0.1.3'
   }), null);
+});
+
+test('parseReleaseListPayload selects the newest project revision and ignores other release forms', () => {
+  const release = (tag, extra = {}) => ({
+    tag_name: tag,
+    html_url: `https://github.com/IGNGserver/token-monitor-suite/releases/tag/${tag}`,
+    ...extra
+  });
+  const releases = parseReleaseListPayload([
+    release('v0.37.23-rev.1'),
+    release('v0.37.23-rev.3', { prerelease: true }),
+    release('v0.37.23-rev.2', { prerelease: false }),
+    release('v0.37.23'),
+    release('v0.37.23.1'),
+    release('v0.37.23-rev.4', { draft: true })
+  ]);
+
+  assert.deepEqual(releases.map(({ version }) => version), [
+    '0.37.23-rev.3',
+    '0.37.23-rev.2',
+    '0.37.23-rev.1'
+  ]);
+  assert.equal(parseProjectReleasePayload(release('v0.37.23')), null);
 });
