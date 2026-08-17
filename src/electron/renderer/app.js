@@ -13,6 +13,7 @@ const statsRenderSchedulerApi = window.TokenMonitorStatsRenderScheduler;
 const tokenRateApi = window.TokenMonitorTokenRate;
 const { tokenRatePerSecond, tokenBurnPerMinute } = tokenRateApi;
 const reducedMotionMedia = window.matchMedia?.('(prefers-reduced-motion: reduce)');
+const systemDarkThemeMedia = window.matchMedia?.('(prefers-color-scheme: dark)');
 const clientsWithIcon = new Set([
   'claude', 'codex', 'gemini', 'cursor', 'opencode', 'openclaw', 'hermes', 'antigravity', 'cline', 'kimi', 'qwen', 'grok', 'copilot', 'pi', 'zed', 'kilocode', 'commandcode', 'micode', 'zcode', 'kiro', 'codebuddy', 'workbuddy', 'proma', 'qodercn', 'reasonix', 'claude-desktop',
   'xai', 'openrouter', 'deepseek', 'meta', 'mistral', 'qwen', 'moonshot', 'zai', 'zaiteam', 'cohere', 'xiaomi', 'mimo', 'minimax', 'doubao', 'volcengine', 'qoder', 'ollama', 'thirdparty'
@@ -52,8 +53,8 @@ function iconKindFor(rowData, breakdown) {
 const KNOWN_CLIENTS = [
   { id: 'claude', label: 'Claude Code' },
   { id: 'codex', label: 'Codex' },
+  { id: 'hermes', label: 'Hermes' },
   { id: 'opencode', label: 'OpenCode' },
-  { id: 'hermes', label: 'Hermes Agent' },
   { id: 'openclaw', label: 'OpenClaw' },
   { id: 'cursor', label: 'Cursor' },
   { id: 'antigravity', label: 'Antigravity' },
@@ -79,25 +80,23 @@ const KNOWN_CLIENTS = [
 const LIMIT_PROVIDERS = [
   { id: 'claude', label: 'Claude', settingsLabel: 'Claude Code' },
   { id: 'codex', label: 'Codex' },
-  { id: 'opencode', label: 'OpenCode' },
   { id: 'cursor', label: 'Cursor' },
   { id: 'antigravity', label: 'Antigravity' },
-  { id: 'kimi', label: 'Kimi' },
+  { id: 'opencode', label: 'OpenCode' },
+  { id: 'openrouter', label: 'OpenRouter' },
+  { id: 'deepseek', label: 'DeepSeek' },
+  { id: 'minimax', label: 'Minimax' },
+  { id: 'mimo', label: 'MiMo' },
   { id: 'grok', label: 'Grok' },
   { id: 'copilot', label: 'GitHub Copilot' },
-  { id: 'commandcode', label: 'Command Code' },
-  { id: 'mimo', label: 'MiMo' },
+  { id: 'kiro', label: 'Kiro' },
   { id: 'zai', label: 'GLM' },
   { id: 'zaiteam', label: 'GLM Team' },
-  { id: 'kiro', label: 'Kiro' },
-  { id: 'qoder', label: 'Qoder' },
-  { id: 'commandcode', label: 'Command Code' },
-  { id: 'kimi', label: 'Kimi' },
-  { id: 'deepseek', label: 'DeepSeek' },
-  { id: 'openrouter', label: 'OpenRouter' },
-  { id: 'minimax', label: 'Minimax' },
   { id: 'volcengine', label: 'Volcengine' },
+  { id: 'qoder', label: 'Qoder' },
+  { id: 'kimi', label: 'Kimi' },
   { id: 'ollama', label: 'Ollama' },
+  { id: 'commandcode', label: 'Command Code' },
   { id: 'thirdparty', label: 'Third-party APIs' }
 ];
 const LIMIT_PROVIDER_ACCOUNT_GROUP_IDS = {
@@ -297,7 +296,7 @@ const TOKEN_MONITOR_ISSUES_URL = `${TOKEN_MONITOR_REPOSITORY_URL}/issues/new/cho
 const TOKEN_MONITOR_WEBSITE_URL = 'https://javis-ai.com/token-monitor/';
 const TOKEN_MONITOR_WSL_SQLITE_GUIDE_URL = `${TOKEN_MONITOR_REPOSITORY_URL}/blob/main/docs/wsl-sqlite-setup.md`;
 const serviceStatusProviderPreferencesApi = window.TokenMonitorServiceStatusProviderPreferences;
-const SETTINGS_SECTION_IDS = ['general', 'main', 'window', 'appearance', 'tools', 'limits', 'subscriptions', 'sync'];
+const SETTINGS_SECTION_IDS = ['general', 'main', 'window', 'appearance', 'tools', 'limits', 'accounts', 'subscriptions', 'sync'];
 const REFRESH_BUTTON_FEEDBACK_MS = 700;
 const CODEX_PENDING_ACTIVE_GRACE_MS = 30000;
 const initialFloatingBubble = window.__TOKEN_MONITOR_INITIAL_FLOATING_BUBBLE__ || { collapsed: false, side: null };
@@ -381,6 +380,7 @@ Object.assign(els, {
   customRangeClear: document.getElementById('customRangeClear')
 });
 Object.assign(els, {
+  accountsSettingsSummary: document.getElementById('accountsSettingsSummary'),
   appTitleMark: document.querySelector('.app-title-mark'),
   viewBackRow: document.getElementById('viewBackRow'),
   backHomeButton: document.getElementById('backHomeButton'),
@@ -749,6 +749,28 @@ function settingsSectionSummary(section) {
       enabled: enabledLimitProviderSet().size,
       refresh: limitsRefreshSummaryLabel(state.settings)
     });
+  }
+  if (section === 'accounts') {
+    const linked = [
+      (state.settings?.codexManagedAccounts || []).length > 0,
+      Boolean(state.cursorAccount.status?.loggedIn) && !state.cursorAccount.status?.expired,
+      (state.opencodeProfileCount || 0) > 0,
+      (state.openrouterProfileCount || 0) > 0,
+      externalProviderAccountLinked('claude'),
+      deepseekAccountLinked(),
+      minimaxAccountLinked(),
+      externalProviderAccountLinked('zai'),
+      externalProviderAccountLinked('zaiteam'),
+      externalProviderAccountLinked('volcengine'),
+      externalProviderAccountLinked('qoder'),
+      externalProviderAccountLinked('commandcode'),
+      externalProviderAccountLinked('kimi'),
+      externalProviderAccountLinked('ollama'),
+      (state.settings?.mimoManagedAccounts || []).length > 0,
+      copilotAccountLinked(),
+      (state.thirdPartyProfileCount || 0) > 0
+    ].filter(Boolean).length;
+    return t('settings.summary.accounts', { linked, total: 17 });
   }
   if (section === 'subscriptions') {
     const list = subscriptionList();
@@ -1131,7 +1153,7 @@ function renderAppUpdateNotes(s) {
   if (s.hasUpdate && state.appUpdateNotesPresentedVersion !== version) {
     // The disclosure may have just changed from display:none. Commit its
     // collapsed grid once so the first automatic reveal can transition too.
-    els.appUpdateNotesDetails.getBoundingClientRect();
+    els.appUpdateNotesDetails?.getBoundingClientRect();
     setSettingsAccordionExpanded(els.appUpdateNotes, els.appUpdateNotesToggle, els.appUpdateNotesDetails, true);
     state.appUpdateNotesPresentedVersion = version;
   }
@@ -7687,6 +7709,12 @@ function applyAppearanceSettings(settings) {
   const systemGlassDisabled = settings?.systemGlass === false;
   const isWindows = navigator.userAgent.toLowerCase().includes('windows');
   const windowsGlass = windowsGlassApi.appearanceState(settings, { isWindows });
+  const windowsBackdropUnsupported = isWindows
+    && new URLSearchParams(window.location.search).get('windowsBackdropUnsupported') === '1';
+  const nativeWindowsBackdropEnabled = isWindows
+    && !systemGlassDisabled
+    && !windowsBackdropUnsupported
+    && windowsGlass.showBackdropControl;
   document.documentElement.style.setProperty('--glass-alpha', opacity.toFixed(2));
   document.documentElement.style.setProperty('--line-alpha', (0.1 + depth * 0.09).toFixed(3));
   document.documentElement.style.setProperty('--line-strong-alpha', (0.18 + depth * 0.14).toFixed(3));
@@ -7699,11 +7727,14 @@ function applyAppearanceSettings(settings) {
   if (els.windowsBackdropNote) {
     const accentFallback = windowsGlass.showAccentNote
       && new URLSearchParams(window.location.search).get('windowsBackdropFallback') === '1';
+    const showMicaNote = windowsGlass.showMicaNote === true;
     els.windowsBackdropNote.textContent = t(accentFallback
       ? 'settings.appearance.windowsBackdropFallback'
-      : 'settings.appearance.windowsBackdropNote');
+      : showMicaNote
+        ? 'settings.appearance.windowsBackdropMicaNote'
+        : 'settings.appearance.windowsBackdropNote');
     els.windowsBackdropNote.classList.toggle('error', accentFallback);
-    els.windowsBackdropNote.classList.toggle('hidden', !windowsGlass.showAccentNote);
+    els.windowsBackdropNote.classList.toggle('hidden', !windowsGlass.showAccentNote && !showMicaNote);
   }
   const isMac = state.appInfo?.platform === 'darwin';
   const macosGlass = macosGlassApi.appearanceState(settings, {
@@ -7717,12 +7748,18 @@ function applyAppearanceSettings(settings) {
     els.macosGlassNote.textContent = t('settings.appearance.macosGlassLiquidNote');
     els.macosGlassNote.classList.toggle('hidden', !macosGlass.showLiquidNote);
   }
-  document.documentElement.dataset.macosGlass = macosGlass.effectiveStyle;
+  if (macosGlass.showStyleControl) document.documentElement.dataset.macosGlass = macosGlass.effectiveStyle;
+  else delete document.documentElement.dataset.macosGlass;
   applyReduceMotionPreference(settings?.reduceMotion);
   applyFontSettings(settings);
   // Only full settings objects carry themeColors; glass/zoom preview patches
   // omit it, so we must not wipe theme overrides mid-slider-drag.
-  if (settings && 'themeColors' in settings) applyThemeColors(settings.themeColors);
+  if (settings && 'themeColors' in settings) {
+    applyThemeColors(settings.themeColors, {
+      nativeBackdrop: nativeWindowsBackdropEnabled,
+      systemDark: systemDarkThemeMedia?.matches === true
+    });
+  }
   els.liveDot.style.display = (settings?.showLiveDot !== false) ? '' : 'none';
   els.shell.classList.toggle('desktop-mode', settings?.windowBehavior === 'desktop');
   els.shell.classList.toggle('title-icon-only', settings?.titleIconOnly === true);
@@ -7745,7 +7782,16 @@ function applyAppearanceSettings(settings) {
   
   document.documentElement.classList.toggle('is-windows', isWindows);
   document.body.classList.toggle('is-windows', isWindows);
+  document.documentElement.classList.toggle('is-macos', isMac);
   document.body.classList.toggle('is-macos', isMac);
+
+  if (nativeWindowsBackdropEnabled) {
+    document.documentElement.dataset.windowsBackdrop = windowsGlass.backdropMode;
+    document.body.dataset.windowsBackdrop = windowsGlass.backdropMode;
+  } else {
+    delete document.documentElement.dataset.windowsBackdrop;
+    delete document.body.dataset.windowsBackdrop;
+  }
   
   document.documentElement.classList.toggle('is-mac-legacy', isMacLegacyRadius);
   document.body.classList.toggle('is-mac-legacy', isMacLegacyRadius);
@@ -7783,14 +7829,19 @@ function matchingThemePresetId(overrides) {
 }
 
 function applyThemeColors(overrides) {
+  const { nativeBackdrop = false, systemDark = false } = arguments[1] || {};
   appliedThemeOverrides = themePresetsApi.normalizeOverrides(overrides, themePresetsApi.INTERFACE_COLOR_KEYS);
   const root = document.documentElement.style;
-  for (const { name, value } of themePresetsApi.themeCssVarEntries(appliedThemeOverrides)) {
+  for (const { name, value } of themePresetsApi.themeCssVarEntries(appliedThemeOverrides, { nativeBackdrop, systemDark })) {
     if (value) root.setProperty(name, value);
     else root.removeProperty(name);
   }
   renderFloatingBubbleContent();
 }
+
+systemDarkThemeMedia?.addEventListener?.('change', () => {
+  if (state.settings) applyAppearanceSettings(state.settings);
+});
 
 function applyVendorColorOverrides(overrides) {
   const merged = themePresetsApi.mergeVendorColors(BRAND_VENDOR_COLORS, overrides);
@@ -8700,6 +8751,7 @@ function syncSettingsForm() {
   renderSubscriptionSettings();
   const showLimitUsed = state.settings.showLimitUsed ? 'used' : 'remaining';
   for (const input of els.showLimitUsedInputs || []) input.checked = input.value === showLimitUsed;
+  if (els.showLimitUsedInput) els.showLimitUsedInput.value = showLimitUsed;
   if (els.syncUploadIntervalInput) {
     const value = Number(state.settings.syncUploadIntervalMs);
     const allowed = Array.from(els.syncUploadIntervalInput.options, (option) => Number(option.value));
@@ -8760,10 +8812,15 @@ function syncSettingsForm() {
   els.floatingBubbleInput.checked = state.settings.floatingBubbleEnabled === true;
   const floatingBubbleTrigger = state.settings.floatingBubbleTrigger === 'hover' ? 'hover' : 'click';
   for (const input of els.floatingBubbleTriggerInputs || []) input.checked = input.value === floatingBubbleTrigger;
+  if (els.floatingBubbleTriggerInput) els.floatingBubbleTriggerInput.value = floatingBubbleTrigger;
   if (els.floatingBubbleContentInput) els.floatingBubbleContentInput.value = normalizeTrayContentValue(state.settings.floatingBubbleContent);
   els.floatingBubbleOptions?.classList.toggle('hidden', state.settings.floatingBubbleEnabled !== true);
   const showTrayIcon = state.settings.showTrayIcon !== false;
   if (els.showTrayIconInput) els.showTrayIconInput.checked = showTrayIcon;
+  if (els.closeToTrayInput) {
+    els.closeToTrayInput.checked = Boolean(state.settings.closeToTray);
+    els.closeToTrayInput.disabled = !showTrayIcon;
+  }
   els.trayModeInput.disabled = !showTrayIcon;
   els.trayModeInput.checked = showTrayIcon && Boolean(state.settings.trayMode);
   els.trayContentInput.value = ['tokens', 'cost', 'both', 'tokensAll', 'costAll', 'bothAll', 'limitsAllSessions', 'bars', 'barsSession', 'barsWeekly', 'barsAllSessions', 'icon', 'custom'].includes(state.settings.trayContent) ? state.settings.trayContent : 'tokens';
@@ -8778,6 +8835,7 @@ function syncSettingsForm() {
     els.startAtLoginInput.disabled = !state.appInfo?.loginItemSupported;
     els.startAtLoginInput.checked = Boolean(state.settings.startAtLogin && state.appInfo?.loginItemSupported);
   }
+  if (els.startInTrayInput) els.startInTrayInput.checked = Boolean(state.settings.startInTray);
   if (els.startupNote) {
     els.startupNote.textContent = !state.appInfo?.loginItemSupported
       ? t('settings.startup.available')
@@ -10538,8 +10596,10 @@ function renderLimitProviderCheckboxesNow() {
     els.limitProviderCheckboxes.appendChild(row);
     // `moveBefore()` preserves focus and edit state while reparenting. Its
     // destination must already be connected, so the row is mounted first.
-    moveLimitProviderLiveNode(actions, accountStatus, disclosureIcon);
-    moveLimitProviderLiveNode(optionsInner, accountGroup);
+    if (accountGroup) {
+      moveLimitProviderLiveNode(actions, accountStatus, disclosureIcon);
+      moveLimitProviderLiveNode(optionsInner, accountGroup);
+    }
     // OpenCode's one setting is an off-by-default fallback estimate. Rendered by
     // the shared path it lands above the account list, reading as the first
     // thing to set up; it belongs below the accounts, collapsed. Reparented
@@ -10596,7 +10656,11 @@ function moveOpenCodeLocalFallbackSetting() {
 
 function limitProviderAccountGroup(providerId) {
   const groupId = LIMIT_PROVIDER_ACCOUNT_GROUP_IDS[providerId];
-  return groupId ? document.getElementById(groupId) : null;
+  const group = groupId ? document.getElementById(groupId) : null;
+  // Account panels belong to the legacy Accounts section. Only return one when
+  // an embedding view explicitly owns the node, so the normal settings render
+  // does not silently reparent the existing UI into AI Tool Limits rows.
+  return group?.closest(`#limitProviderOptions-${providerId}`) ? group : null;
 }
 
 function limitProviderAccountStatus(providerId) {
@@ -11465,6 +11529,7 @@ for (const input of els.showLimitUsedInputs || []) {
     if (input.checked) await saveSettings({ showLimitUsed: input.value === 'used' });
   });
 }
+els.showLimitUsedInput?.addEventListener('change', () => saveSettings({ showLimitUsed: els.showLimitUsedInput.value === 'used' }));
 els.syncUploadIntervalInput?.addEventListener('change', async () => {
   await saveSettings({ syncUploadIntervalMs: Number(els.syncUploadIntervalInput.value) });
 });
@@ -11562,7 +11627,11 @@ els.themeCodeInput?.addEventListener('keydown', (event) => {
 });
 els.themeCodeInput?.addEventListener('input', invalidateThemeCodeFeedback);
 function setSettingsAccordionExpanded(group, toggle, details, expanded) {
-  if (!group || !toggle || !details) return;
+  if (!group) return;
+  if (!toggle || !details) {
+    if (String(group.tagName || '').toLowerCase() === 'details') group.open = Boolean(expanded);
+    return;
+  }
   const open = Boolean(expanded);
   toggle.setAttribute('aria-expanded', String(open));
   details.classList.toggle('hidden', !open);
@@ -11626,6 +11695,7 @@ for (const input of els.floatingBubbleTriggerInputs || []) {
     if (input.checked) void saveSettings({ floatingBubbleTrigger: input.value });
   });
 }
+els.floatingBubbleTriggerInput?.addEventListener('change', () => saveSettings({ floatingBubbleTrigger: els.floatingBubbleTriggerInput.value }));
 els.floatingBubbleContentInput?.addEventListener('change', async () => {
   state.settings.floatingBubbleContent = els.floatingBubbleContentInput.value;
   refreshTrayComposers();
@@ -11637,6 +11707,10 @@ els.showTrayIconInput?.addEventListener('change', () => {
   state.settings.showTrayIcon = showTrayIcon;
   els.trayModeInput.disabled = !showTrayIcon;
   if (!showTrayIcon) els.trayModeInput.checked = false;
+  if (els.closeToTrayInput) {
+    els.closeToTrayInput.disabled = !showTrayIcon;
+    if (!showTrayIcon) els.closeToTrayInput.checked = false;
+  }
   els.trayContentInput.disabled = !showTrayIcon;
   els.showTrayProviderBadgeInput.disabled = !showTrayIcon;
   els.trayIconOptions?.classList.toggle('hidden', !showTrayIcon);
@@ -11661,6 +11735,8 @@ els.showTrayProviderBadgeInput.addEventListener('change', () => {
 els.windowToggleShortcutValue?.addEventListener('click', startWindowShortcutRecording);
 els.windowToggleShortcutClearButton?.addEventListener('click', () => setWindowToggleShortcut('').catch(() => {}));
 els.startAtLoginInput?.addEventListener('change', () => saveSettings({ startAtLogin: els.startAtLoginInput.checked }));
+els.startInTrayInput?.addEventListener('change', () => saveSettings({ startInTray: els.startInTrayInput.checked }));
+els.closeToTrayInput?.addEventListener('change', () => saveSettings({ closeToTray: els.closeToTrayInput.checked }));
 els.automaticAppUpdatesInput?.addEventListener('change', () => saveSettings({ automaticAppUpdates: els.automaticAppUpdatesInput.checked }));
 els.glassInput.addEventListener('change', saveAppearanceFromControls);
 els.blurInput.addEventListener('change', saveAppearanceFromControls);
@@ -13106,7 +13182,7 @@ function setAccountGroupExpanded(prefix, expanded, stateKey) {
 }
 
 function syncLimitProviderAccountExpansion(providerId, expanded) {
-  if (!LIMIT_PROVIDER_ACCOUNT_GROUP_IDS[providerId]) return;
+  if (!limitProviderAccountGroup(providerId)) return;
   if (expanded) {
     setLimitProviderSettingsExpanded(providerId);
   } else if (state.limitProviderSettingsExpanded === providerId) {

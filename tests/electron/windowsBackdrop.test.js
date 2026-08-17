@@ -23,12 +23,14 @@ const {
   normalizeWindowsBackdropMode: normalizeRendererMode
 } = require('../../src/electron/renderer/windowsGlass');
 
-test('Windows backdrop modes fail closed to documented Acrylic', () => {
+test('Windows backdrop modes preserve legacy Mica and fail unknown values to Acrylic', () => {
   assert.equal(normalizeRendererMode, normalizeWindowsBackdropMode);
-  for (const value of [undefined, null, '', 'mica', 'ACRYLIC']) {
+  for (const value of [undefined, null, '', 'ACRYLIC']) {
     assert.equal(normalizeWindowsBackdropMode(value), 'acrylic');
     assert.equal(normalizeRendererMode(value), 'acrylic');
   }
+  assert.equal(normalizeWindowsBackdropMode('mica'), 'mica');
+  assert.equal(normalizeRendererMode('mica'), 'mica');
   assert.equal(normalizeWindowsBackdropMode('accent'), 'accent');
   assert.equal(normalizeRendererMode('accent'), 'accent');
 });
@@ -37,21 +39,25 @@ test('Windows glass appearance state covers platform and system-glass boundaries
   assert.deepEqual(appearanceState({}, { isWindows: false }), {
     showBackdropControl: false,
     showAccentNote: false,
+    showMicaNote: false,
     backdropMode: 'acrylic'
   });
   assert.deepEqual(appearanceState({ systemGlass: false, windowsBackdrop: 'accent' }, { isWindows: true }), {
     showBackdropControl: false,
     showAccentNote: false,
+    showMicaNote: false,
     backdropMode: 'accent'
   });
   assert.deepEqual(appearanceState({ systemGlass: true, windowsBackdrop: 'accent' }, { isWindows: true }), {
     showBackdropControl: true,
     showAccentNote: true,
+    showMicaNote: false,
     backdropMode: 'accent'
   });
   assert.deepEqual(appearanceState({ systemGlass: true, windowsBackdrop: 'acrylic' }, { isWindows: true }), {
     showBackdropControl: true,
     showAccentNote: false,
+    showMicaNote: false,
     backdropMode: 'acrylic'
   });
 });
@@ -156,10 +162,10 @@ test('native Accent adapter rejects failed DWM setup before applying the Accent 
   });
 });
 
-test('main process selects Accent at creation and falls back to Acrylic on failure', () => {
+test('main process preserves the selected material and falls back to Acrylic on Accent failure', () => {
   assert.match(main, /windowsBackdrop: 'acrylic',/);
   assert.match(main, /windowsBackdrop: normalizeWindowsBackdropMode\(patch\.windowsBackdrop \?\? settings\.windowsBackdrop\)/);
-  assert.match(main, /backgroundMaterial: 'acrylic'/);
+  assert.match(main, /windowsElectronBackgroundMaterial\(windowsBackdrop\)/);
   assert.match(main, /windowsAccent && !applyWindowsAccentBlur\(win\)/);
   assert.match(main, /win\.setBackgroundMaterial\('acrylic'\)/);
   assert.match(main, /windowsBackdropFallback: '1'/);
@@ -167,23 +173,25 @@ test('main process selects Accent at creation and falls back to Acrylic on failu
   assert.doesNotMatch(main, /windowsLayeredBlur/);
 });
 
-test('Windows exposes an accessible Acrylic and experimental Accent selector', () => {
+test('Windows exposes the legacy Acrylic/Mica selector and experimental Accent option', () => {
   assert.match(html, /role="radiogroup" aria-labelledby="windowGlassEffectLabel"/);
   assert.match(html, /input type="radio" name="systemGlassOption" value="system"/);
   assert.match(html, /input type="radio" name="systemGlassOption" value="off"/);
   assert.match(html, /id="windowsBackdropRow" class="settings-item hidden"/);
   assert.match(html, /id="windowsBackdropInput"/);
   assert.match(html, /option value="acrylic"/);
+  assert.match(html, /option value="mica"/);
   assert.match(html, /option value="accent"/);
   assert.match(html, /data-i18n="settings\.appearance\.windowsBackdropNote"/);
   assert.match(html, /id="windowsBackdropNote"/);
   assert.match(html, /<script src="\.\.\/windowsBackdropMode\.js"><\/script>[\s\S]*<script src="windowsGlass\.js"><\/script>[\s\S]*<script src="app\.js"><\/script>/);
   assert.match(app, /windowsBackdropRow\?\.classList\.toggle\('hidden', !windowsGlass\.showBackdropControl\)/);
-  assert.match(app, /classList\.toggle\('hidden', !windowsGlass\.showAccentNote\)/);
+  assert.match(app, /classList\.toggle\('hidden', !windowsGlass\.showAccentNote && !showMicaNote\)/);
   assert.doesNotMatch(app, /backdropControlDisabled/);
   assert.equal((i18n.match(/'settings\.appearance\.glassEffectSystem':/g) || []).length, 5);
   assert.equal((i18n.match(/'settings\.appearance\.glassEffectTransparent':/g) || []).length, 5);
   assert.equal((i18n.match(/'settings\.appearance\.windowsBackdrop':/g) || []).length, 5);
+  assert.equal((i18n.match(/'settings\.appearance\.windowsBackdropMica':/g) || []).length, 5);
   assert.equal((i18n.match(/'settings\.appearance\.windowsBackdropAccent':/g) || []).length, 5);
   assert.equal((i18n.match(/'settings\.appearance\.windowsBackdropFallback':/g) || []).length, 5);
   assert.match(i18n, /Keeps the background translucent and blurred, even when the window is not focused\./);

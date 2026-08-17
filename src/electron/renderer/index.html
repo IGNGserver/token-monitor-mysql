@@ -11,7 +11,7 @@
     <main class="shell">
       <header class="titlebar">
         <div>
-          <div class="app-title"><span class="app-title-text">Token Monitor</span><span class="app-title-mark" aria-hidden="true">Σ</span><span id="liveDot" class="live-dot" title="Stream offline"></span><span id="tokenRateReveal" class="token-rate-reveal" aria-hidden="true"></span><span class="app-title-measure" aria-hidden="true">Token Monitor</span></div>
+          <div class="app-title"><span class="app-title-text">Token Monitor</span><span class="app-title-mark" aria-hidden="true"><svg class="app-title-mark-svg" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor"><path d="M4 16 A 8.5 8.5 0 1 1 17.5 20" stroke-width="2.6" stroke-linecap="round"/><circle cx="4" cy="16" r="1.5" fill="currentColor" stroke="none"/><path d="M9 9.5 h7 M12.5 9.5 v6 c0 1.8 1.2 2.8 2.8 2.8" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span id="liveDot" class="live-dot" title="Stream offline"></span><span id="tokenRateReveal" class="token-rate-reveal" aria-hidden="true"></span><span class="app-title-measure" aria-hidden="true">Token Monitor</span></div>
           <div id="status" class="status">Starting</div>
         </div>
         <div class="title-controls">
@@ -65,37 +65,7 @@
                 <input id="startAtLoginInput" type="checkbox" />
                 <span id="startupNote" class="settings-note settings-item-desc" data-i18n="settings.startup.available">Available in packaged builds. On Linux, run the AppImage build to enable.</span>
               </label>
-            </div>
-            <div class="settings-subgroup maintenance-section app-update-settings">
-              <div class="settings-group-header maintenance-header"><span data-i18n="settings.appUpdate.title">App Updates</span><span data-i18n="settings.appUpdate.source">GitHub releases</span></div>
-              <label id="automaticAppUpdatesRow" class="checkbox-label settings-item">
-                <span class="settings-item-text">
-                  <span class="settings-item-title" data-i18n="settings.appUpdate.automatic">Download updates automatically</span>
-                </span>
-                <input id="automaticAppUpdatesInput" type="checkbox" aria-describedby="automaticAppUpdatesNote" />
-                <span id="automaticAppUpdatesNote" class="settings-note settings-item-desc" data-i18n="settings.appUpdate.automaticDescription">Download new versions in the background. You'll be prompted to restart when ready.</span>
-              </label>
-              <div class="maintenance-version-grid app-update-version-grid">
-                <div class="maintenance-version-item"><span data-i18n="settings.appUpdate.installed">Installed</span><strong id="appUpdateInstalled">—</strong></div>
-                <div class="maintenance-version-item"><span data-i18n="settings.appUpdate.latest">Latest</span><strong id="appUpdateLatest" data-i18n="settings.common.notChecked">Not checked</strong></div>
-              </div>
-              <div class="settings-actions maintenance-actions">
-                <button id="appUpdateCheckButton" type="button" data-i18n="settings.appUpdate.check">Check for updates</button>
-                <button id="appUpdateViewReleaseButton" type="button" class="hidden" data-i18n="settings.appUpdate.viewRelease">View release</button>
-              </div>
-              <div id="appUpdateNotes" class="app-update-notes hidden">
-                <button id="appUpdateNotesToggle" class="app-update-notes-toggle" type="button" aria-expanded="false" aria-controls="appUpdateNotesDetails">
-                  <span class="settings-section-disclosure app-update-notes-disclosure" aria-hidden="true"></span>
-                  <span id="appUpdateNotesTitle">What's new</span>
-                </button>
-                <div id="appUpdateNotesDetails" class="app-update-notes-details hidden" inert>
-                  <div class="app-update-notes-content">
-                    <div id="appUpdateNotesBody" class="app-update-notes-body"></div>
-                    <button id="appUpdateReleaseNotesButton" type="button" class="inline-link" data-i18n="settings.appUpdate.viewFullRelease">View full release</button>
-                  </div>
-                </div>
-              </div>
-              <div id="appUpdateMessage" class="tokscale-message"></div>
+              <label class="checkbox-label settings-item"><span class="settings-item-text"><span class="settings-item-title" data-i18n="settings.startup.startInTray">Start in system tray</span></span><input id="startInTrayInput" type="checkbox" /></label>
             </div>
             <div class="settings-subgroup">
               <div class="settings-group-header"><span data-i18n="settings.integrations.title">Integrations</span></div>
@@ -107,38 +77,50 @@
                 <span id="discordRpcDescription" class="settings-item-desc" data-i18n="settings.integrations.discordDescription">Show today's tokens, cost, and most-used AI tool in your Discord activity.</span>
               </label>
             </div>
-            <div id="advancedSettingsGroup" class="settings-subgroup advanced-settings">
-              <button id="advancedSettingsToggle" class="settings-group-header advanced-settings-toggle" type="button" aria-expanded="false" aria-controls="advancedSettingsDetails">
-                <span data-i18n="settings.advanced.title">Advanced</span>
-                <span class="advanced-settings-meta">
-                  <span id="advancedSettingsSummary" class="settings-subgroup-summary" data-i18n="settings.advanced.summary">Maintenance &amp; config</span>
-                  <span class="settings-section-disclosure" aria-hidden="true"></span>
+            <div class="settings-subgroup">
+              <div class="settings-group-header"><span data-i18n="settings.appUpdate.title">App Updates</span><span data-i18n="settings.appUpdate.source">GitHub releases</span></div>
+              <label id="automaticAppUpdatesRow" class="checkbox-label settings-item">
+                <span class="settings-item-text">
+                  <span class="settings-item-title" data-i18n="settings.appUpdate.automatic">Download updates automatically</span>
                 </span>
-              </button>
-              <div id="advancedSettingsDetails" class="advanced-settings-details hidden" inert>
-                <div class="advanced-settings-body">
-                  <div id="tokscaleGroup" class="settings-group advanced-settings-block maintenance-panel">
-                    <div class="settings-group-header maintenance-header"><span>Tokscale</span><span data-i18n="settings.tokscale.source">Data engine from npm</span></div>
-                    <div class="maintenance-version-grid tokscale-version-grid">
-                      <div class="maintenance-version-item"><span data-i18n="settings.tokscale.installed">Installed</span><strong id="tokscaleInstalled" data-i18n="settings.common.checking">Checking...</strong></div>
-                      <div class="maintenance-version-item"><span><span data-i18n="settings.tokscale.npm">On npm</span> <small data-i18n="settings.tokscale.latestTag">(latest tag)</small></span><strong id="tokscaleNpm" data-i18n="settings.common.notChecked">Not checked</strong></div>
-                      <div id="tokscaleBundledLine" class="maintenance-version-item"><span data-i18n="settings.tokscale.bundled">Bundled</span><strong id="tokscaleBundled">—</strong></div>
-                    </div>
-                    <p class="settings-note"><span data-i18n="settings.tokscale.noteBefore">Token Monitor uses tokscale (MIT, open-source) to read token data.</span> <button id="openTokscaleLinkButton" type="button" class="inline-link" data-i18n="settings.tokscale.learnMore">Learn more</button></p>
-                    <div id="tokscaleMessage" class="tokscale-message"></div>
-                    <div class="settings-actions maintenance-actions">
-                      <button id="checkTokscaleButton" type="button" data-i18n="settings.tokscale.checkNpm">Check npm</button>
-                      <button id="downloadTokscaleButton" type="button" class="hidden" data-i18n="settings.tokscale.downloadNpm">Download from npm</button>
-                      <button id="resetTokscaleButton" type="button" class="hidden" data-i18n="settings.tokscale.resetBundled">Reset to bundled</button>
-                    </div>
-                  </div>
-                  <div class="settings-group advanced-settings-block advanced-config-row">
-                    <p class="settings-note"><span data-i18n="settings.advanced.note">Additional options are available in</span> <code>settings.json</code>.</p>
-                    <div class="settings-actions">
-                      <button id="openConfigButton" type="button" data-i18n="settings.advanced.openConfig">Open Config</button>
-                    </div>
-                  </div>
-                </div>
+                <input id="automaticAppUpdatesInput" type="checkbox" aria-describedby="automaticAppUpdatesNote" />
+                <span id="automaticAppUpdatesNote" class="settings-note settings-item-desc" data-i18n="settings.appUpdate.automaticDescription">Download new versions in the background. You'll be prompted to restart when ready.</span>
+              </label>
+              <div class="tokscale-lines">
+                <div><span data-i18n="settings.appUpdate.installed">Installed</span><strong id="appUpdateInstalled">—</strong></div>
+                <div><span data-i18n="settings.appUpdate.latest">Latest</span><strong id="appUpdateLatest" data-i18n="settings.common.notChecked">Not checked</strong></div>
+              </div>
+              <div class="settings-actions">
+                <button id="appUpdateCheckButton" type="button" data-i18n="settings.appUpdate.check">Check for updates</button>
+                <button id="appUpdateViewReleaseButton" type="button" class="hidden" data-i18n="settings.appUpdate.viewRelease">View release</button>
+              </div>
+              <details id="appUpdateNotes" class="app-update-notes hidden">
+                <summary id="appUpdateNotesTitle">What's new</summary>
+                <div id="appUpdateNotesBody" class="app-update-notes-body"></div>
+                <button id="appUpdateReleaseNotesButton" type="button" class="inline-link" data-i18n="settings.appUpdate.viewFullRelease">View full release</button>
+              </details>
+              <div id="appUpdateMessage" class="tokscale-message"></div>
+            </div>
+            <div id="tokscaleGroup" class="settings-group settings-subgroup">
+              <div class="settings-group-header"><span>Tokscale</span><span data-i18n="settings.tokscale.source">Data engine from npm</span></div>
+              <div class="tokscale-lines">
+                <div><span data-i18n="settings.tokscale.installed">Installed</span><strong id="tokscaleInstalled" data-i18n="settings.common.checking">Checking...</strong></div>
+                <div id="tokscaleBundledLine"><span data-i18n="settings.tokscale.bundled">Bundled</span><strong id="tokscaleBundled">—</strong></div>
+                <div><span><span data-i18n="settings.tokscale.npm">On npm</span> <small data-i18n="settings.tokscale.latestTag">(latest tag)</small></span><strong id="tokscaleNpm" data-i18n="settings.common.notChecked">Not checked</strong></div>
+              </div>
+              <p class="settings-note"><span data-i18n="settings.tokscale.noteBefore">Token Monitor uses tokscale (MIT, open-source) to read token data.</span> <button id="openTokscaleLinkButton" type="button" class="inline-link" data-i18n="settings.tokscale.learnMore">Learn more</button></p>
+              <div id="tokscaleMessage" class="tokscale-message"></div>
+              <div class="settings-actions">
+                <button id="checkTokscaleButton" type="button" data-i18n="settings.tokscale.checkNpm">Check npm</button>
+                <button id="downloadTokscaleButton" type="button" class="hidden" data-i18n="settings.tokscale.downloadNpm">Download from npm</button>
+                <button id="resetTokscaleButton" type="button" class="hidden" data-i18n="settings.tokscale.resetBundled">Reset to bundled</button>
+              </div>
+            </div>
+            <div class="settings-subgroup">
+              <div class="settings-group-header"><span data-i18n="settings.advanced.title">Advanced</span></div>
+              <p class="settings-note"><span data-i18n="settings.advanced.note">Additional options are available in</span> <code>settings.json</code>.</p>
+              <div class="settings-actions">
+                <button id="openConfigButton" type="button" data-i18n="settings.advanced.openConfig">Open Config</button>
               </div>
             </div>
             <div class="settings-subgroup about-settings">
@@ -258,24 +240,24 @@
               <div class="settings-group-header"><span data-i18n="settings.display.presenceTitle">Floating & Tray</span></div>
               <div class="presence-feature">
                 <label class="checkbox-label settings-item"><span class="settings-item-text"><span class="settings-item-title" data-i18n="settings.display.floatingBubble">Floating Bubble</span></span><input id="floatingBubbleInput" type="checkbox" /></label>
+                <label class="checkbox-label settings-item"><span class="settings-item-text"><span class="settings-item-title" data-i18n="settings.display.closeToTray">Close to system tray</span></span><input id="closeToTrayInput" type="checkbox" /></label>
                 <div id="floatingBubbleOptions" class="presence-feature-body hidden">
                   <p class="settings-note" data-i18n="settings.display.floatingBubbleNote">Collapse the widget into a slim draggable mini-window; click it to reopen.</p>
-                  <div id="floatingBubbleTriggerRow" class="settings-item">
-                    <span id="floatingBubbleTriggerLabel" class="settings-item-text"><span class="settings-item-title" data-i18n="settings.display.floatingBubbleTrigger">Open on</span></span>
-                    <div class="inline-options" role="radiogroup" aria-labelledby="floatingBubbleTriggerLabel">
-                      <label class="inline-option"><input type="radio" name="floatingBubbleTrigger" value="click" id="floatingBubbleTriggerClick" /><span data-i18n="settings.floatingBubbleTrigger.click">Click</span></label>
-                      <label class="inline-option"><input type="radio" name="floatingBubbleTrigger" value="hover" id="floatingBubbleTriggerHover" /><span data-i18n="settings.floatingBubbleTrigger.hover">Hover (preview)</span></label>
-                    </div>
-                  </div>
+                  <label id="floatingBubbleTriggerRow" class="settings-item"><span class="settings-item-text"><span class="settings-item-title" data-i18n="settings.display.floatingBubbleTrigger">Open on</span></span>
+                    <select id="floatingBubbleTriggerInput">
+                      <option value="click" data-i18n="settings.floatingBubbleTrigger.click">Click</option>
+                      <option value="hover" data-i18n="settings.floatingBubbleTrigger.hover">Hover (preview)</option>
+                    </select>
+                  </label>
                   <label id="floatingBubbleContentRow" class="settings-item"><span class="settings-item-text"><span class="settings-item-title" data-i18n="settings.display.floatingBubbleContent">Bubble display</span></span>
                     <select id="floatingBubbleContentInput">
                       <option value="icon" data-i18n="settings.tray.iconOnly">Icon only</option>
-                      <option value="tokens" data-i18n="settings.tray.tokensToday">Tokens Today</option>
+                       <option value="tokens" data-i18n="settings.tray.tokensToday">Tokens Today (1.2M)</option>
                       <option value="cost" data-i18n="settings.tray.costToday">Cost Today ($1.23)</option>
-                      <option value="both" data-i18n="settings.tray.bothToday">Tokens + Cost Today</option>
-                      <option value="tokensAll" data-i18n="settings.tray.tokensTotal">Tokens Total</option>
+                       <option value="both" data-i18n="settings.tray.bothToday">Tokens + Cost Today (1.2M - $1.23)</option>
+                       <option value="tokensAll" data-i18n="settings.tray.tokensTotal">Tokens Total (1.36B)</option>
                       <option value="costAll" data-i18n="settings.tray.costTotal">Cost Total ($8.28)</option>
-                      <option value="bothAll" data-i18n="settings.tray.bothTotal">Tokens + Cost Total</option>
+                       <option value="bothAll" data-i18n="settings.tray.bothTotal">Tokens + Cost Total (1.36B - $8.28)</option>
                       <option value="limitsAllSessions" data-i18n="settings.tray.limitsAllSessions">Limits: first two tools' primary quotas (12% · 34%)</option>
                       <option value="barsSession" data-i18n="settings.tray.barsSession">Limit bars: lowest session remaining</option>
                       <option value="barsWeekly" data-i18n="settings.tray.barsWeekly">Limit bars: lowest weekly remaining</option>
@@ -292,12 +274,12 @@
                 <div id="trayIconOptions" class="presence-feature-body hidden">
                   <label class="settings-item"><span class="settings-item-text"><span class="settings-item-title" data-i18n="settings.display.trayText">Tray text</span></span>
                     <select id="trayContentInput">
-                      <option value="tokens" data-i18n="settings.tray.tokensToday">Tokens Today</option>
+                       <option value="tokens" data-i18n="settings.tray.tokensToday">Tokens Today (1.2M)</option>
                       <option value="cost" data-i18n="settings.tray.costToday">Cost Today ($1.23)</option>
-                      <option value="both" data-i18n="settings.tray.bothToday">Tokens + Cost Today</option>
-                      <option value="tokensAll" data-i18n="settings.tray.tokensTotal">Tokens Total</option>
+                       <option value="both" data-i18n="settings.tray.bothToday">Tokens + Cost Today (1.2M - $1.23)</option>
+                       <option value="tokensAll" data-i18n="settings.tray.tokensTotal">Tokens Total (1.36B)</option>
                       <option value="costAll" data-i18n="settings.tray.costTotal">Cost Total ($8.28)</option>
-                      <option value="bothAll" data-i18n="settings.tray.bothTotal">Tokens + Cost Total</option>
+                       <option value="bothAll" data-i18n="settings.tray.bothTotal">Tokens + Cost Total (1.36B - $8.28)</option>
                       <option value="limitsAllSessions" data-i18n="settings.tray.limitsAllSessions">Limits: first two tools' primary quotas (12% · 34%)</option>
                       <option value="barsSession" data-i18n="settings.tray.barsSession">Limit bars: lowest session remaining</option>
                       <option value="barsWeekly" data-i18n="settings.tray.barsWeekly">Limit bars: lowest weekly remaining</option>
@@ -327,8 +309,8 @@
           <div id="appearanceSettingsDetails" class="settings-section-details hidden">
             <div class="settings-subgroup settings-appearance-group">
               <div class="settings-item"><span class="settings-item-text"><span id="windowGlassEffectLabel" class="settings-item-title" data-i18n="settings.appearance.systemGlass">Glass Backdrop</span></span><div class="inline-options" role="radiogroup" aria-labelledby="windowGlassEffectLabel"><label class="inline-option"><input type="radio" name="systemGlassOption" value="system" /><span data-i18n="settings.appearance.glassEffectSystem">System</span></label><label class="inline-option"><input type="radio" name="systemGlassOption" value="off" /><span data-i18n="settings.appearance.glassEffectTransparent">Transparent</span></label></div></div>
-              <label id="windowsBackdropRow" class="settings-item hidden"><span class="settings-item-text"><span class="settings-item-title" data-i18n="settings.appearance.windowsBackdrop">Windows Glass Style</span></span><select id="windowsBackdropInput"><option value="acrylic" data-i18n="settings.appearance.windowsBackdropAcrylic">Acrylic</option><option value="accent" data-i18n="settings.appearance.windowsBackdropAccent">Accent Blur (experimental)</option></select><span id="windowsBackdropNote" class="settings-note settings-item-desc hidden" data-i18n="settings.appearance.windowsBackdropNote">Keeps the background translucent and blurred, even when the window is not focused.</span></label>
-              <label id="macosGlassRow" class="settings-item hidden"><span class="settings-item-text"><span class="settings-item-title" data-i18n="settings.appearance.macosGlassStyle">macOS Glass Style</span></span><select id="macosGlassInput"><option value="vibrancy" data-i18n="settings.appearance.macosGlassVibrancy">Vibrancy</option><option value="liquid-glass" data-i18n="settings.appearance.macosGlassLiquid">Liquid Glass</option></select><span id="macosGlassNote" class="settings-note settings-item-desc hidden" data-i18n="settings.appearance.macosGlassLiquidNote">Liquid Glass requires macOS 26 or later.</span></label>
+              <label id="windowsBackdropRow" class="settings-item hidden"><span class="settings-item-text"><span class="settings-item-title" data-i18n="settings.appearance.windowsBackdrop">Windows Glass Style</span></span><select id="windowsBackdropInput"><option value="acrylic" data-i18n="settings.appearance.windowsBackdropAcrylic">Acrylic</option><option value="mica" data-i18n="settings.appearance.windowsBackdropMica">Mica</option><option value="accent" data-i18n="settings.appearance.windowsBackdropAccent">Accent Blur (experimental)</option></select><span id="windowsBackdropNote" class="settings-note settings-item-desc hidden" data-i18n="settings.appearance.windowsBackdropNote">Keeps the background translucent and blurred, even when the window is not focused.</span></label>
+              <label id="macosGlassRow" class="settings-item hidden"><span class="settings-item-text"><span class="settings-item-title" data-i18n="settings.appearance.macosGlassStyle">macOS Glass Style</span></span><select id="macosGlassInput"><option value="vibrancy" data-i18n="settings.appearance.macosGlassVibrancy">Native Frosted Glass (before macOS 26)</option><option value="liquid-glass" data-i18n="settings.appearance.macosGlassLiquid">Liquid Glass</option></select><span id="macosGlassNote" class="settings-note settings-item-desc hidden" data-i18n="settings.appearance.macosGlassLiquidNote">Liquid Glass requires macOS 26; older systems use native frosted glass.</span></label>
               <label class="checkbox-label settings-item"><span class="settings-item-text"><span class="settings-item-title" data-i18n="settings.appearance.liveIndicator">Live Indicator</span></span><input id="liveDotInput" type="checkbox" /></label>
               <label class="checkbox-label settings-item"><span class="settings-item-text"><span class="settings-item-title" data-i18n="settings.appearance.toolIcons">Tool Icons</span></span><input id="toolIconsInput" type="checkbox" /></label>
               <label class="checkbox-label settings-item"><span class="settings-item-text"><span class="settings-item-title" data-i18n="settings.appearance.titleIcon">Use Title Icon</span></span><input id="titleIconInput" type="checkbox" /></label>
@@ -600,17 +582,21 @@
             <p id="limitsRefreshAdaptiveNote" class="settings-note hidden" data-i18n="settings.limits.refreshAdaptiveNote">Adjusts the refresh rate to how fast a quota is being consumed: every 5 minutes normally, as often as every minute when needed.</p>
             <label class="checkbox-label settings-item"><span class="settings-item-text"><span class="settings-item-title" data-i18n="settings.limits.showSource">Show Source</span></span><input id="showLimitSourceInput" type="checkbox" /></label>
             <label class="checkbox-label settings-item"><span class="settings-item-text"><span class="settings-item-title" data-i18n="settings.limits.maskAccountEmails">Mask account emails</span></span><input id="maskLimitAccountEmailsInput" type="checkbox" /></label>
-            <div class="settings-item">
-              <span id="showLimitUsedLabel" class="settings-item-text"><span class="settings-item-title" data-i18n="settings.limits.barsShow">Bars show</span></span>
-              <div class="inline-options" role="radiogroup" aria-labelledby="showLimitUsedLabel">
-                <label class="inline-option"><input type="radio" name="showLimitUsed" value="remaining" id="showLimitUsedRemaining" /><span data-i18n="settings.limits.barsRemaining">Remaining</span></label>
-                <label class="inline-option"><input type="radio" name="showLimitUsed" value="used" id="showLimitUsedUsed" /><span data-i18n="settings.limits.barsUsed">Used</span></label>
-              </div>
-            </div>
+            <label class="settings-item"><span class="settings-item-text"><span class="settings-item-title" data-i18n="settings.limits.barsShow">Bars show</span></span>
+              <select id="showLimitUsedInput">
+                <option value="remaining" data-i18n="settings.limits.barsRemaining">Remaining</option>
+                <option value="used" data-i18n="settings.limits.barsUsed">Used</option>
+              </select>
+            </label>
           </div>
         </div>
 
-        <div id="accountsSettingsDetails" class="hidden" aria-hidden="true">
+        <div class="settings-group settings-collapsible-group settings-accounts-group">
+          <button class="settings-section-toggle" type="button" data-settings-section="accounts" aria-expanded="false" aria-controls="accountsSettingsDetails">
+            <span class="settings-section-heading"><span class="settings-section-icon settings-section-icon-accounts" aria-hidden="true"></span><span data-i18n="settings.sections.accounts">Accounts</span></span>
+            <span class="settings-section-meta"><span id="accountsSettingsSummary" class="settings-section-summary"></span><span class="settings-section-disclosure" aria-hidden="true"></span></span>
+          </button>
+          <div id="accountsSettingsDetails" class="settings-section-details hidden">
             <div id="claudeAccountGroup" class="settings-group cursor-account-group">
               <button id="claudeSettingsToggle" class="settings-group-header cursor-settings-toggle" type="button" aria-expanded="false" aria-controls="claudeSettingsDetails">
                 <span data-i18n="settings.claude.title">Claude Account</span>
@@ -1310,6 +1296,7 @@
                 <div id="thirdpartyErrorMessage" class="settings-note error hidden"></div>
               </div>
             </div>
+          </div>
         </div>
 
         <div class="settings-group settings-collapsible-group settings-subscriptions-group">

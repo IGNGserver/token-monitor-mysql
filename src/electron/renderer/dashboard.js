@@ -8,7 +8,10 @@ const compactMoneyApi = window.TokenMonitorCompactMoney;
 const compactTokenApi = window.TokenMonitorCompactTokens;
 const motionPreferenceApi = window.TokenMonitorMotionPreference;
 const fontSettingsApi = window.TokenMonitorFontSettings;
+const windowsBackdropModeApi = window.TokenMonitorWindowsBackdropMode;
+const macosGlassModeApi = window.TokenMonitorMacosGlassMode;
 const reducedMotionMedia = window.matchMedia?.('(prefers-reduced-motion: reduce)');
+const systemDarkThemeMedia = window.matchMedia?.('(prefers-color-scheme: dark)');
 
 // Canonical brand colours, captured before any override (clientColors is shared
 // by reference and mutated in place to apply vendor overrides).
@@ -40,7 +43,7 @@ const state = {
   tab: 'activity', range: '30', stackBy: 'client', mode: 'bars', flat: false,
   locale: 'en', currency: 'USD', compactTokenUnits: 'western', history: null, chartModel: null,
   chartKind: 'bars', motion: 'none', reduceMotion: 'system',
-  heatmapMetric: 'cost'
+  heatmapMetric: 'cost', settings: {}
 };
 
 const DATA_MOTION_MS = 800;
@@ -209,19 +212,57 @@ function applyTranslations() {
   document.documentElement.lang = state.locale;
 }
 
+function applyWindowsBackdrop(settings) {
+  const isWindows = navigator.userAgent.toLowerCase().includes('windows');
+  const unsupported = isWindows
+    && new URLSearchParams(window.location.search).get('windowsBackdropUnsupported') === '1';
+  const nativeBackdrop = isWindows && settings?.systemGlass !== false && !unsupported;
+  document.documentElement.classList.toggle('is-windows', isWindows);
+  els.body.classList.toggle('is-windows', isWindows);
+  if (nativeBackdrop) {
+    const mode = windowsBackdropModeApi.normalizeWindowsBackdropMode(settings?.windowsBackdrop);
+    document.documentElement.dataset.windowsBackdrop = mode;
+    els.body.dataset.windowsBackdrop = mode;
+  } else {
+    delete document.documentElement.dataset.windowsBackdrop;
+    delete els.body.dataset.windowsBackdrop;
+  }
+  return nativeBackdrop;
+}
+
+function applyMacosGlass(settings) {
+  const isMac = navigator.userAgent.toLowerCase().includes('macintosh');
+  document.documentElement.classList.toggle('is-macos', isMac);
+  els.body.classList.toggle('is-macos', isMac);
+  const effectiveStyle = settings?.macosGlassEffectiveStyle
+    || macosGlassModeApi.effectiveMacosGlassStyle(settings?.macosGlassStyle, {
+      platform: isMac ? 'darwin' : '',
+      osRelease: ''
+    });
+  if (isMac && settings?.systemGlass !== false && effectiveStyle === macosGlassModeApi.MACOS_GLASS_LIQUID) {
+    document.documentElement.dataset.macosGlass = macosGlassModeApi.MACOS_GLASS_LIQUID;
+  } else {
+    delete document.documentElement.dataset.macosGlass;
+  }
+}
+
 function applyAppearance(settings) {
-  const opacity = Math.min(100, Math.max(0, settings?.glassOpacity ?? 68)) / 100;
+  let opacity = Math.min(100, Math.max(0, settings?.glassOpacity ?? 68)) / 100;
   const depth = Math.min(100, Math.max(0, settings?.glassBlur ?? 32)) / 100;
-  const isMac = /Mac/.test(navigator.platform || '');
+  if (navigator.userAgent.toLowerCase().includes('linux')) opacity = Math.max(opacity, 0.55);
   const root = document.documentElement.style;
   root.setProperty('--glass-alpha', opacity.toFixed(2));
   root.setProperty('--line-alpha', (0.1 + depth * 0.09).toFixed(3));
+  const nativeBackdrop = applyWindowsBackdrop(settings);
+  applyMacosGlass(settings);
   applyReduceMotionPreference(settings?.reduceMotion);
   applyFontSettings(settings);
-  applyThemeColors(settings?.themeColors);
+  applyThemeColors(settings?.themeColors, {
+    nativeBackdrop,
+    systemDark: systemDarkThemeMedia?.matches === true
+  });
   applyVendorColorOverrides(settings?.vendorColors);
   els.body.classList.toggle('flat', state.flat);
-  els.body.classList.toggle('is-macos', isMac);
 }
 
 function applyFontSettings(settings) {
@@ -233,9 +274,9 @@ function applyFontSettings(settings) {
   root.setProperty('--display-font', displayFont);
 }
 
-function applyThemeColors(overrides) {
+function applyThemeColors(overrides, { nativeBackdrop = false, systemDark = false } = {}) {
   const root = document.documentElement.style;
-  for (const { name, value } of themePresetsApi.themeCssVarEntries(overrides)) {
+  for (const { name, value } of themePresetsApi.themeCssVarEntries(overrides, { nativeBackdrop, systemDark })) {
     if (value) root.setProperty(name, value);
     else root.removeProperty(name);
   }
@@ -608,6 +649,7 @@ async function refresh() {
 async function boot() {
   let settings = {};
   try { settings = await window.tokenMonitor.getSettings(); } catch (_) {}
+  state.settings = settings;
   state.locale = i18n.resolveLocale(settings.locale || settings.language, navigator.languages);
   state.currency = settings.currency || 'USD';
   state.compactTokenUnits = compactTokenApi.normalizeCompactTokenUnits(settings.compactTokenUnits);
@@ -628,8 +670,22 @@ async function boot() {
 // dashboard shares the main window's preload, so it receives the same push.
 window.tokenMonitor.onSettingsPush?.((next) => {
   if (!next) return;
+  state.settings = { ...state.settings, ...next };
   applyFontSettings(next);
   let needsRender = false;
+  if (
+    next.themeColors
+    || next.vendorColors
+    || next.glassOpacity !== undefined
+    || next.glassBlur !== undefined
+    || next.systemGlass !== undefined
+    || next.windowsBackdrop !== undefined
+    || next.macosGlassStyle !== undefined
+    || next.macosGlassEffectiveStyle !== undefined
+  ) {
+    applyAppearance(state.settings);
+    needsRender = true;
+  }
   const nextLocale = i18n.resolveLocale(next.locale || next.language, navigator.languages);
   if (state.locale !== nextLocale) {
     state.locale = nextLocale;
@@ -669,6 +725,11 @@ window.tokenMonitor.onSettingsPush?.((next) => {
 reducedMotionMedia?.addEventListener?.('change', () => {
   if (state.reduceMotion !== 'system') return;
   applyReduceMotionPreference('system');
+  render();
+});
+
+systemDarkThemeMedia?.addEventListener?.('change', () => {
+  applyAppearance(state.settings);
   render();
 });
 

@@ -1385,7 +1385,7 @@ test('Copilot env token is documented in env example, not the README overview', 
   assert.doesNotMatch(readmeTw, /COPILOT_API_TOKEN|GITHUB_COPILOT_TOKEN/);
 });
 
-test('AI Tool Limits owns every live account group and its status pill', () => {
+test('Accounts keeps every live account group and its status pill', () => {
   const app = readRendererFile('app.js');
   const html = readRendererFile('index.html');
   const groupMap = app.slice(
@@ -1421,8 +1421,9 @@ test('AI Tool Limits owns every live account group and its status pill', () => {
     assert.match(html, new RegExp(`id="${groupId}"`));
     assert.match(html, new RegExp(`id="${statusId}"[^>]*class="cursor-status-pill`));
   }
-  assert.match(html, /id="accountsSettingsDetails" class="hidden" aria-hidden="true"/);
-  assert.doesNotMatch(html, /data-settings-section="accounts"/);
+  assert.match(html, /data-settings-section="accounts"/);
+  assert.match(html, /id="accountsSettingsDetails" class="settings-section-details hidden"/);
+  assert.match(app, /group\?\.closest\(`#limitProviderOptions-\$\{providerId\}`\)/);
 });
 
 test('provider rerenders preserve live account nodes and focused controls', () => {

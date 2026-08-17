@@ -15,11 +15,10 @@ function read(name) {
   return fs.readFileSync(path.join(rendererDir, name), 'utf8');
 }
 
-test('App Updates includes an inline release-note disclosure and full-release action', () => {
+test('App Updates retains the legacy release-note disclosure and full-release action', () => {
   const html = read('index.html');
-  assert.match(html, /<div id="appUpdateNotes" class="app-update-notes hidden">/);
-  assert.match(html, /id="appUpdateNotesToggle"[^>]*aria-expanded="false"[^>]*aria-controls="appUpdateNotesDetails"/);
-  assert.match(html, /id="appUpdateNotesDetails" class="app-update-notes-details hidden" inert/);
+  assert.match(html, /<details id="appUpdateNotes" class="app-update-notes hidden">/);
+  assert.match(html, /<summary id="appUpdateNotesTitle">/);
   assert.match(html, /id="appUpdateNotesTitle"/);
   assert.match(html, /id="appUpdateReleaseNotesButton"[\s\S]*data-i18n="settings\.appUpdate\.viewFullRelease"/);
 });
@@ -62,7 +61,7 @@ test('release notes render as text nodes and auto-open once for a new version', 
   assert.match(renderer, /appUpdateNotesBody\.replaceChildren\(\.\.\.buildAppUpdateNoteGroupNodes\(groups\)\)/);
   assert.doesNotMatch(renderer, /innerHTML/);
   assert.match(renderer, /s\.hasUpdate && state\.appUpdateNotesPresentedVersion !== version/);
-  assert.match(renderer, /appUpdateNotesDetails\.getBoundingClientRect\(\)/);
+  assert.match(renderer, /appUpdateNotesDetails\?\.getBoundingClientRect\(\)/);
   assert.match(renderer, /setSettingsAccordionExpanded\(els\.appUpdateNotes, els\.appUpdateNotesToggle, els\.appUpdateNotesDetails, true\)/);
 });
 
@@ -153,15 +152,14 @@ test('release-note locale selection follows the complete fallback matrix', () =>
   }
 });
 
-test('release-note disclosure has keyboard focus and compact reading styles', () => {
+test('release-note disclosure keeps the legacy summary reading styles', () => {
   const html = read('index.html');
   const css = read('styles.css');
   const app = read('app.js');
-  assert.match(html, /id="appUpdateNotesToggle"[\s\S]*settings-section-disclosure[\s\S]*id="appUpdateNotesTitle"/);
-  assert.match(css, /\.app-update-notes-toggle \{[\s\S]*justify-content: flex-start;[\s\S]*gap: 5px;/);
-  assert.match(css, /\.app-update-notes-disclosure::before \{[\s\S]*border-left: 5px solid currentColor;[\s\S]*transform: none;/);
-  assert.match(css, /\.app-update-notes\.expanded \.app-update-notes-disclosure \{[\s\S]*transform: rotate\(90deg\)/);
-  assert.match(css, /\.app-update-notes-toggle:focus-visible/);
+  assert.match(html, /<summary id="appUpdateNotesTitle">/);
+  assert.match(css, /\.app-update-notes summary\s*\{/);
+  assert.match(css, /\.app-update-notes summary::marker/);
+  assert.match(css, /\.app-update-notes summary:focus-visible/);
   assert.match(css, /\.app-update-note-group ul[\s\S]*line-height: 1\.45/);
   assert.match(css, /\.app-update-notes\.hidden \{ display: none; \}/);
   assert.match(app, /'\.app-update-notes-details'/);

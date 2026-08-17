@@ -276,6 +276,7 @@ const { applyWindowsChrome } = require('./windowsChrome');
 const { applyMacosNativeWindowButtons } = require('./macosWindowChrome');
 const { setMoveToActiveSpace } = require('./macosSpaceBehavior');
 const {
+  windowsElectronBackgroundMaterial,
   WINDOWS_BACKDROP_ACCENT,
   normalizeWindowsBackdropMode,
 } = require('./windowsBackdropMode');
@@ -328,6 +329,10 @@ const COLLECTION_INTERVAL_OPTIONS = [5 * 60 * 1000, 15 * 60 * 1000, 30 * 60 * 10
 const SMART_COLLECTION_INTERVAL_MS = 10 * 60 * 1000;
 const DEFAULT_COLLECTION_INTERVAL_MS = 5 * 60 * 1000;
 const HUB_DEFAULT_PORT = 17321;
+// Preserve the pre-port desktop order for new widget settings. The shared
+// provider registry keeps the upstream protocol order; this is presentation
+// order only and existing custom orders remain untouched.
+const LEGACY_LIMIT_PROVIDER_ORDER = 'claude,codex,cursor,antigravity,opencode,openrouter,deepseek,minimax,mimo,grok,copilot,kiro,zai,zaiteam,volcengine,qoder,kimi,ollama,commandcode,thirdparty';
 const KNOWN_CLIENT_LIST = KNOWN_CLIENTS.split(',').map((id) => ({ id }));
 const DEFAULT_VIEW_LIST = ['home', 'tool', 'status', 'device', 'model', 'project', 'session', 'limits', 'trends'].map((id) => ({ id }));
 const DEFAULT_HOME_MODULE_LIST = ['limits', 'tool', 'device', 'model', 'trends'].map((id) => ({ id }));
@@ -616,7 +621,7 @@ function defaultLimitProviders() {
 }
 
 function defaultLimitProviderOrder() {
-  return parseLimitProviders().join(',');
+  return parseLimitProviders(LEGACY_LIMIT_PROVIDER_ORDER).join(',');
 }
 
 function normalizeClaudeWebCookie(value) {
@@ -5431,7 +5436,9 @@ function createWindow(boundsOverride, options = {}) {
     ...(settings?.trayMode ? { maximizable: false } : {}),
     ...floatingBubbleWindowChrome(process.platform, collapsedFloatingBubble),
     ...(process.platform === 'darwin' && glass ? { vibrancy: 'hud', visualEffectState: 'active' } : {}),
-    ...(process.platform === 'win32' && glass && !windowsAccent ? { backgroundMaterial: 'acrylic' } : {}),
+    ...(process.platform === 'win32' && glass && !windowsAccent
+      ? { backgroundMaterial: windowsElectronBackgroundMaterial(windowsBackdrop) }
+      : {}),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -5565,6 +5572,8 @@ function createDashboardWindow() {
     return dashboardWindow;
   }
   const glass = nativeBlurEnabled();
+  const windowsBackdrop = normalizeWindowsBackdropMode(settings?.windowsBackdrop);
+  const windowsAccent = process.platform === 'win32' && glass && windowsBackdrop === WINDOWS_BACKDROP_ACCENT;
   const win = new BrowserWindow({
     width: 920,
     height: 620,
@@ -5577,7 +5586,9 @@ function createDashboardWindow() {
     icon: APP_ICON_PATH,
     skipTaskbar: false,
     ...(process.platform === 'darwin' && glass ? { vibrancy: 'hud', visualEffectState: 'active' } : {}),
-    ...(process.platform === 'win32' && glass ? { backgroundMaterial: 'acrylic' } : {}),
+    ...(process.platform === 'win32' && glass && !windowsAccent
+      ? { backgroundMaterial: windowsElectronBackgroundMaterial(windowsBackdrop) }
+      : {}),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -5587,6 +5598,12 @@ function createDashboardWindow() {
   dashboardWindow = win;
   applyMacosNativeWindowButtons(win);
   applyWindowsChrome(win, { round: true });
+  let windowsAccentFallback = false;
+  if (windowsAccent && !applyWindowsAccentBlur(win)) {
+    windowsAccentFallback = true;
+    console.warn('[dashboard] AccentBlurBehind unavailable; falling back to Acrylic');
+    try { win.setBackgroundMaterial('acrylic'); } catch (_) {}
+  }
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (isAllowedExternalUrl(url)) shell.openExternal(url);
     return { action: 'deny' };
@@ -5609,9 +5626,10 @@ function createDashboardWindow() {
     if (!win.isVisible()) discardFailedDashboardWindow(win, 'renderer became unresponsive while opening');
   });
   win.on('closed', () => { dashboardWindow = null; });
+  const dashboardQuery = windowsAccentFallback ? { windowsBackdropFallback: '1' } : undefined;
   win.loadFile(
     path.join(__dirname, 'renderer', 'dashboard.html'),
-    undefined
+    dashboardQuery ? { query: dashboardQuery } : undefined
   )
     .catch((error) => discardFailedDashboardWindow(win, `load failed: ${error.message}`));
   return win;

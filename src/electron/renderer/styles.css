@@ -80,7 +80,9 @@ input, textarea, [contenteditable="true"] {
   -webkit-backdrop-filter: var(--glass-filter);
   backdrop-filter: var(--glass-filter);
 }
-html[data-macos-glass="liquid-glass"] .shell {
+html[data-macos-glass="liquid-glass"] .shell,
+body[data-macos-glass="liquid-glass"] .shell {
+  background: transparent;
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
 }
@@ -94,6 +96,15 @@ html.is-windows .shell {
      border-radius + overflow:hidden round the corners (and clip the backdrop
      blur) with proper anti-aliasing instead. */
   clip-path: none;
+}
+/* The native Windows material owns the BrowserWindow base layer. Keep the
+   renderer surface transparent so it does not paint a second glass slab over
+   Acrylic or Accent Blur. */
+html.is-windows[data-windows-backdrop] .shell,
+body.is-windows[data-windows-backdrop] .shell {
+  background: transparent;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
 }
 
 html.is-mac-legacy, html.is-mac-legacy body {
@@ -125,6 +136,22 @@ html.is-mac-legacy .shell {
   outline: none;
   -webkit-backdrop-filter: var(--glass-filter);
   backdrop-filter: var(--glass-filter);
+}
+html[data-macos-glass="liquid-glass"] .floating-bubble-tab,
+body[data-macos-glass="liquid-glass"] .floating-bubble-tab {
+  background: transparent;
+  border: 0;
+  border-radius: var(--floating-bubble-radius);
+  -webkit-appearance: none;
+  appearance: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+html.is-windows[data-windows-backdrop] .floating-bubble-tab,
+body.is-windows[data-windows-backdrop] .floating-bubble-tab {
+  background: transparent;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
 }
 .system-glass-disabled .floating-bubble-tab {
   -webkit-backdrop-filter: none;
@@ -225,6 +252,11 @@ body.is-windows.floating-bubble-collapsed-right .floating-bubble-tab {
   display: none;
   font-weight: 700;
   line-height: 1;
+  vertical-align: middle;
+}
+.app-title-mark-svg {
+  display: inline-block;
+  vertical-align: text-bottom;
 }
 /* Offscreen probe: rendered with the same font/size as the title, used by JS */
 /* to detect "would Token Monitor still fit?". Independent of the live text */
@@ -237,11 +269,11 @@ body.is-windows.floating-bubble-collapsed-right .floating-bubble-tab {
   pointer-events: none;
   white-space: nowrap;
 }
-/* Swap text → Σ at the exact width where the title would start to truncate, */
+/* Swap text → the compact mark at the exact width where the title would start to truncate, */
 /* driven by JS overflow detection (see renderer/app.js). */
 .shell.title-collapsed .app-title-text, .shell.title-icon-only .app-title-text { display: none; }
 .shell.title-collapsed .app-title-mark, .shell.title-icon-only .app-title-mark {
-  display: inline;
+  display: inline-block;
   position: relative;
 }
 .live-dot {
@@ -352,9 +384,9 @@ body.is-windows.floating-bubble-collapsed-right .floating-bubble-tab {
 .title-controls {
   -webkit-app-region: no-drag;
   position: relative;
-  flex: 0 1 148px;
-  min-width: 100px;
-  width: 148px;
+  flex: 0 1 182px;
+  min-width: 132px;
+  width: 182px;
   height: 30px;
 }
 .actions-hotspot {
@@ -490,7 +522,7 @@ body.is-windows.floating-bubble-collapsed-right .floating-bubble-tab {
   position: absolute;
   top: 0;
   right: 0;
-  left: 36px;
+  left: 34px;
   bottom: 0;
   transition: opacity 160ms ease 280ms, transform 160ms ease 280ms;
 }
@@ -507,14 +539,22 @@ body.is-windows.floating-bubble-collapsed-right .floating-bubble-tab {
   pointer-events: none;
   transition-delay: 0ms;
 }
-/* Windows owns a fixed native control strip. Keep the period switcher beside
-   that strip instead of hiding the controls behind the widget hover affordance. */
-body.is-windows .title-controls { width: 288px; }
+/* Windows uses a frameless window, so keep the native-style controls visible
+   and reserve space for them beside the period switcher. */
+body.is-windows .title-controls {
+  flex: 0 0 288px;
+  width: 288px;
+  min-width: 288px;
+}
 body.is-windows .window-actions {
   width: 114px;
   opacity: 1;
   pointer-events: auto;
+  transform: none;
+  transition: none;
 }
+body.is-windows .actions-hotspot { display: none; }
+body.is-macos .titlebar > div:first-child { padding-left: 76px; }
 body.is-windows .title-controls .tabs { right: 120px; left: 36px; }
 body.is-windows:not(.settings-open) .title-controls:has(.window-actions:hover) .tabs,
 body.is-windows:not(.settings-open) .title-controls:has(.window-actions:focus-within) .tabs,
@@ -597,17 +637,6 @@ body.is-windows:not(.settings-open) .title-controls:has(.window-actions:focus-wi
 }
 .settings-panel label, .settings-field { display: grid; min-width: 0; gap: 4px; color: var(--muted); font-size: 11px; }
 .settings-field-label { min-width: 0; }
-/* Keep checkbox labels semantic for assistive technology, but make the visual
-   switch itself the only pointer hit target. Row whitespace and copy should not
-   toggle settings accidentally in the compact desktop panel. */
-.settings-panel .checkbox-label,
-.settings-panel label.client-checkbox {
-  pointer-events: none;
-}
-.settings-panel .checkbox-label > input[type="checkbox"],
-.settings-panel label.client-checkbox > input[type="checkbox"] {
-  pointer-events: auto;
-}
 .settings-panel .checkbox-label {
   display: flex;
   align-items: center;
@@ -747,6 +776,7 @@ body.is-windows:not(.settings-open) .title-controls:has(.window-actions:focus-wi
 }
 .settings-panel .settings-item.hidden { display: none; }
 #windowsBackdropNote.hidden { display: none; }
+#macosGlassNote.hidden { display: none; }
 #limitsRefreshAdaptiveNote.hidden { display: none; }
 .settings-item-text {
   flex: 1 1 auto;
@@ -1159,6 +1189,7 @@ span.settings-note.settings-item-desc {
 .settings-section-icon-window { --settings-section-icon-url: url("icons/settings/window.svg"); }
 .settings-section-icon-tools { --settings-section-icon-url: url("icons/settings/collection.svg"); }
 .settings-section-icon-limits { --settings-section-icon-url: url("icons/settings/limits.svg"); }
+.settings-section-icon-accounts { --settings-section-icon-url: url("icons/settings/accounts.svg"); }
 .settings-section-icon-sync { --settings-section-icon-url: url("icons/settings/sync.svg"); }
 .settings-section-icon-subscriptions { --settings-section-icon-url: url("icons/settings/subscriptions.svg"); }
 .settings-section-icon-appearance { --settings-section-icon-url: url("icons/settings/appearance.svg"); }
@@ -1414,6 +1445,24 @@ span.settings-note.settings-item-desc {
 }
 .app-update-notes { min-width: 0; color: var(--muted); font-size: 10px; }
 .app-update-notes.hidden { display: none; }
+.app-update-notes {
+  min-width: 0;
+  padding-top: 8px;
+  border-top: 1px solid rgba(var(--line-rgb), 0.075);
+  color: var(--muted);
+  font-size: 10px;
+}
+.app-update-notes summary {
+  width: max-content;
+  max-width: 100%;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 1.35;
+  user-select: none;
+}
+.app-update-notes summary::marker { color: var(--muted); }
 .app-update-notes-toggle {
   display: flex;
   width: 100%;
@@ -1709,6 +1758,29 @@ span.settings-note.settings-item-desc {
 .currency-rate-prefix { flex: 0 0 auto; color: var(--muted); font-size: 11px; }
 .settings-panel .currency-rate-manual-field input { flex: 1 1 0; width: 0; min-width: 0; font-size: 11px; }
 .settings-note.currency-rate-status { font-variant-numeric: tabular-nums; }
+.tokscale-lines {
+  display: grid;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 10px;
+}
+.tokscale-lines > div {
+  display: flex;
+  min-width: 0;
+  justify-content: space-between;
+  gap: 10px;
+}
+.tokscale-lines > div.hidden { display: none; }
+.tokscale-lines strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-weight: 500;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tokscale-lines small { color: var(--muted); font-size: 9px; }
 .tokscale-message {
   color: var(--muted);
   font-size: 10px;
@@ -3465,13 +3537,14 @@ html.is-windows .settings-panel select option {
   -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat;
 }
 .row-icon-claude     { -webkit-mask-image: url(../../../assets/icons/claude.svg);        mask-image: url(../../../assets/icons/claude.svg); }
+.row-icon-claude-desktop { -webkit-mask-image: url(../../../assets/icons/claude-desktop.svg); mask-image: url(../../../assets/icons/claude-desktop.svg); }
 .row-icon-codex      { -webkit-mask-image: url(../../../assets/icons/codex.svg);         mask-image: url(../../../assets/icons/codex.svg); }
 .row-icon-hermes     { -webkit-mask-image: url(../../../assets/icons/hermes-agent.svg);  mask-image: url(../../../assets/icons/hermes-agent.svg); }
 .row-icon-gemini     { -webkit-mask-image: url(../../../assets/icons/gemini.svg);        mask-image: url(../../../assets/icons/gemini.svg); }
 .row-icon-cursor     { -webkit-mask-image: url(../../../assets/icons/cursor.svg);        mask-image: url(../../../assets/icons/cursor.svg); }
 .row-icon-antigravity { -webkit-mask-image: url(../../../assets/icons/antigravity.svg);   mask-image: url(../../../assets/icons/antigravity.svg); }
 .row-icon-cline      { -webkit-mask-image: url(../../../assets/icons/cline.svg);         mask-image: url(../../../assets/icons/cline.svg); }
-.row-icon-kimi       { -webkit-mask-image: url(../../../assets/icons/kimi.svg);          mask-image: url(../../../assets/icons/kimi.svg); }
+.row-icon-kimi       { -webkit-mask-image: url(../../../assets/icons/moonshot.svg);      mask-image: url(../../../assets/icons/moonshot.svg); }
 .row-icon-grok       { -webkit-mask-image: url(../../../assets/icons/xai.svg);           mask-image: url(../../../assets/icons/xai.svg); }
 .row-icon-copilot    { -webkit-mask-image: url(../../../assets/icons/copilot.svg);       mask-image: url(../../../assets/icons/copilot.svg); }
 .row-icon-pi         { -webkit-mask-image: url(../../../assets/icons/pi.svg);            mask-image: url(../../../assets/icons/pi.svg); }
@@ -3594,8 +3667,8 @@ html.is-windows .settings-panel select option {
   mask-image: url(../../../assets/icons/ollama.svg);
 }
 .limit-icon-kimi {
-  -webkit-mask-image: url(../../../assets/icons/kimi.svg);
-  mask-image: url(../../../assets/icons/kimi.svg);
+  -webkit-mask-image: url(../../../assets/icons/moonshot.svg);
+  mask-image: url(../../../assets/icons/moonshot.svg);
 }
 .limit-icon-mimo {
   -webkit-mask-image: url(../../../assets/icons/xiaomi.svg);

@@ -16,6 +16,7 @@
     return {
       showBackdropControl: isWindows && systemGlassEnabled,
       showAccentNote: isWindows && systemGlassEnabled && backdropMode === 'accent',
+      showMicaNote: isWindows && systemGlassEnabled && backdropMode === 'mica',
       backdropMode
     };
   }

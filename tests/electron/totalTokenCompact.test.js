@@ -129,7 +129,7 @@ test('compact total is an opt-in appearance preference', () => {
   assert.doesNotMatch(compactVisibilityHandler, /updateTotalCompact|renderTokenRate|render\(\)/);
   assert.match(app, /prevShowCompactTotalTokens !== next\.showCompactTotalTokens\) \{[\s\S]*?updateTotalCompact\(state\.currentTotal\)/);
   assert.doesNotMatch(app, /prevCompactTokenUnits !== next\.compactTokenUnits[\s\S]*?\|\| prevShowCompactTotalTokens !== next\.showCompactTotalTokens/);
-  assert.doesNotMatch(i18n, /settings\.tray\.(?:tokensToday|bothToday|tokensTotal|bothTotal)':[^\n]*(?:1\.2M|1\.36B)/);
+  assert.match(i18n, /settings\.tray\.(?:tokensToday|bothToday|tokensTotal|bothTotal)':[\s\S]*?(?:1\.2M|1\.36B)/);
 });
 
 test('compact total stays visible through the count-up, with the font pre-locked', () => {

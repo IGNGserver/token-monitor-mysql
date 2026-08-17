@@ -91,6 +91,7 @@ const settingsIconAssets = {
   appearance: 'appearance.svg',
   tools: 'collection.svg',
   limits: 'limits.svg',
+  accounts: 'accounts.svg',
   sync: 'sync.svg'
 };
 
@@ -269,9 +270,10 @@ test('settings page uses collapsible icon sections with summaries', () => {
   assert.match(html, /class="settings-section-icon settings-section-icon-window"/);
   assert.match(html, /class="settings-section-icon settings-section-icon-tools"/);
   assert.match(html, /class="settings-section-icon settings-section-icon-limits"/);
+  assert.match(html, /class="settings-section-icon settings-section-icon-accounts"/);
   assert.match(html, /class="settings-section-icon settings-section-icon-sync"/);
-  assert.doesNotMatch(html, /data-settings-section="accounts"/);
-  assert.match(html, /id="accountsSettingsDetails" class="hidden" aria-hidden="true"/);
+  assert.match(html, /data-settings-section="accounts"/);
+  assert.match(html, /id="accountsSettingsDetails" class="settings-section-details hidden"/);
   assert.match(html, /id="generalSettingsSummary"/);
   assert.match(html, /id="mainSettingsSummary"/);
   assert.match(html, /id="windowSettingsSummary"/);
@@ -293,7 +295,7 @@ test('settings page uses collapsible icon sections with summaries', () => {
   assert.match(app, /renderSettingsSummaries/);
   assert.match(app, /settingsSectionSummary/);
   assert.match(app, /for \(const other of SETTINGS_SECTION_IDS\)/);
-  assert.doesNotMatch(app, /'limits', 'accounts', 'sync'/);
+   assert.match(app, /'limits', 'accounts', 'subscriptions', 'sync'/);
   assert.doesNotMatch(app, /viewsSettingsSummary/);
   assert.doesNotMatch(app, /orderAccountProviderGroups/);
 
@@ -302,10 +304,9 @@ test('settings page uses collapsible icon sections with summaries', () => {
   assert.match(css, /\.settings-section-toggle/);
   assert.match(css, /\.settings-section-icon/);
   assert.match(css, /\.settings-section-summary/);
-  assert.doesNotMatch(css, /\.settings-section-icon-accounts/);
-  assert.doesNotMatch(i18n, /settings\.(?:sections|summary)\.accounts/);
-  assert.equal(fs.existsSync(path.join(rendererDir, 'icons', 'settings', 'accounts.svg')), false);
-  assert.doesNotMatch(readRendererFile('icons/THIRD_PARTY_NOTICES.md'), /settings\/accounts\.svg/);
+  assert.match(css, /\.settings-section-icon-accounts/);
+  assert.match(i18n, /settings\.(?:sections|summary)\.accounts/);
+  assert.equal(fs.existsSync(path.join(rendererDir, 'icons', 'settings', 'accounts.svg')), true);
   assert.match(cssRule(css, '.settings-section-icon'), /mask:\s*var\(--settings-section-icon-url\)/);
   for (const [section, asset] of Object.entries(settingsIconAssets)) {
     assert.match(cssRule(css, `.settings-section-icon-${section}`), new RegExp(`icons/settings/${asset}`));
@@ -398,28 +399,16 @@ test('main section holds views; appearance is its own section; window holds beha
   );
 });
 
-test('settings mode choices use inline options and compact home limit rows', () => {
+test('legacy settings mode choices retain their select controls', () => {
   const html = readRendererFile('index.html');
-  // Each mode choice is a labelled radiogroup, not a bare cluster of inputs.
-  assert.match(html, /<div id="floatingBubbleTriggerRow" class="settings-item">/);
-  assert.match(html, /<span id="floatingBubbleTriggerLabel" class="settings-item-text">/);
-  assert.match(html, /role="radiogroup" aria-labelledby="floatingBubbleTriggerLabel"/);
-  for (const value of ['click', 'hover']) {
-    assert.match(html, new RegExp(`<input type="radio" name="floatingBubbleTrigger" value="${value}"`));
-  }
-  assert.match(html, /<span id="showLimitUsedLabel" class="settings-item-text">/);
-  assert.match(html, /role="radiogroup" aria-labelledby="showLimitUsedLabel"/);
-  for (const value of ['remaining', 'used']) {
-    assert.match(html, new RegExp(`<input type="radio" name="showLimitUsed" value="${value}"`));
-  }
-  assert.doesNotMatch(html, /id="floatingBubbleTriggerInput"/);
-  assert.doesNotMatch(html, /id="showLimitUsedInput"/);
+  assert.match(html, /<select id="floatingBubbleTriggerInput">[\s\S]*value="click"[\s\S]*value="hover"/);
+  assert.match(html, /<select id="showLimitUsedInput">[\s\S]*value="remaining"[\s\S]*value="used"/);
 
   const app = readRendererFile('app.js');
-  assert.match(app, /floatingBubbleTriggerInputs: Array\.from\(document\.querySelectorAll\('input\[name="floatingBubbleTrigger"\]'\)\)/);
-  assert.match(app, /showLimitUsedInputs: Array\.from\(document\.querySelectorAll\('input\[name="showLimitUsed"\]'\)\)/);
-  assert.match(app, /for \(const input of els\.showLimitUsedInputs \|\| \[\]\)/);
-  assert.match(app, /for \(const input of els\.floatingBubbleTriggerInputs \|\| \[\]\)/);
+  assert.match(app, /floatingBubbleTriggerInput: document\.getElementById\('floatingBubbleTriggerInput'\)/);
+  assert.match(app, /showLimitUsedInput: document\.getElementById\('showLimitUsedInput'\)/);
+  assert.match(app, /floatingBubbleTriggerInput\?\.addEventListener\('change'/);
+  assert.match(app, /showLimitUsedInput\?\.addEventListener\('change'/);
 
   // Bound every declaration match to the body of the rule it names: an
   // unbounded [\s\S]* happily matches the same property in an unrelated rule
@@ -451,20 +440,18 @@ test('nested settings lists share one compact rhythm instead of per-list spacing
   assert.match(css, /\.settings-panel \.settings-nested-list > \.status-provider-interval\s*\{[^}]*min-height:\s*28px/);
 });
 
-test('checkbox labels keep semantics without making the whole row a hit target', () => {
+test('checkbox labels keep the legacy whole-row hit target', () => {
   const css = readRendererFile('styles.css');
-  assert.match(css, /\.settings-panel \.checkbox-label,\s*\.settings-panel label\.client-checkbox\s*\{[^}]*pointer-events:\s*none/);
-  assert.match(css, /\.settings-panel \.checkbox-label > input\[type="checkbox"\],[^{}]*\.settings-panel label\.client-checkbox > input\[type="checkbox"\]\s*\{[^}]*pointer-events:\s*auto/);
+  assert.doesNotMatch(css, /\.settings-panel \.checkbox-label,\s*\.settings-panel label\.client-checkbox\s*\{[^}]*pointer-events:\s*none/);
   assert.match(css, /\.settings-panel \.client-checkboxes label\.client-checkbox input\[type="checkbox"\]\s*\{[^}]*cursor:\s*pointer/);
 });
 
 // The provider row opens its details, while the checkbox remains the only hit
 // target that enables or disables the provider.
-test('AI Tool Limits provider checkbox keeps an isolated hit target', () => {
+test('AI Tool Limits provider checkbox keeps the legacy row interaction', () => {
   const css = readRendererFile('styles.css');
-  assert.doesNotMatch(css, /\.settings-panel \.limit-provider-list label\.client-checkbox\s*\{[^}]*pointer-events:\s*auto/);
-  assert.match(css, /\.settings-panel \.checkbox-label,\s*\.settings-panel label\.client-checkbox\s*\{[^}]*pointer-events:\s*none/);
-  assert.match(css, /\.settings-panel label\.client-checkbox > input\[type="checkbox"\]\s*\{[^}]*pointer-events:\s*auto/);
+  assert.doesNotMatch(css, /\.settings-panel \.checkbox-label,\s*\.settings-panel label\.client-checkbox\s*\{[^}]*pointer-events:\s*none/);
+  assert.match(css, /\.settings-panel \.client-checkboxes label\.client-checkbox\s*\{[^}]*cursor:\s*pointer/);
 });
 
 test('theme code feedback clears when the displayed code changes', () => {
