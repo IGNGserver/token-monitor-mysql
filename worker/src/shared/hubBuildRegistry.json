@@ -1,0 +1,83 @@
+{
+  "schemaVersion": 1,
+  "components": {
+    "core": [
+      {
+        "revision": 1,
+        "buildId": "sha256:471ef0a506d39a43e6bff54dac28c8b81aa63a243fa8879dbfdf1756f903af53"
+      },
+      {
+        "revision": 2,
+        "buildId": "sha256:26bf4a6d7716780727f76bee1b56d423c7429a1bc7cb45bff626c1dbcb1f62ce"
+      },
+      {
+        "revision": 3,
+        "buildId": "sha256:ef3b4bc1b1f69413e4ed12090aae4a638826bf7b064b7e97ae0e0b89125708dd"
+      },
+      {
+        "revision": 4,
+        "buildId": "sha256:6ca66e4e1047c7116064764cb69ab9ccd8f7ea3673d863d16903bea8a0dc71aa"
+      },
+      {
+        "revision": 5,
+        "buildId": "sha256:eeb12917cb868d0564e8fc159bfa9c05af3c88bc2a5f3117f948f14f3a155205"
+      },
+      {
+        "revision": 6,
+        "buildId": "sha256:006ab65f658958e8f11ac8b5646e86531ce8d142321dccbe92db8edbc727ae94"
+      },
+      {
+        "revision": 7,
+        "buildId": "sha256:b08b43274dd4a3086e99e37f6166cf40004885adf1b5733d5dbec245d1cbce85"
+      },
+      {
+        "revision": 8,
+        "buildId": "sha256:84f60a8f141d8177512b5840fc076d35e7967c9d74aa1cbb7760e62fa634f5f9"
+      },
+      {
+        "revision": 9,
+        "buildId": "sha256:1bb812484890d2e81f6ebc184ad8f2c2387805b10e925a5e95a98f93c9c85d1b"
+      },
+      {
+        "revision": 10,
+        "buildId": "sha256:89524e0461890a11845cfd37b748c021379abdd97a8d5709d6cf93f3044bd30a"
+      }
+    ],
+    "node-hub": [
+      {
+        "revision": 1,
+        "buildId": "sha256:dbdaa0b2aa2e8d627b939d6ab76a9029aa2807839fdbe4e7918edcab592fe749"
+      },
+      {
+        "revision": 2,
+        "buildId": "sha256:0eed7b51cb14bd7f3e1304f34adde9f3bc1c04a34482d1810717332b174120d3"
+      },
+      {
+        "revision": 3,
+        "buildId": "sha256:e2a8d7d536785bf5eb917f8fba497882b9d38d55bdf4d643e8184a668b3cedff"
+      },
+      {
+        "revision": 4,
+        "buildId": "sha256:0ff947bf45b8d91a287392b2071cd224c530688ca4518aceea1e226172272529"
+      },
+      {
+        "revision": 5,
+        "buildId": "sha256:bce56d9c751313635cfca3a5b4445169af73fd84ab11f50ac7a555b67f0364a5"
+      },
+      {
+        "revision": 6,
+        "buildId": "sha256:ef3fefb8e446d0a2adce860411327d538b4c06d3139e59d02854811b6d9bd30d"
+      }
+    ],
+    "cloudflare-worker": [
+      {
+        "revision": 1,
+        "buildId": "sha256:a02f96b20ea72eb22ce4ee81f738023661742830f705c1f89fb71259ec41fd72"
+      },
+      {
+        "revision": 2,
+        "buildId": "sha256:a0c3ad382602f42694f205100ab06a865ba5a0b5f5431a2310c7d8a264468e7d"
+      }
+    ]
+  }
+}

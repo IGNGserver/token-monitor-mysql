@@ -11,17 +11,22 @@
     <main class="shell">
       <header class="titlebar">
         <div>
-          <div class="app-title"><span class="app-title-text">Token Monitor</span><span class="app-title-mark" aria-hidden="true"><svg class="app-title-mark-svg" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor"><path d="M4 16 A 8.5 8.5 0 1 1 17.5 20" stroke-width="2.6" stroke-linecap="round"/><circle cx="4" cy="16" r="1.5" fill="currentColor" stroke="none"/><path d="M9 9.5 h7 M12.5 9.5 v6 c0 1.8 1.2 2.8 2.8 2.8" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span id="liveDot" class="live-dot" title="Stream offline"></span><span class="app-title-measure" aria-hidden="true">Token Monitor</span></div>
+          <div class="app-title"><span class="app-title-text">Token Monitor</span><span class="app-title-mark" aria-hidden="true">Σ</span><span id="liveDot" class="live-dot" title="Stream offline"></span><span id="tokenRateReveal" class="token-rate-reveal" aria-hidden="true"></span><span class="app-title-measure" aria-hidden="true">Token Monitor</span></div>
           <div id="status" class="status">Starting</div>
         </div>
         <div class="title-controls">
-          <button id="customRangeButton" type="button" class="icon-button period-calendar-button" title="Custom range" aria-label="Custom range" aria-haspopup="dialog" aria-expanded="false" aria-controls="customRangePopover" data-i18n-title="period.custom.button" data-i18n-aria-label="period.custom.button"></button>
           <nav class="tabs" aria-label="Period tabs">
             <span class="tab-indicator" aria-hidden="true"></span>
-            <button class="tab active" data-period="today">DAY</button>
-            <button class="tab" data-period="month">MONTH</button>
-            <button class="tab" data-period="allTime">TOTAL</button>
+            <button class="tab active" data-period="today" data-period-slot="today">DAY</button>
+            <button id="monthPeriodTab" class="tab" data-period="month" data-period-slot="month" aria-haspopup="menu" aria-expanded="false">MONTH</button>
+            <button class="tab" data-period="allTime" data-period-slot="allTime">TOTAL</button>
           </nav>
+          <div id="monthPeriodMenu" class="view-switcher-menu period-menu hidden" role="menu" aria-labelledby="monthPeriodTab">
+            <button class="view-switcher-menu-item" type="button" role="menuitemradio" data-fixed-period="month"><span class="view-switcher-menu-label" data-i18n="periodRange.month">This month</span></button>
+            <button class="view-switcher-menu-item" type="button" role="menuitemradio" data-fixed-period="week"><span class="view-switcher-menu-label" data-i18n="periodRange.week">This week</span></button>
+            <button class="view-switcher-menu-item" type="button" role="menuitemradio" data-fixed-period="last7"><span class="view-switcher-menu-label" data-i18n="periodRange.last7">Last 7 days</span></button>
+            <button class="view-switcher-menu-item" type="button" role="menuitemradio" data-fixed-period="last30"><span class="view-switcher-menu-label" data-i18n="periodRange.last30">Last 30 days</span></button>
+          </div>
           <div class="actions-hotspot" title="Window controls"></div>
           <div class="window-actions">
             <button id="pinButton" class="icon-button" title="Cycle window behavior">⇧</button>
@@ -59,14 +64,9 @@
                 <input id="startAtLoginInput" type="checkbox" />
                 <span id="startupNote" class="settings-note settings-item-desc" data-i18n="settings.startup.available">Available in packaged builds. On Linux, run the AppImage build to enable.</span>
               </label>
-              <label class="checkbox-label settings-item"><span class="settings-item-text"><span class="settings-item-title" data-i18n="settings.startup.startInTray">Start in system tray</span></span><input id="startInTrayInput" type="checkbox" /></label>
             </div>
-            <div class="settings-subgroup">
-              <div class="settings-group-header"><span data-i18n="settings.integrations.title">Integrations</span></div>
-              <label class="checkbox-label settings-item"><span class="settings-item-text"><span class="settings-item-title" data-i18n="settings.integrations.discord">Discord Rich Presence</span></span><input id="discordRpcInput" type="checkbox" /></label>
-            </div>
-            <div class="settings-subgroup">
-              <div class="settings-group-header"><span data-i18n="settings.appUpdate.title">App Updates</span><span data-i18n="settings.appUpdate.source">GitHub releases</span></div>
+            <div class="settings-subgroup maintenance-section app-update-settings">
+              <div class="settings-group-header maintenance-header"><span data-i18n="settings.appUpdate.title">App Updates</span><span data-i18n="settings.appUpdate.source">GitHub releases</span></div>
               <label id="automaticAppUpdatesRow" class="checkbox-label settings-item">
                 <span class="settings-item-text">
                   <span class="settings-item-title" data-i18n="settings.appUpdate.automatic">Download updates automatically</span>
@@ -74,41 +74,70 @@
                 <input id="automaticAppUpdatesInput" type="checkbox" aria-describedby="automaticAppUpdatesNote" />
                 <span id="automaticAppUpdatesNote" class="settings-note settings-item-desc" data-i18n="settings.appUpdate.automaticDescription">Download new versions in the background. You'll be prompted to restart when ready.</span>
               </label>
-              <div class="tokscale-lines">
-                <div><span data-i18n="settings.appUpdate.installed">Installed</span><strong id="appUpdateInstalled">—</strong></div>
-                <div><span data-i18n="settings.appUpdate.latest">Latest</span><strong id="appUpdateLatest" data-i18n="settings.common.notChecked">Not checked</strong></div>
+              <div class="maintenance-version-grid app-update-version-grid">
+                <div class="maintenance-version-item"><span data-i18n="settings.appUpdate.installed">Installed</span><strong id="appUpdateInstalled">—</strong></div>
+                <div class="maintenance-version-item"><span data-i18n="settings.appUpdate.latest">Latest</span><strong id="appUpdateLatest" data-i18n="settings.common.notChecked">Not checked</strong></div>
               </div>
-              <div class="settings-actions">
+              <div class="settings-actions maintenance-actions">
                 <button id="appUpdateCheckButton" type="button" data-i18n="settings.appUpdate.check">Check for updates</button>
                 <button id="appUpdateViewReleaseButton" type="button" class="hidden" data-i18n="settings.appUpdate.viewRelease">View release</button>
               </div>
-              <details id="appUpdateNotes" class="app-update-notes hidden">
-                <summary id="appUpdateNotesTitle">What's new</summary>
-                <div id="appUpdateNotesBody" class="app-update-notes-body"></div>
-                <button id="appUpdateReleaseNotesButton" type="button" class="inline-link" data-i18n="settings.appUpdate.viewFullRelease">View full release</button>
-              </details>
+              <div id="appUpdateNotes" class="app-update-notes hidden">
+                <button id="appUpdateNotesToggle" class="app-update-notes-toggle" type="button" aria-expanded="false" aria-controls="appUpdateNotesDetails">
+                  <span class="settings-section-disclosure app-update-notes-disclosure" aria-hidden="true"></span>
+                  <span id="appUpdateNotesTitle">What's new</span>
+                </button>
+                <div id="appUpdateNotesDetails" class="app-update-notes-details hidden" inert>
+                  <div class="app-update-notes-content">
+                    <div id="appUpdateNotesBody" class="app-update-notes-body"></div>
+                    <button id="appUpdateReleaseNotesButton" type="button" class="inline-link" data-i18n="settings.appUpdate.viewFullRelease">View full release</button>
+                  </div>
+                </div>
+              </div>
               <div id="appUpdateMessage" class="tokscale-message"></div>
             </div>
-            <div id="tokscaleGroup" class="settings-group settings-subgroup">
-              <div class="settings-group-header"><span>Tokscale</span><span data-i18n="settings.tokscale.source">CLI dependency from npm</span></div>
-              <div class="tokscale-lines">
-                <div><span data-i18n="settings.tokscale.installed">Installed</span><strong id="tokscaleInstalled" data-i18n="settings.common.checking">Checking...</strong></div>
-                <div id="tokscaleBundledLine"><span data-i18n="settings.tokscale.bundled">Bundled</span><strong id="tokscaleBundled">—</strong></div>
-                <div><span><span data-i18n="settings.tokscale.npm">On npm</span> <small data-i18n="settings.tokscale.latestTag">(latest tag)</small></span><strong id="tokscaleNpm" data-i18n="settings.common.notChecked">Not checked</strong></div>
-              </div>
-              <p class="settings-note"><span data-i18n="settings.tokscale.noteBefore">Token Monitor uses tokscale (MIT, open-source) to read token data.</span> <button id="openTokscaleLinkButton" type="button" class="inline-link" data-i18n="settings.tokscale.learnMore">Learn more</button></p>
-              <div id="tokscaleMessage" class="tokscale-message"></div>
-              <div class="settings-actions">
-                <button id="checkTokscaleButton" type="button" data-i18n="settings.tokscale.checkNpm">Check npm</button>
-                <button id="downloadTokscaleButton" type="button" class="hidden" data-i18n="settings.tokscale.downloadNpm">Download from npm</button>
-                <button id="resetTokscaleButton" type="button" class="hidden" data-i18n="settings.tokscale.resetBundled">Reset to bundled</button>
-              </div>
-            </div>
             <div class="settings-subgroup">
-              <div class="settings-group-header"><span data-i18n="settings.advanced.title">Advanced</span></div>
-              <p class="settings-note"><span data-i18n="settings.advanced.note">Additional options are available in</span> <code>settings.json</code>.</p>
-              <div class="settings-actions">
-                <button id="openConfigButton" data-i18n="settings.advanced.openConfig">Open Config</button>
+              <div class="settings-group-header"><span data-i18n="settings.integrations.title">Integrations</span></div>
+              <label class="checkbox-label settings-item">
+                <span class="settings-item-text">
+                  <span class="settings-item-title" data-i18n="settings.integrations.discord">Discord Rich Presence</span>
+                </span>
+                <input id="discordRpcInput" type="checkbox" aria-describedby="discordRpcDescription" />
+                <span id="discordRpcDescription" class="settings-item-desc" data-i18n="settings.integrations.discordDescription">Show today's tokens, cost, and most-used AI tool in your Discord activity.</span>
+              </label>
+            </div>
+            <div id="advancedSettingsGroup" class="settings-subgroup advanced-settings">
+              <button id="advancedSettingsToggle" class="settings-group-header advanced-settings-toggle" type="button" aria-expanded="false" aria-controls="advancedSettingsDetails">
+                <span data-i18n="settings.advanced.title">Advanced</span>
+                <span class="advanced-settings-meta">
+                  <span id="advancedSettingsSummary" class="settings-subgroup-summary" data-i18n="settings.advanced.summary">Maintenance &amp; config</span>
+                  <span class="settings-section-disclosure" aria-hidden="true"></span>
+                </span>
+              </button>
+              <div id="advancedSettingsDetails" class="advanced-settings-details hidden" inert>
+                <div class="advanced-settings-body">
+                  <div id="tokscaleGroup" class="settings-group advanced-settings-block maintenance-panel">
+                    <div class="settings-group-header maintenance-header"><span>Tokscale</span><span data-i18n="settings.tokscale.source">Data engine from npm</span></div>
+                    <div class="maintenance-version-grid tokscale-version-grid">
+                      <div class="maintenance-version-item"><span data-i18n="settings.tokscale.installed">Installed</span><strong id="tokscaleInstalled" data-i18n="settings.common.checking">Checking...</strong></div>
+                      <div class="maintenance-version-item"><span><span data-i18n="settings.tokscale.npm">On npm</span> <small data-i18n="settings.tokscale.latestTag">(latest tag)</small></span><strong id="tokscaleNpm" data-i18n="settings.common.notChecked">Not checked</strong></div>
+                      <div id="tokscaleBundledLine" class="maintenance-version-item"><span data-i18n="settings.tokscale.bundled">Bundled</span><strong id="tokscaleBundled">—</strong></div>
+                    </div>
+                    <p class="settings-note"><span data-i18n="settings.tokscale.noteBefore">Token Monitor uses tokscale (MIT, open-source) to read token data.</span> <button id="openTokscaleLinkButton" type="button" class="inline-link" data-i18n="settings.tokscale.learnMore">Learn more</button></p>
+                    <div id="tokscaleMessage" class="tokscale-message"></div>
+                    <div class="settings-actions maintenance-actions">
+                      <button id="checkTokscaleButton" type="button" data-i18n="settings.tokscale.checkNpm">Check npm</button>
+                      <button id="downloadTokscaleButton" type="button" class="hidden" data-i18n="settings.tokscale.downloadNpm">Download from npm</button>
+                      <button id="resetTokscaleButton" type="button" class="hidden" data-i18n="settings.tokscale.resetBundled">Reset to bundled</button>
+                    </div>
+                  </div>
+                  <div class="settings-group advanced-settings-block advanced-config-row">
+                    <p class="settings-note"><span data-i18n="settings.advanced.note">Additional options are available in</span> <code>settings.json</code>.</p>
+                    <div class="settings-actions">
+                      <button id="openConfigButton" type="button" data-i18n="settings.advanced.openConfig">Open Config</button>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
             <div class="settings-subgroup about-settings">
@@ -116,7 +145,29 @@
               <p class="settings-note" data-i18n="settings.about.description">Open-source AI tool token usage monitor, licensed under MIT.</p>
               <div class="about-settings-links">
                 <button id="openRepositoryButton" type="button" class="inline-link" data-i18n="settings.about.repository">GitHub</button>
+                <button id="openWebsiteButton" type="button" class="inline-link" data-i18n="settings.about.website">Website</button>
                 <button id="reportIssueButton" type="button" class="inline-link" data-i18n="settings.about.reportIssue">Report an issue</button>
+                <button id="diagnosticToggleButton" type="button" class="inline-link" data-i18n="settings.about.diagnostics.toggle" aria-expanded="false" aria-controls="diagnosticDetails">Diagnostics</button>
+              </div>
+              <div id="diagnosticDetails" class="about-settings-diagnostics accordion-animated-container hidden" aria-hidden="true" inert>
+                <div class="accordion-animation-inner about-settings-diagnostics-inner">
+                  <div class="about-settings-diagnostics-heading" data-i18n="settings.about.diagnostics.title">Diagnostics &amp; support</div>
+                  <p class="settings-note" data-i18n="settings.about.diagnostics.description">Create a redacted system diagnostic to help report issues.</p>
+                  <div class="diagnostic-actions">
+                    <button id="generateDiagnosticButton" type="button" data-i18n="settings.about.diagnostics.generate">Generate report</button>
+                    <button id="copyDiagnosticButton" type="button" class="hidden" data-i18n="settings.about.diagnostics.copy" hidden>Copy report</button>
+                    <button id="previewDiagnosticButton" type="button" class="inline-link hidden" data-i18n="settings.about.diagnostics.preview" aria-expanded="false" aria-controls="diagnosticPreview" hidden>View report</button>
+                    <button id="regenerateDiagnosticButton" type="button" class="inline-link hidden" data-i18n="settings.about.diagnostics.regenerate" hidden>Regenerate</button>
+                  </div>
+                  <p class="settings-note diagnostic-privacy-note" data-i18n="settings.about.diagnostics.privacy">Includes versions, collection state and token totals; excludes credentials, conversations, accounts, full paths and raw errors.</p>
+                  <div id="diagnosticStatus" class="diagnostic-status" role="status" aria-live="polite"></div>
+                  <div id="diagnosticPreview" class="diagnostic-preview hidden" aria-hidden="true" inert aria-label="Report preview" data-i18n-aria-label="settings.about.diagnostics.previewTitle">
+                    <div class="diagnostic-preview-header">
+                      <span data-i18n="settings.about.diagnostics.previewTitle">Report preview</span>
+                    </div>
+                    <pre id="diagnosticReportText" tabindex="0"></pre>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -129,6 +180,18 @@
           </button>
           <div id="mainSettingsDetails" class="settings-section-details hidden">
             <div class="settings-subgroup settings-main-screen-group">
+              <label class="settings-item period-default-setting">
+                <span class="settings-item-text">
+                  <span class="settings-item-title" data-i18n="periodRange.settingsTitle">Default usage range</span>
+                </span>
+                <select id="periodMonthModeInput">
+                  <option value="month" data-i18n="periodRange.month">This month</option>
+                  <option value="week" data-i18n="periodRange.week">This week</option>
+                  <option value="last7" data-i18n="periodRange.last7">Last 7 days</option>
+                  <option value="last30" data-i18n="periodRange.last30">Last 30 days</option>
+                </select>
+                <span class="settings-note settings-item-desc" data-i18n="periodRange.settingsNote">Choose the default usage range shown on Home. On Home, click the selected period at the top again to open the menu and switch quickly.</span>
+              </label>
               <div class="settings-note-row">
                 <p class="settings-note" data-i18n="settings.views.note">Choose which main views appear and the order of the mode button.</p>
                 <div class="tool-header-actions">
@@ -194,24 +257,24 @@
               <div class="settings-group-header"><span data-i18n="settings.display.presenceTitle">Floating & Tray</span></div>
               <div class="presence-feature">
                 <label class="checkbox-label settings-item"><span class="settings-item-text"><span class="settings-item-title" data-i18n="settings.display.floatingBubble">Floating Bubble</span></span><input id="floatingBubbleInput" type="checkbox" /></label>
-                <label class="checkbox-label settings-item"><span class="settings-item-text"><span class="settings-item-title" data-i18n="settings.display.closeToTray">Close to system tray</span></span><input id="closeToTrayInput" type="checkbox" /></label>
                 <div id="floatingBubbleOptions" class="presence-feature-body hidden">
                   <p class="settings-note" data-i18n="settings.display.floatingBubbleNote">Collapse the widget into a slim draggable mini-window; click it to reopen.</p>
-                  <label id="floatingBubbleTriggerRow" class="settings-item"><span class="settings-item-text"><span class="settings-item-title" data-i18n="settings.display.floatingBubbleTrigger">Open on</span></span>
-                    <select id="floatingBubbleTriggerInput">
-                      <option value="click" data-i18n="settings.floatingBubbleTrigger.click">Click</option>
-                      <option value="hover" data-i18n="settings.floatingBubbleTrigger.hover">Hover (preview)</option>
-                    </select>
-                  </label>
+                  <div id="floatingBubbleTriggerRow" class="settings-item">
+                    <span id="floatingBubbleTriggerLabel" class="settings-item-text"><span class="settings-item-title" data-i18n="settings.display.floatingBubbleTrigger">Open on</span></span>
+                    <div class="inline-options" role="radiogroup" aria-labelledby="floatingBubbleTriggerLabel">
+                      <label class="inline-option"><input type="radio" name="floatingBubbleTrigger" value="click" id="floatingBubbleTriggerClick" /><span data-i18n="settings.floatingBubbleTrigger.click">Click</span></label>
+                      <label class="inline-option"><input type="radio" name="floatingBubbleTrigger" value="hover" id="floatingBubbleTriggerHover" /><span data-i18n="settings.floatingBubbleTrigger.hover">Hover (preview)</span></label>
+                    </div>
+                  </div>
                   <label id="floatingBubbleContentRow" class="settings-item"><span class="settings-item-text"><span class="settings-item-title" data-i18n="settings.display.floatingBubbleContent">Bubble display</span></span>
                     <select id="floatingBubbleContentInput">
                       <option value="icon" data-i18n="settings.tray.iconOnly">Icon only</option>
-                      <option value="tokens" data-i18n="settings.tray.tokensToday">Tokens Today (1.2M)</option>
+                      <option value="tokens" data-i18n="settings.tray.tokensToday">Tokens Today</option>
                       <option value="cost" data-i18n="settings.tray.costToday">Cost Today ($1.23)</option>
-                      <option value="both" data-i18n="settings.tray.bothToday">Tokens + Cost Today (1.2M - $1.23)</option>
-                      <option value="tokensAll" data-i18n="settings.tray.tokensTotal">Tokens Total (1.36B)</option>
+                      <option value="both" data-i18n="settings.tray.bothToday">Tokens + Cost Today</option>
+                      <option value="tokensAll" data-i18n="settings.tray.tokensTotal">Tokens Total</option>
                       <option value="costAll" data-i18n="settings.tray.costTotal">Cost Total ($8.28)</option>
-                      <option value="bothAll" data-i18n="settings.tray.bothTotal">Tokens + Cost Total (1.36B - $8.28)</option>
+                      <option value="bothAll" data-i18n="settings.tray.bothTotal">Tokens + Cost Total</option>
                       <option value="limitsAllSessions" data-i18n="settings.tray.limitsAllSessions">Limits: first two tools' primary quotas (12% · 34%)</option>
                       <option value="barsSession" data-i18n="settings.tray.barsSession">Limit bars: lowest session remaining</option>
                       <option value="barsWeekly" data-i18n="settings.tray.barsWeekly">Limit bars: lowest weekly remaining</option>
@@ -228,12 +291,12 @@
                 <div id="trayIconOptions" class="presence-feature-body hidden">
                   <label class="settings-item"><span class="settings-item-text"><span class="settings-item-title" data-i18n="settings.display.trayText">Tray text</span></span>
                     <select id="trayContentInput">
-                      <option value="tokens" data-i18n="settings.tray.tokensToday">Tokens Today (1.2M)</option>
+                      <option value="tokens" data-i18n="settings.tray.tokensToday">Tokens Today</option>
                       <option value="cost" data-i18n="settings.tray.costToday">Cost Today ($1.23)</option>
-                      <option value="both" data-i18n="settings.tray.bothToday">Tokens + Cost Today (1.2M - $1.23)</option>
-                      <option value="tokensAll" data-i18n="settings.tray.tokensTotal">Tokens Total (1.36B)</option>
+                      <option value="both" data-i18n="settings.tray.bothToday">Tokens + Cost Today</option>
+                      <option value="tokensAll" data-i18n="settings.tray.tokensTotal">Tokens Total</option>
                       <option value="costAll" data-i18n="settings.tray.costTotal">Cost Total ($8.28)</option>
-                      <option value="bothAll" data-i18n="settings.tray.bothTotal">Tokens + Cost Total (1.36B - $8.28)</option>
+                      <option value="bothAll" data-i18n="settings.tray.bothTotal">Tokens + Cost Total</option>
                       <option value="limitsAllSessions" data-i18n="settings.tray.limitsAllSessions">Limits: first two tools' primary quotas (12% · 34%)</option>
                       <option value="barsSession" data-i18n="settings.tray.barsSession">Limit bars: lowest session remaining</option>
                       <option value="barsWeekly" data-i18n="settings.tray.barsWeekly">Limit bars: lowest weekly remaining</option>
@@ -263,12 +326,13 @@
           <div id="appearanceSettingsDetails" class="settings-section-details hidden">
             <div class="settings-subgroup settings-appearance-group">
               <div class="settings-item"><span class="settings-item-text"><span id="windowGlassEffectLabel" class="settings-item-title" data-i18n="settings.appearance.systemGlass">Glass Backdrop</span></span><div class="inline-options" role="radiogroup" aria-labelledby="windowGlassEffectLabel"><label class="inline-option"><input type="radio" name="systemGlassOption" value="system" /><span data-i18n="settings.appearance.glassEffectSystem">System</span></label><label class="inline-option"><input type="radio" name="systemGlassOption" value="off" /><span data-i18n="settings.appearance.glassEffectTransparent">Transparent</span></label></div></div>
-              <label id="windowsBackdropRow" class="settings-item hidden"><span class="settings-item-text"><span class="settings-item-title" data-i18n="settings.appearance.windowsBackdrop">Windows Glass Style</span></span><select id="windowsBackdropInput"><option value="acrylic" data-i18n="settings.appearance.windowsBackdropAcrylic">Acrylic</option><option value="mica" data-i18n="settings.appearance.windowsBackdropMica">Mica</option></select><span id="windowsBackdropNote" class="settings-note settings-item-desc hidden" data-i18n="settings.appearance.windowsBackdropNote">Keeps the background translucent and blurred, even when the window is not focused.</span></label>
-              <label id="macosGlassRow" class="settings-item hidden"><span class="settings-item-text"><span class="settings-item-title" data-i18n="settings.appearance.macosGlassStyle">macOS Glass Style</span></span><select id="macosGlassInput"><option value="vibrancy" data-i18n="settings.appearance.macosGlassVibrancy">Native Frosted Glass (before macOS 26)</option><option value="liquid-glass" data-i18n="settings.appearance.macosGlassLiquid">Liquid Glass (macOS 26+)</option></select><span id="macosGlassNote" class="settings-note settings-item-desc hidden" data-i18n="settings.appearance.macosGlassLiquidNote">Liquid Glass requires macOS 26; older systems use native frosted glass.</span></label>
+              <label id="windowsBackdropRow" class="settings-item hidden"><span class="settings-item-text"><span class="settings-item-title" data-i18n="settings.appearance.windowsBackdrop">Windows Glass Style</span></span><select id="windowsBackdropInput"><option value="acrylic" data-i18n="settings.appearance.windowsBackdropAcrylic">Acrylic</option><option value="accent" data-i18n="settings.appearance.windowsBackdropAccent">Accent Blur (experimental)</option></select><span id="windowsBackdropNote" class="settings-note settings-item-desc hidden" data-i18n="settings.appearance.windowsBackdropNote">Keeps the background translucent and blurred, even when the window is not focused.</span></label>
+              <label id="macosGlassRow" class="settings-item hidden"><span class="settings-item-text"><span class="settings-item-title" data-i18n="settings.appearance.macosGlassStyle">macOS Glass Style</span></span><select id="macosGlassInput"><option value="vibrancy" data-i18n="settings.appearance.macosGlassVibrancy">Vibrancy</option><option value="liquid-glass" data-i18n="settings.appearance.macosGlassLiquid">Liquid Glass</option></select><span id="macosGlassNote" class="settings-note settings-item-desc hidden" data-i18n="settings.appearance.macosGlassLiquidNote">Liquid Glass requires macOS 26 or later.</span></label>
               <label class="checkbox-label settings-item"><span class="settings-item-text"><span class="settings-item-title" data-i18n="settings.appearance.liveIndicator">Live Indicator</span></span><input id="liveDotInput" type="checkbox" /></label>
               <label class="checkbox-label settings-item"><span class="settings-item-text"><span class="settings-item-title" data-i18n="settings.appearance.toolIcons">Tool Icons</span></span><input id="toolIconsInput" type="checkbox" /></label>
               <label class="checkbox-label settings-item"><span class="settings-item-text"><span class="settings-item-title" data-i18n="settings.appearance.titleIcon">Use Title Icon</span></span><input id="titleIconInput" type="checkbox" /></label>
               <label class="checkbox-label settings-item"><span class="settings-item-text"><span class="settings-item-title" data-i18n="settings.appearance.compactTotalTokens">Show compact token total</span></span><input id="showCompactTotalTokensInput" type="checkbox" /></label>
+              <label id="compactTokenUnitsRow" class="settings-item hidden"><span class="settings-item-text"><span class="settings-item-title" data-i18n="settings.appearance.compactTokenUnits">Compact token units</span></span><select id="compactTokenUnitsInput"><option value="western" data-i18n="settings.appearance.compactTokenUnitsWestern">International (K/M/B)</option><option value="localized" data-i18n="settings.appearance.compactTokenUnitsLocalized">East Asian (萬/億)</option></select></label>
               <label class="checkbox-label settings-item"><span class="settings-item-text"><span class="settings-item-title" data-i18n="settings.appearance.swapSettingsRefresh">Swap Settings and Refresh buttons</span></span><input id="swapSettingsRefreshInput" type="checkbox" /></label>
               <div class="settings-item settings-slider-item"><span class="settings-item-text"><span class="slider-label"><span id="glassSliderLabel" class="settings-item-title" data-i18n="settings.appearance.glass">Glass</span><button id="resetGlassButton" type="button" class="reset-appearance-button reset-inline" title="Reset glass" data-i18n-title="settings.appearance.resetGlass">↺</button></span></span><input id="glassInput" type="range" min="0" max="100" step="1" aria-labelledby="glassSliderLabel" /><span class="slider-value" aria-hidden="true"></span></div>
               <div class="settings-item settings-slider-item"><span class="settings-item-text"><span class="slider-label"><span id="depthSliderLabel" class="settings-item-title" data-i18n="settings.appearance.depth">Depth</span><button id="resetDepthButton" type="button" class="reset-appearance-button reset-inline" title="Reset depth" data-i18n-title="settings.appearance.resetDepth">↺</button></span></span><input id="blurInput" type="range" min="0" max="100" step="1" aria-labelledby="depthSliderLabel" /><span class="slider-value" aria-hidden="true"></span></div>
@@ -312,6 +376,50 @@
                 </button>
                 <div id="themeAdvancedDetails" class="cursor-settings-details hidden" inert>
                   <div id="themeColorGrid" class="color-picker-grid"></div>
+                  <div class="settings-font-controls">
+                    <div class="settings-font-field">
+                      <label class="settings-item-title" for="interfaceFontPreset" data-i18n="settings.appearance.fontInterface">Interface font</label>
+                      <span class="settings-font-input-row">
+                        <select id="interfaceFontPreset" aria-describedby="fontSettingsNote">
+                          <option value="app" data-i18n="settings.appearance.fontPresetApp">App default</option>
+                          <option value="system" data-i18n="settings.appearance.fontPresetSystem">System UI</option>
+                          <option value="mono" data-i18n="settings.appearance.fontPresetMono">Monospace</option>
+                          <option value="custom" data-i18n="settings.appearance.fontPresetCustom">Custom…</option>
+                        </select>
+                        <button id="resetInterfaceFontButton" class="reset-appearance-button reset-inline" type="button" title="Reset font" data-i18n-title="settings.appearance.resetFont" aria-label="Reset interface font" data-i18n-aria-label="settings.appearance.resetInterfaceFont">↺</button>
+                      </span>
+                      <div id="interfaceFontCustomRow" class="settings-font-custom-row hidden">
+                        <label for="interfaceFontInput" data-i18n="settings.appearance.fontCustomLabel">Custom font family</label>
+                        <input id="interfaceFontInput" type="text" maxlength="160" autocomplete="off" spellcheck="false" placeholder="Enter a font family" data-i18n-placeholder="settings.appearance.fontPlaceholder" aria-describedby="fontSettingsNote" />
+                        <div class="settings-font-preview">
+                          <span class="settings-font-preview-label" data-i18n="settings.appearance.fontPreview">Preview</span>
+                          <span id="interfaceFontPreview" class="settings-font-preview-sample">Aa 中文 0123</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="settings-font-field">
+                      <label class="settings-item-title" for="displayFontPreset" data-i18n="settings.appearance.fontDisplay">Display font</label>
+                      <span class="settings-font-input-row">
+                        <select id="displayFontPreset" aria-describedby="fontSettingsNote">
+                          <option value="follow" data-i18n="settings.appearance.fontPresetFollow">Follow interface</option>
+                          <option value="app" data-i18n="settings.appearance.fontPresetApp">App default</option>
+                          <option value="system" data-i18n="settings.appearance.fontPresetSystem">System UI</option>
+                          <option value="mono" data-i18n="settings.appearance.fontPresetMono">Monospace</option>
+                          <option value="custom" data-i18n="settings.appearance.fontPresetCustom">Custom…</option>
+                        </select>
+                        <button id="resetDisplayFontButton" class="reset-appearance-button reset-inline" type="button" title="Reset font" data-i18n-title="settings.appearance.resetFont" aria-label="Reset display font" data-i18n-aria-label="settings.appearance.resetDisplayFont">↺</button>
+                      </span>
+                      <div id="displayFontCustomRow" class="settings-font-custom-row hidden">
+                        <label for="displayFontInput" data-i18n="settings.appearance.fontCustomLabel">Custom font family</label>
+                        <input id="displayFontInput" type="text" maxlength="160" autocomplete="off" spellcheck="false" placeholder="Enter a font family" data-i18n-placeholder="settings.appearance.fontPlaceholder" aria-describedby="fontSettingsNote" />
+                        <div class="settings-font-preview">
+                          <span class="settings-font-preview-label" data-i18n="settings.appearance.fontPreview">Preview</span>
+                          <span id="displayFontPreview" class="settings-font-preview-sample">Aa 中文 0123</span>
+                        </div>
+                      </div>
+                    </div>
+                    <p id="fontSettingsNote" class="settings-note" data-i18n="settings.appearance.fontNote">App default uses Token Monitor's built-in typography. System UI uses your operating system's interface font. Choose Custom… to enter a font family.</p>
+                  </div>
                 </div>
               </div>
               <div id="themeVendorGroup" class="settings-group cursor-account-group theme-color-accordion settings-vendor-color-group">
@@ -343,7 +451,7 @@
           <div id="toolsSettingsDetails" class="settings-section-details hidden">
             <div class="settings-subgroup settings-tools-subgroup">
               <div class="settings-note-row">
-                <p class="settings-note" data-i18n="settings.tools.note">Track controls collection. Show controls the main Tools list.</p>
+                <p class="settings-note" data-i18n="settings.tools.note">Track controls collection. Show controls the main Tools list. Drag a row to reorder.</p>
                 <div class="tool-header-actions">
                   <button id="resetClientDisplayOrderButton" class="tool-header-action" type="button" title="Reset order" aria-label="Reset order" data-i18n-title="settings.tools.resetOrder" data-i18n-aria-label="settings.tools.resetOrder"><span aria-hidden="true">↺</span></button>
                   <button id="showAllClientsButton" class="tool-header-action" type="button" title="Show all" aria-label="Show all" data-i18n-title="settings.tools.showAll" data-i18n-aria-label="settings.tools.showAll"><span class="tool-header-eye" aria-hidden="true"></span></button>
@@ -358,11 +466,12 @@
                 </span>
                 <select id="collectionCadenceInput">
                   <option value="live" data-i18n="settings.collection.mode.live">Live watch</option>
+                  <option value="smart" data-i18n="settings.collection.mode.smart">Smart (10 minutes)</option>
                   <option value="300000" data-i18n="settings.collection.interval.5m">Every 5 minutes</option>
                   <option value="900000" data-i18n="settings.collection.interval.15m">Every 15 minutes</option>
                   <option value="1800000" data-i18n="settings.collection.interval.30m">Every 30 minutes</option>
                 </select>
-                <span id="collectionCadenceNote" class="settings-note settings-item-desc" data-i18n="settings.collection.modeDesc" hidden>Interval mode turns off file watching.</span>
+                <span id="collectionCadenceNote" class="settings-note settings-item-desc" data-i18n="settings.collection.modeDesc" hidden>Smart mode collects after agent activity, with an hourly reconciliation; fixed intervals turn off file watching.</span>
               </label>
             </div>
             <div class="settings-subgroup session-archive-settings">
@@ -475,9 +584,11 @@
             <span class="settings-section-meta"><span id="limitsSettingsSummary" class="settings-section-summary"></span><span class="settings-section-disclosure" aria-hidden="true"></span></span>
           </button>
           <div id="limitsSettingsDetails" class="settings-section-details hidden">
+            <p class="settings-note" data-i18n="settings.limits.reorderNote">Drag a provider to reorder the list.</p>
             <div id="limitProviderCheckboxes" class="client-checkboxes limit-provider-list"></div>
             <label class="settings-item"><span class="settings-item-text"><span class="settings-item-title" data-i18n="settings.limits.refresh">Refresh</span></span>
               <select id="limitsRefreshInput">
+                <option value="adaptive" data-i18n="settings.limits.refreshAdaptive">Adaptive</option>
                 <option value="60000">1 min</option>
                 <option value="120000">2 min</option>
                 <option value="300000">5 min</option>
@@ -485,23 +596,50 @@
                 <option value="1800000">30 min</option>
               </select>
             </label>
+            <p id="limitsRefreshAdaptiveNote" class="settings-note hidden" data-i18n="settings.limits.refreshAdaptiveNote">Adjusts the refresh rate to how fast a quota is being consumed: every 5 minutes normally, as often as every minute when needed.</p>
             <label class="checkbox-label settings-item"><span class="settings-item-text"><span class="settings-item-title" data-i18n="settings.limits.showSource">Show Source</span></span><input id="showLimitSourceInput" type="checkbox" /></label>
             <label class="checkbox-label settings-item"><span class="settings-item-text"><span class="settings-item-title" data-i18n="settings.limits.maskAccountEmails">Mask account emails</span></span><input id="maskLimitAccountEmailsInput" type="checkbox" /></label>
-            <label class="settings-item"><span class="settings-item-text"><span class="settings-item-title" data-i18n="settings.limits.barsShow">Bars show</span></span>
-              <select id="showLimitUsedInput">
-                <option value="remaining" data-i18n="settings.limits.barsRemaining">Remaining</option>
-                <option value="used" data-i18n="settings.limits.barsUsed">Used</option>
-              </select>
-            </label>
+            <div class="settings-item">
+              <span id="showLimitUsedLabel" class="settings-item-text"><span class="settings-item-title" data-i18n="settings.limits.barsShow">Bars show</span></span>
+              <div class="inline-options" role="radiogroup" aria-labelledby="showLimitUsedLabel">
+                <label class="inline-option"><input type="radio" name="showLimitUsed" value="remaining" id="showLimitUsedRemaining" /><span data-i18n="settings.limits.barsRemaining">Remaining</span></label>
+                <label class="inline-option"><input type="radio" name="showLimitUsed" value="used" id="showLimitUsedUsed" /><span data-i18n="settings.limits.barsUsed">Used</span></label>
+              </div>
+            </div>
           </div>
         </div>
 
-        <div class="settings-group settings-collapsible-group settings-accounts-group">
-          <button class="settings-section-toggle" type="button" data-settings-section="accounts" aria-expanded="false" aria-controls="accountsSettingsDetails">
-            <span class="settings-section-heading"><span class="settings-section-icon settings-section-icon-accounts" aria-hidden="true"></span><span data-i18n="settings.sections.accounts">Accounts</span></span>
-            <span class="settings-section-meta"><span id="accountsSettingsSummary" class="settings-section-summary"></span><span class="settings-section-disclosure" aria-hidden="true"></span></span>
-          </button>
-          <div id="accountsSettingsDetails" class="settings-section-details hidden">
+        <div id="accountsSettingsDetails" class="hidden" aria-hidden="true">
+            <div id="claudeAccountGroup" class="settings-group cursor-account-group">
+              <button id="claudeSettingsToggle" class="settings-group-header cursor-settings-toggle" type="button" aria-expanded="false" aria-controls="claudeSettingsDetails">
+                <span data-i18n="settings.claude.title">Claude Account</span>
+                <span class="cursor-settings-summary">
+                  <span id="claudeAccountStatus" class="cursor-status-pill">Not configured</span>
+                  <span class="cursor-disclosure-icon" aria-hidden="true"></span>
+                </span>
+              </button>
+              <div id="claudeSettingsDetails" class="cursor-settings-details hidden">
+                <div class="settings-actions">
+                  <button id="claudeOpenBrowser" data-i18n="settings.claude.openBrowser">Open Claude usage in browser</button>
+                  <button id="claudeLogoutButton" class="hidden" data-i18n="settings.claude.clearCookie">Clear cookie</button>
+                  <button id="claudeRefreshButton" data-i18n="settings.common.refresh">Refresh</button>
+                </div>
+                <div id="claudeManualPanel">
+                  <p class="settings-note" data-i18n="settings.claude.note">Claude Code OAuth and CLI are detected automatically when Web login is not configured. Adding Web login makes it the local Claude source. The cookie stays on this device.</p>
+                  <p class="settings-note">
+                    <strong>1.</strong> <span data-i18n="settings.claude.step1">Open Claude usage in your browser (button above) and sign in.</span><br>
+                    <strong>2.</strong> <span data-i18n="settings.claude.step2">Open DevTools (F12 or Cmd+Opt+I) -> Application/Storage -> Cookies -> https://claude.ai.</span><br>
+                    <strong>3.</strong> <span data-i18n="settings.claude.step3">Copy the sessionKey value.</span><br>
+                    <strong>4.</strong> <span data-i18n="settings.claude.step4">Paste it below and click Save cookie.</span>
+                  </p>
+                  <textarea id="claudeWebCookieInput" rows="3" autocomplete="off" spellcheck="false" placeholder="sessionKey=..." data-i18n-placeholder="settings.claude.cookiePlaceholder"></textarea>
+                  <div class="settings-actions">
+                    <button id="claudeWebCookieSubmit" data-i18n="settings.claude.saveCookie">Save cookie</button>
+                  </div>
+                </div>
+                <div id="claudeErrorMessage" class="settings-note error hidden"></div>
+              </div>
+            </div>
             <div id="codexAccountGroup" class="settings-group cursor-account-group">
               <button id="codexSettingsToggle" class="settings-group-header cursor-settings-toggle" type="button" aria-expanded="false" aria-controls="codexSettingsDetails">
                 <span data-i18n="settings.codex.title">Codex Accounts</span>
@@ -541,7 +679,7 @@
               <button id="cursorSettingsToggle" class="settings-group-header cursor-settings-toggle" type="button" aria-expanded="false" aria-controls="cursorSettingsDetails">
                 <span data-i18n="settings.cursor.title">Cursor Account</span>
                 <span class="cursor-settings-summary">
-                  <span id="cursorAccountStatus" class="cursor-status-pill" data-i18n="settings.common.checking">Checking...</span>
+                  <span id="cursorAccountStatus" class="cursor-status-pill">Checking...</span>
                   <span class="cursor-disclosure-icon" aria-hidden="true"></span>
                 </span>
               </button>
@@ -570,13 +708,34 @@
               <button id="opencodeSettingsToggle" class="settings-group-header cursor-settings-toggle" type="button" aria-expanded="false" aria-controls="opencodeSettingsDetails">
                 <span data-i18n="settings.opencode.title">OpenCode Accounts</span>
                 <span class="cursor-settings-summary">
-                  <span id="opencodeCookieStatus" class="cursor-status-pill" data-i18n="settings.opencode.statusNotSet">Not configured</span>
+                  <span id="opencodeCookieStatus" class="cursor-status-pill">Not configured</span>
                   <span class="cursor-disclosure-icon" aria-hidden="true"></span>
                 </span>
               </button>
               <div id="opencodeSettingsDetails" class="cursor-settings-details hidden">
+                <p class="settings-note" data-i18n="settings.opencode.accountsNote">Go quota is detected automatically. Save a credential under an existing account's name to say they are the same OpenCode account: quota then comes from the API, with the Zen balance and cross-device identity still coming from the cookie.</p>
+
                 <!-- Profile list -->
                 <div id="opencodeProfileList" class="opencode-profile-list"></div>
+
+                <!-- Local DB fallback: an advanced, off-by-default estimate, so
+                     it collapses below the accounts instead of sitting above
+                     them where it reads as the first thing to configure. -->
+                <div id="opencodeLocalFallbackAccountGroup" class="settings-group cursor-account-group">
+                  <button id="opencodeLocalFallbackSettingsToggle" class="settings-group-header cursor-settings-toggle" type="button" aria-expanded="false" aria-controls="opencodeLocalFallbackSettingsDetails">
+                    <span data-i18n="settings.limits.opencodeLocalLimits">Use local DB fallback</span>
+                    <span class="cursor-settings-summary">
+                      <span id="opencodeLocalFallbackStatus" class="cursor-status-pill"></span>
+                      <span class="cursor-disclosure-icon" aria-hidden="true"></span>
+                    </span>
+                  </button>
+                  <!-- The collapse animates by squeezing a single inner wrapper,
+                       so the moved setting has to land inside it rather than
+                       directly on the container, which cannot shrink. -->
+                  <div id="opencodeLocalFallbackSettingsDetails" class="cursor-settings-details hidden">
+                    <div id="opencodeLocalFallbackInner" class="accordion-animation-inner"></div>
+                  </div>
+                </div>
 
                 <!-- Add new account -->
                 <div id="opencodeAddForm" class="opencode-add-form">
@@ -589,21 +748,42 @@
                   <div id="opencodeAddDetails" class="opencode-add-details accordion-animated-container hidden">
                     <div class="accordion-animation-inner opencode-add-body">
                       <div class="settings-actions">
-                        <button id="opencodeOpenBrowser" data-i18n="settings.opencode.openBrowser">Open OpenCode auth in browser</button>
+                        <button id="opencodeOpenBrowser" data-i18n="settings.opencode.openBrowserKeys">Open OpenCode keys in browser</button>
                       </div>
-                      <p class="settings-note">
-                        <strong>1.</strong> <span data-i18n="settings.opencode.step1Before">Open</span> <code>opencode.ai/auth</code> <span data-i18n="settings.opencode.step1After">in your browser and sign in.</span><br>
-                        <strong>2.</strong> <span data-i18n="settings.opencode.step2">Open DevTools (F12 or Cmd+Opt+I) -> Application/Storage -> Cookies -> opencode.ai.</span><br>
-                        <strong>3.</strong> <span data-i18n="settings.opencode.step3Before">Copy the</span> <code>auth</code> <span data-i18n="settings.opencode.step3After">value.</span><br>
-                        <strong>4.</strong> <span data-i18n="settings.opencode.step4">Paste it below and click Save.</span>
-                      </p>
+                      <div class="settings-row">
+                        <label for="opencodeCredentialKind" data-i18n="settings.opencode.credentialKind">Credential</label>
+                        <select id="opencodeCredentialKind">
+                          <option value="api" data-i18n="settings.opencode.kindApi">API key</option>
+                          <option value="cookie" data-i18n="settings.opencode.kindCookie">Cookie</option>
+                        </select>
+                      </div>
                       <div class="settings-row">
                         <label for="opencodeProfileName" data-i18n="settings.opencode.profileName">账号名称</label>
                         <input id="opencodeProfileName" type="text" data-i18n-placeholder="settings.opencode.profileNamePlaceholder" placeholder="例如: work、personal">
                       </div>
-                      <textarea id="opencodeCookieInput" rows="3" spellcheck="false" placeholder="auth=..."></textarea>
+                      <div id="opencodeApiFields" class="opencode-credential-fields">
+                        <p class="settings-note" data-i18n="settings.opencode.apiHint">Paste an OpenCode Go API key. Go quota only.</p>
+                        <!-- The nearest `<label for>` names the credential-type
+                             select, not this field, so a screen reader reaches an
+                             unnamed password box. Named after the credential kind
+                             it holds, which is what the select calls it too. -->
+                        <input id="opencodeApiKeyInput" type="password" spellcheck="false" placeholder="opencode-go-..." data-i18n-placeholder="settings.opencode.apiKeyPlaceholder" aria-label="API key" data-i18n-aria-label="settings.opencode.kindApi" />
+                      </div>
+                      <div id="opencodeCookieFields" class="opencode-credential-fields hidden">
+                        <p class="settings-note">
+                          <strong>1.</strong> <span data-i18n="settings.opencode.step1Before">Open</span> <code>opencode.ai/auth</code> <span data-i18n="settings.opencode.step1After">in your browser and sign in.</span><br>
+                          <strong>2.</strong> <span data-i18n="settings.opencode.step2">Open DevTools (F12 or Cmd+Opt+I) -> Application/Storage -> Cookies -> opencode.ai.</span><br>
+                          <strong>3.</strong> <span data-i18n="settings.opencode.step3Before">Copy the</span> <code>auth</code> <span data-i18n="settings.opencode.step3After">value.</span><br>
+                          <strong>4.</strong> <span data-i18n="settings.opencode.step4">Paste it below and click Save.</span>
+                        </p>
+                        <textarea id="opencodeCookieInput" rows="3" spellcheck="false" placeholder="auth=..." data-i18n-placeholder="settings.opencode.cookiePlaceholder" aria-label="Cookie" data-i18n-aria-label="settings.opencode.kindCookie"></textarea>
+                      </div>
                       <div class="settings-actions">
                         <button id="opencodeCookieSubmit" data-i18n="settings.opencode.saveProfile">保存</button>
+                        <!-- Shown only when the typed name already holds a
+                             different credential, so binding the two into one
+                             account is a separate, deliberate click. -->
+                        <button id="opencodeCredentialMerge" class="credential-merge-btn hidden" type="button"></button>
                       </div>
                     </div>
                   </div>
@@ -616,7 +796,7 @@
               <button id="openrouterSettingsToggle" class="settings-group-header cursor-settings-toggle" type="button" aria-expanded="false" aria-controls="openrouterSettingsDetails">
                 <span data-i18n="settings.openrouter.title">OpenRouter Accounts</span>
                 <span class="cursor-settings-summary">
-                  <span id="openrouterStatus" class="cursor-status-pill" data-i18n="settings.openrouter.statusNotSet">Not configured</span>
+                  <span id="openrouterStatus" class="cursor-status-pill">Not configured</span>
                   <span class="cursor-disclosure-icon" aria-hidden="true"></span>
                 </span>
               </button>
@@ -653,7 +833,7 @@
               <button id="deepseekSettingsToggle" class="settings-group-header cursor-settings-toggle" type="button" aria-expanded="false" aria-controls="deepseekSettingsDetails">
                 <span data-i18n="settings.deepseek.title">DeepSeek Account</span>
                 <span class="cursor-settings-summary">
-                  <span id="deepseekApiKeyStatus" class="cursor-status-pill" data-i18n="settings.opencode.statusNotSet">Not configured</span>
+                  <span id="deepseekApiKeyStatus" class="cursor-status-pill">Not configured</span>
                   <span class="cursor-disclosure-icon" aria-hidden="true"></span>
                 </span>
               </button>
@@ -677,7 +857,7 @@
               <button id="minimaxSettingsToggle" class="settings-group-header cursor-settings-toggle" type="button" aria-expanded="false" aria-controls="minimaxSettingsDetails">
                 <span data-i18n="settings.minimax.title">Minimax Account</span>
                 <span class="cursor-settings-summary">
-                  <span id="minimaxApiKeyStatus" class="cursor-status-pill" data-i18n="settings.opencode.statusNotSet">Not configured</span>
+                  <span id="minimaxApiKeyStatus" class="cursor-status-pill">Not configured</span>
                   <span class="cursor-disclosure-icon" aria-hidden="true"></span>
                 </span>
               </button>
@@ -701,7 +881,7 @@
               <button id="zaiSettingsToggle" class="settings-group-header cursor-settings-toggle" type="button" aria-expanded="false" aria-controls="zaiSettingsDetails">
                 <span data-i18n="settings.zai.title">Z.ai Account</span>
                 <span class="cursor-settings-summary">
-                  <span id="zaiAccountStatus" class="cursor-status-pill" data-i18n="settings.opencode.statusNotSet">Not configured</span>
+                  <span id="zaiAccountStatus" class="cursor-status-pill">Not configured</span>
                   <span class="cursor-disclosure-icon" aria-hidden="true"></span>
                 </span>
               </button>
@@ -732,7 +912,7 @@
               <button id="zaiteamSettingsToggle" class="settings-group-header cursor-settings-toggle" type="button" aria-expanded="false" aria-controls="zaiteamSettingsDetails">
                 <span data-i18n="settings.zaiteam.title">Z.ai Team Account</span>
                 <span class="cursor-settings-summary">
-                  <span id="zaiteamAccountStatus" class="cursor-status-pill" data-i18n="settings.opencode.statusNotSet">Not configured</span>
+                  <span id="zaiteamAccountStatus" class="cursor-status-pill">Not configured</span>
                   <span class="cursor-disclosure-icon" aria-hidden="true"></span>
                 </span>
               </button>
@@ -774,7 +954,7 @@
               <button id="volcengineSettingsToggle" class="settings-group-header cursor-settings-toggle" type="button" aria-expanded="false" aria-controls="volcengineSettingsDetails">
                 <span data-i18n="settings.volcengine.title">Volcengine Account</span>
                 <span class="cursor-settings-summary">
-                  <span id="volcengineAccountStatus" class="cursor-status-pill" data-i18n="settings.opencode.statusNotSet">Not configured</span>
+                  <span id="volcengineAccountStatus" class="cursor-status-pill">Not configured</span>
                   <span class="cursor-disclosure-icon" aria-hidden="true"></span>
                 </span>
               </button>
@@ -809,7 +989,7 @@
               <button id="qoderSettingsToggle" class="settings-group-header cursor-settings-toggle" type="button" aria-expanded="false" aria-controls="qoderSettingsDetails">
                 <span data-i18n="settings.qoder.title">Qoder Account</span>
                 <span class="cursor-settings-summary">
-                  <span id="qoderAccountStatus" class="cursor-status-pill" data-i18n="settings.opencode.statusNotSet">Not configured</span>
+                  <span id="qoderAccountStatus" class="cursor-status-pill">Not configured</span>
                   <span class="cursor-disclosure-icon" aria-hidden="true"></span>
                 </span>
               </button>
@@ -841,11 +1021,40 @@
                 <div id="qoderErrorMessage" class="settings-note error hidden"></div>
               </div>
             </div>
+            <div id="commandcodeAccountGroup" class="settings-group cursor-account-group">
+              <button id="commandcodeSettingsToggle" class="settings-group-header cursor-settings-toggle" type="button" aria-expanded="false" aria-controls="commandcodeSettingsDetails">
+                <span data-i18n="settings.commandcode.title">Command Code Account</span>
+                <span class="cursor-settings-summary">
+                  <span id="commandcodeAccountStatus" class="cursor-status-pill">Not configured</span>
+                  <span class="cursor-disclosure-icon" aria-hidden="true"></span>
+                </span>
+              </button>
+              <div id="commandcodeSettingsDetails" class="cursor-settings-details hidden">
+                <div class="settings-actions">
+                  <button id="commandcodeOpenBrowser" data-i18n="settings.commandcode.openBrowser">Open Command Code usage</button>
+                  <button id="commandcodeLogoutButton" class="hidden" data-i18n="settings.commandcode.clearCookie">Clear cookie</button>
+                  <button id="commandcodeRefreshButton" data-i18n="settings.common.refresh">Refresh</button>
+                </div>
+                <div id="commandcodeManualPanel">
+                  <p class="settings-note">
+                    <strong>1.</strong> <span data-i18n="settings.commandcode.step1">Open the Command Code usage page in your browser (button above) and sign in.</span><br>
+                    <strong>2.</strong> <span data-i18n="settings.commandcode.step2">Open DevTools (F12 or Cmd+Opt+I) -> Network, reload the page, then select the credits request.</span><br>
+                    <strong>3.</strong> <span data-i18n="settings.commandcode.step3">In Headers -> Request Headers, copy the full Cookie value.</span><br>
+                    <strong>4.</strong> <span data-i18n="settings.commandcode.step4">Paste it below and click Save cookie.</span>
+                  </p>
+                  <textarea id="commandcodeCookieInput" rows="3" spellcheck="false" placeholder="__Secure-commandcode_prod_.session_token=..." data-i18n-placeholder="settings.commandcode.cookiePlaceholder"></textarea>
+                  <div class="settings-actions">
+                    <button id="commandcodeCookieSubmit" data-i18n="settings.commandcode.saveCookie">Save cookie</button>
+                  </div>
+                </div>
+                <div id="commandcodeErrorMessage" class="settings-note error hidden"></div>
+              </div>
+            </div>
             <div id="ollamaAccountGroup" class="settings-group cursor-account-group">
               <button id="ollamaSettingsToggle" class="settings-group-header cursor-settings-toggle" type="button" aria-expanded="false" aria-controls="ollamaSettingsDetails">
                 <span data-i18n="settings.ollama.title">Ollama Account</span>
                 <span class="cursor-settings-summary">
-                  <span id="ollamaAccountStatus" class="cursor-status-pill" data-i18n="settings.ollama.statusNotSet">Not configured</span>
+                  <span id="ollamaAccountStatus" class="cursor-status-pill">Not configured</span>
                   <span class="cursor-disclosure-icon" aria-hidden="true"></span>
                 </span>
               </button>
@@ -874,7 +1083,7 @@
               <button id="kimiSettingsToggle" class="settings-group-header cursor-settings-toggle" type="button" aria-expanded="false" aria-controls="kimiSettingsDetails">
                 <span data-i18n="settings.kimi.title">Kimi Account</span>
                 <span class="cursor-settings-summary">
-                  <span id="kimiAccountStatus" class="cursor-status-pill" data-i18n="settings.opencode.statusNotSet">Not configured</span>
+                  <span id="kimiAccountStatus" class="cursor-status-pill">Not configured</span>
                   <span class="cursor-disclosure-icon" aria-hidden="true"></span>
                 </span>
               </button>
@@ -917,7 +1126,7 @@
               <button id="mimoSettingsToggle" class="settings-group-header cursor-settings-toggle" type="button" aria-expanded="false" aria-controls="mimoSettingsDetails">
                 <span data-i18n="settings.mimo.title">MiMo Account</span>
                 <span class="cursor-settings-summary">
-                  <span id="mimoAccountStatus" class="cursor-status-pill" data-i18n="settings.mimo.notConfigured">Not configured</span>
+                  <span id="mimoAccountStatus" class="cursor-status-pill">Not configured</span>
                   <span class="cursor-disclosure-icon" aria-hidden="true"></span>
                 </span>
               </button>
@@ -956,7 +1165,7 @@
               <button id="copilotSettingsToggle" class="settings-group-header cursor-settings-toggle" type="button" aria-expanded="false" aria-controls="copilotSettingsDetails">
                 <span data-i18n="settings.copilot.title">GitHub Copilot Account</span>
                 <span class="cursor-settings-summary">
-                  <span id="copilotApiTokenStatus" class="cursor-status-pill" data-i18n="settings.opencode.statusNotSet">Not configured</span>
+                  <span id="copilotApiTokenStatus" class="cursor-status-pill">Not configured</span>
                   <span class="cursor-disclosure-icon" aria-hidden="true"></span>
                 </span>
               </button>
@@ -988,6 +1197,238 @@
                 <div id="copilotErrorMessage" class="settings-note error hidden"></div>
               </div>
             </div>
+            <div id="thirdpartyAccountGroup" class="settings-group cursor-account-group">
+              <button id="thirdpartySettingsToggle" class="settings-group-header cursor-settings-toggle" type="button" aria-expanded="false" aria-controls="thirdpartySettingsDetails">
+                <span data-i18n="settings.thirdparty.title">Third-party API Accounts</span>
+                <span class="cursor-settings-summary">
+                  <span id="thirdpartyStatus" class="cursor-status-pill">Not configured</span>
+                  <span class="cursor-disclosure-icon" aria-hidden="true"></span>
+                </span>
+              </button>
+              <div id="thirdpartySettingsDetails" class="cursor-settings-details hidden">
+                <div id="thirdpartyProfileList" class="opencode-profile-list thirdparty-profile-list"></div>
+                <div id="thirdpartyAddForm" class="opencode-add-form">
+                  <button id="thirdpartyAddToggle" class="opencode-add-summary" type="button" aria-expanded="false" aria-controls="thirdpartyAddDetails">
+                    <svg class="add-icon" width="14" height="14" viewBox="0 0 14 14" fill="none">
+                      <path d="M7 1v12M1 7h12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                    </svg>
+                    <span data-i18n="settings.thirdparty.addProfile">Add account</span>
+                  </button>
+                  <div id="thirdpartyAddDetails" class="opencode-add-details accordion-animated-container hidden">
+                    <div class="accordion-animation-inner opencode-add-body thirdparty-add-body">
+                      <p class="settings-note thirdparty-intro" data-i18n="settings.thirdparty.note">Connect a compatible relay or balance API. Credentials stay on this device and are sent only to the Base URL below.</p>
+                      <div id="thirdpartyChoiceGrid" class="thirdparty-choice-grid">
+                        <div class="thirdparty-field">
+                          <label for="thirdpartyPlatformInput" data-i18n="settings.thirdparty.preset">Preset</label>
+                          <select id="thirdpartyPlatformInput">
+                            <option value="newapi" data-i18n="settings.thirdparty.presetNewApi">New API-compatible</option>
+                            <option value="custom" data-i18n="settings.thirdparty.presetCustom">Custom</option>
+                          </select>
+                        </div>
+                        <div id="thirdpartyModeField" class="thirdparty-field">
+                          <label for="thirdpartyModeInput" data-i18n="settings.thirdparty.scope">Balance scope</label>
+                          <select id="thirdpartyModeInput">
+                            <option value="account" data-i18n="settings.thirdparty.scopeAccount">Account</option>
+                            <option value="token" data-i18n="settings.thirdparty.scopeApiKey">API key</option>
+                          </select>
+                        </div>
+                      </div>
+                      <p id="thirdpartyModeHint" class="settings-note thirdparty-mode-hint" data-i18n="settings.thirdparty.hintNewApiAccount">Shows the whole account balance. New API requires a User ID; compatible One API forks can leave it blank.</p>
+                      <div class="thirdparty-field">
+                        <label for="thirdpartyProfileName" data-i18n="settings.thirdparty.profileName">Account name</label>
+                        <input id="thirdpartyProfileName" type="text" data-i18n-placeholder="settings.thirdparty.profileNamePlaceholder" placeholder="e.g. work, personal">
+                      </div>
+                      <div class="thirdparty-field">
+                        <label for="thirdpartyBaseUrlInput" data-i18n="settings.thirdparty.baseUrl">Base URL</label>
+                        <input id="thirdpartyBaseUrlInput" type="url" inputmode="url" spellcheck="false" data-i18n-placeholder="settings.thirdparty.baseUrlPlaceholder" placeholder="https://api.example.com">
+                      </div>
+                      <p id="thirdpartyHttpWarning" class="settings-note hub-warning hidden" role="status" data-i18n="settings.thirdparty.httpWarning">HTTP sends credentials without transport encryption. Use HTTPS unless you trust the network.</p>
+                      <div id="thirdpartyCredentialGrid" class="thirdparty-credential-grid">
+                        <div id="thirdpartyAccessTokenRow" class="thirdparty-field">
+                          <label for="thirdpartyAccessTokenInput" data-i18n="settings.thirdparty.accessToken">Access token</label>
+                          <input id="thirdpartyAccessTokenInput" type="password" spellcheck="false" data-i18n-placeholder="settings.thirdparty.accessTokenPlaceholder" placeholder="Account access token">
+                        </div>
+                        <div id="thirdpartyUserIdRow" class="thirdparty-field">
+                          <label for="thirdpartyUserIdInput" data-i18n="settings.thirdparty.userId">User ID (New API only)</label>
+                          <input id="thirdpartyUserIdInput" type="text" inputmode="numeric" spellcheck="false" data-i18n-placeholder="settings.thirdparty.userIdPlaceholder" placeholder="e.g. 1">
+                        </div>
+                        <div id="thirdpartyApiKeyRow" class="thirdparty-field hidden">
+                          <label for="thirdpartyApiKeyInput" data-i18n="settings.thirdparty.apiKey">API key</label>
+                          <input id="thirdpartyApiKeyInput" type="password" spellcheck="false" data-i18n-placeholder="settings.thirdparty.apiKeyPlaceholder" placeholder="sk-...">
+                        </div>
+                      </div>
+                      <div id="thirdpartyCustomConfig" class="thirdparty-custom-config hidden">
+                        <div class="thirdparty-custom-request-grid">
+                          <div class="thirdparty-field">
+                            <label for="thirdpartyEndpointPathInput" data-i18n="settings.thirdparty.endpointPath">Endpoint path</label>
+                            <input id="thirdpartyEndpointPathInput" type="text" spellcheck="false" value="/user/balance" data-i18n-placeholder="settings.thirdparty.endpointPathPlaceholder" placeholder="/user/balance">
+                          </div>
+                          <div class="thirdparty-field">
+                            <label for="thirdpartyAuthModeInput" data-i18n="settings.thirdparty.authMode">Authentication</label>
+                            <select id="thirdpartyAuthModeInput">
+                              <option value="bearer" data-i18n="settings.thirdparty.authBearer">Bearer token</option>
+                              <option value="x-api-key" data-i18n="settings.thirdparty.authXApiKey">x-api-key header</option>
+                            </select>
+                          </div>
+                        </div>
+                        <div class="thirdparty-custom-mapping">
+                          <div class="thirdparty-custom-mapping-heading">
+                            <span data-i18n="settings.thirdparty.responseMapping">Response mapping</span>
+                            <span data-i18n="settings.thirdparty.responseMappingHint">Dot-separated JSON paths</span>
+                          </div>
+                          <div class="thirdparty-custom-mapping-grid">
+                            <div class="thirdparty-field">
+                              <label for="thirdpartyRemainingPathInput" data-i18n="settings.thirdparty.remainingPath">Remaining balance</label>
+                              <input id="thirdpartyRemainingPathInput" type="text" spellcheck="false" data-i18n-placeholder="settings.thirdparty.remainingPathPlaceholder" placeholder="data.balance">
+                            </div>
+                            <div class="thirdparty-field">
+                              <label for="thirdpartyUsedPathInput" data-i18n="settings.thirdparty.usedPath">Used amount (optional)</label>
+                              <input id="thirdpartyUsedPathInput" type="text" spellcheck="false" data-i18n-placeholder="settings.thirdparty.usedPathPlaceholder" placeholder="data.used">
+                            </div>
+                            <div class="thirdparty-field">
+                              <label for="thirdpartyTotalPathInput" data-i18n="settings.thirdparty.totalPath">Total quota (optional)</label>
+                              <input id="thirdpartyTotalPathInput" type="text" spellcheck="false" data-i18n-placeholder="settings.thirdparty.totalPathPlaceholder" placeholder="data.total">
+                            </div>
+                            <div class="thirdparty-field">
+                              <label for="thirdpartyDivisorInput" data-i18n="settings.thirdparty.divisor">Divisor</label>
+                              <input id="thirdpartyDivisorInput" type="number" min="0.000000000000001" max="1000000000000000" step="any" value="1" inputmode="decimal">
+                            </div>
+                            <div class="thirdparty-field">
+                              <label for="thirdpartyCurrencyInput" data-i18n="settings.thirdparty.currency">Currency</label>
+                              <input id="thirdpartyCurrencyInput" type="text" maxlength="8" value="USD" spellcheck="false" data-i18n-placeholder="settings.thirdparty.currencyPlaceholder" placeholder="USD">
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      <div class="settings-actions">
+                        <button id="thirdpartyProfileSubmit" data-i18n="settings.thirdparty.saveProfile">Save account</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div id="thirdpartyErrorMessage" class="settings-note error hidden"></div>
+              </div>
+            </div>
+        </div>
+
+        <div class="settings-group settings-collapsible-group settings-subscriptions-group">
+          <button class="settings-section-toggle" type="button" data-settings-section="subscriptions" aria-expanded="false" aria-controls="subscriptionsSettingsDetails">
+            <span class="settings-section-heading"><span class="settings-section-icon settings-section-icon-subscriptions" aria-hidden="true"></span><span data-i18n="settings.subscriptions.title">Subscriptions</span></span>
+            <span class="settings-section-meta"><span id="subscriptionsSettingsSummary" class="settings-section-summary"></span><span class="settings-section-disclosure" aria-hidden="true"></span></span>
+          </button>
+          <div id="subscriptionsSettingsDetails" class="settings-section-details hidden">
+            <p id="subscriptionNote" class="settings-note" data-i18n="settings.subscriptions.note">Record what you actually pay for each AI account. Hover an account's plan label on the AI Tool Limits page to see what you recorded here.</p>
+            <!-- Writes go to the hub when one is configured, so unlike every
+                 other setting in this panel they can be refused. The message
+                 sits outside the add form because a delete can fail too, and
+                 the form is closed at that point. -->
+            <p id="subscriptionSyncError" class="settings-note subscription-sync-error hidden"></p>
+            <!-- Shown once, when this device joined a hub that already had a
+                 list: its own records are not in it, and dropping them silently
+                 is not ours to do. -->
+            <div id="subscriptionOrphanNotice" class="subscription-orphan-notice hidden">
+              <p id="subscriptionOrphanText" class="settings-note"></p>
+              <div class="subscription-orphan-actions">
+                <button id="subscriptionOrphanAdopt" type="button" class="subscription-orphan-adopt" data-i18n="settings.subscriptions.orphanAdopt">Add them to the shared list</button>
+                <button id="subscriptionOrphanDiscard" type="button" class="subscription-orphan-discard" data-i18n="settings.subscriptions.orphanDiscard">Discard</button>
+              </div>
+            </div>
+            <div id="subscriptionList" class="opencode-profile-list"></div>
+            <div id="subscriptionAddForm" class="opencode-add-form">
+              <button id="subscriptionAddToggle" class="opencode-add-summary" type="button" aria-expanded="false" aria-controls="subscriptionAddDetails">
+                <svg class="add-icon" width="14" height="14" viewBox="0 0 14 14" fill="none">
+                  <path d="M7 1v12M1 7h12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                </svg>
+                <span data-i18n="settings.subscriptions.add">Add subscription</span>
+              </button>
+              <div id="subscriptionAddDetails" class="opencode-add-details accordion-animated-container hidden">
+                <div class="accordion-animation-inner opencode-add-body subscription-add-body">
+                  <div class="settings-row">
+                    <label for="subscriptionProviderInput" data-i18n="settings.subscriptions.provider">Provider</label>
+                    <select id="subscriptionProviderInput"></select>
+                  </div>
+                  <div class="settings-row">
+                    <label for="subscriptionAccountInput" data-i18n="settings.subscriptions.account">Account</label>
+                    <select id="subscriptionAccountInput"></select>
+                  </div>
+                  <!-- What is being recorded. A subscription is one recurring
+                       charge; a top-up is a ledger of irregular payments. The
+                       account's balance marker only seeds this — z.ai bills a
+                       plan and API credits through one account, so the user has
+                       the last word. -->
+                  <div class="settings-item">
+                    <span id="subscriptionKindLabel" class="settings-item-text"><span class="settings-item-title" data-i18n="settings.subscriptions.kind">Record</span></span>
+                    <div class="inline-options" role="radiogroup" aria-labelledby="subscriptionKindLabel">
+                      <label class="inline-option"><input type="radio" name="subscriptionKind" value="subscription" id="subscriptionKindSubscription" checked /><span data-i18n="settings.subscriptions.kindSubscription">Subscription</span></label>
+                      <label class="inline-option"><input type="radio" name="subscriptionKind" value="topup" id="subscriptionKindTopUp" /><span data-i18n="settings.subscriptions.kindTopUp">Top-ups</span></label>
+                    </div>
+                  </div>
+                  <div class="settings-row">
+                    <label for="subscriptionPlanNameInput" data-i18n="settings.subscriptions.planName">Plan name</label>
+                    <input id="subscriptionPlanNameInput" type="text" data-i18n-placeholder="settings.subscriptions.planNamePlaceholder" placeholder="optional, e.g. Plus">
+                  </div>
+                  <div id="subscriptionPlanFields" class="subscription-kind-fields">
+                    <!-- The currency select is moved between here and the ledger
+                         heading by setSubscriptionFormMode(): one record has one
+                         currency, and it belongs beside whichever money field is
+                         on screen rather than on a row of its own. -->
+                    <div id="subscriptionAmountRow" class="settings-row subscription-pair-row">
+                      <label for="subscriptionAmountInput" data-i18n="settings.subscriptions.amount">Amount</label>
+                      <input id="subscriptionAmountInput" type="number" min="0" step="0.01" placeholder="0.00">
+                      <select id="subscriptionCurrencyInput" data-i18n-aria-label="settings.subscriptions.currency" aria-label="Currency"></select>
+                    </div>
+                    <div class="settings-row subscription-pair-row">
+                      <label for="subscriptionIntervalCountInput" data-i18n="settings.subscriptions.interval">Interval</label>
+                      <input id="subscriptionIntervalCountInput" type="number" min="1" max="24" step="1" value="1" data-i18n-aria-label="settings.subscriptions.every" aria-label="Every">
+                      <select id="subscriptionIntervalInput" data-i18n-aria-label="settings.subscriptions.interval" aria-label="Interval">
+                        <option value="month" data-i18n="settings.subscriptions.intervalMonth">Month</option>
+                        <option value="year" data-i18n="settings.subscriptions.intervalYear">Year</option>
+                      </select>
+                    </div>
+                    <div class="settings-row">
+                      <label for="subscriptionStartDateInput" data-i18n="settings.subscriptions.startDate">First charge</label>
+                      <input id="subscriptionStartDateInput" type="date">
+                    </div>
+                    <p class="settings-note subscription-field-note" data-i18n="settings.subscriptions.startDateNote">The date money first left your account. A free trial start does not count.</p>
+                    <label class="checkbox-label settings-item">
+                      <span class="settings-item-text">
+                        <span class="settings-item-title" data-i18n="settings.subscriptions.autoRenew">Auto-renews</span>
+                      </span>
+                      <input id="subscriptionAutoRenewInput" type="checkbox" checked />
+                    </label>
+                    <!-- One date field, two meanings. While the plan renews it
+                         is the next charge; with auto-renew off there is no next
+                         charge and the same date is where coverage ends, so
+                         setSubscriptionRenewalFieldMode() retargets the label,
+                         the note and the stored field rather than showing a
+                         second input that is dead half the time. -->
+                    <div class="settings-row">
+                      <label id="subscriptionNextRenewalLabel" for="subscriptionNextRenewalInput" data-i18n="settings.subscriptions.nextRenewal">Next charge</label>
+                      <input id="subscriptionNextRenewalInput" type="date">
+                    </div>
+                    <p id="subscriptionNextRenewalNote" class="settings-note subscription-field-note" data-i18n="settings.subscriptions.nextRenewalNote">Leave empty to work it out from the first charge. Set it only when a trial, plan change or promotion shifted the date once.</p>
+                  </div>
+                  <div id="subscriptionTopUpFields" class="subscription-kind-fields hidden">
+                    <div id="subscriptionTopUpHeadingRow" class="subscription-topup-heading-row">
+                      <span class="subscription-topup-heading" data-i18n="settings.subscriptions.topUpEntries">Top-ups</span>
+                    </div>
+                    <div id="subscriptionTopUpList" class="subscription-topup-list"></div>
+                    <div class="settings-row subscription-topup-add-row">
+                      <input id="subscriptionTopUpDateInput" type="date" data-i18n-aria-label="settings.subscriptions.topUpDate" aria-label="Date">
+                      <input id="subscriptionTopUpAmountInput" type="number" min="0" step="0.01" placeholder="0.00" data-i18n-aria-label="settings.subscriptions.topUpAmount" aria-label="Amount">
+                      <button id="subscriptionTopUpAddButton" type="button" class="icon-button subscription-topup-add" data-i18n-aria-label="settings.subscriptions.topUpAdd" aria-label="Add">+</button>
+                    </div>
+                    <p class="settings-note subscription-field-note" data-i18n="settings.subscriptions.topUpEntriesNote">Record every top-up. This month's total is what gets compared against this month's usage.</p>
+                  </div>
+                  <p id="subscriptionErrorMessage" class="settings-note error subscription-form-error hidden" role="alert" aria-atomic="true"></p>
+                  <div class="settings-actions">
+                    <button id="subscriptionSubmit" data-i18n="settings.subscriptions.save">Save subscription</button>
+                    <button id="subscriptionCancelEdit" class="hidden" data-i18n="settings.subscriptions.cancelEdit">Cancel</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div id="subscriptionTotalRow" class="subscription-total hidden"></div>
           </div>
         </div>
 
@@ -1029,6 +1470,7 @@
                 </select>
               </label>
               <div id="syncClientStatus" class="hub-status" hidden></div>
+              <div id="hubBuildStatus" class="hub-status hub-build-status" role="status" hidden></div>
             </div>
             <div id="hubHostFields" class="hub-mode-fields hidden">
               <label><span data-i18n="settings.sync.port">Port</span><input id="hubPortInput" type="number" min="1" max="65535" spellcheck="false" /></label>
@@ -1064,6 +1506,8 @@
           <span data-i18n="views.backHome">Back to Home</span>
         </button>
       </div>
+
+      <section id="fixedPeriodMessage" class="fixed-period-message hidden" role="status" aria-live="polite"></section>
 
       <section id="homePanel" class="home-panel hidden"></section>
       <section id="breakdown" class="breakdown"></section>
@@ -1102,46 +1546,11 @@
           <button id="appUpdatePopoverRelease" type="button" class="inline-link" data-i18n="settings.appUpdate.viewFullRelease">View full release</button>
         </div>
       </div>
-      <div id="customRangePopover" class="custom-range-popover hidden" hidden role="dialog" aria-hidden="true" aria-labelledby="customRangeTitle" aria-modal="true">
-        <div class="custom-range-header">
-          <strong id="customRangeTitle" data-i18n="period.custom.title">Custom range</strong>
-          <button id="customRangeClose" type="button" class="custom-range-close" title="Close" aria-label="Close" data-i18n-title="period.custom.close" data-i18n-aria-label="period.custom.close">×</button>
-        </div>
-        <div class="custom-range-calendar">
-          <div class="custom-range-month-nav">
-            <button id="customRangePrevMonth" type="button" class="custom-range-nav-btn" aria-label="Previous month" data-i18n-aria-label="period.custom.prevMonth">‹</button>
-            <div id="customRangeMonthLabel" class="custom-range-month-label"></div>
-            <button id="customRangeNextMonth" type="button" class="custom-range-nav-btn" aria-label="Next month" data-i18n-aria-label="period.custom.nextMonth">›</button>
-          </div>
-          <div id="customRangeWeekdays" class="custom-range-weekdays" aria-hidden="true"></div>
-          <div id="customRangeGrid" class="custom-range-grid" role="grid"></div>
-        </div>
-        <div class="custom-range-fields">
-          <label class="custom-range-field">
-            <span data-i18n="period.custom.start">Start</span>
-            <div class="custom-range-field-controls">
-              <input id="customRangeStartDate" type="date" />
-              <select id="customRangeStartHour" aria-label="Start hour" data-i18n-aria-label="period.custom.startHour"></select>
-            </div>
-          </label>
-          <label class="custom-range-field">
-            <span data-i18n="period.custom.end">End</span>
-            <div class="custom-range-field-controls">
-              <input id="customRangeEndDate" type="date" />
-              <select id="customRangeEndHour" aria-label="End hour" data-i18n-aria-label="period.custom.endHour"></select>
-            </div>
-          </label>
-        </div>
-        <div id="customRangeError" class="custom-range-error hidden" role="alert"></div>
-        <div class="custom-range-actions">
-          <button id="customRangeClear" type="button" class="custom-range-secondary" data-i18n="period.custom.clear">Clear</button>
-          <button id="customRangeApply" type="button" class="custom-range-primary" data-i18n="period.custom.apply">Apply</button>
-        </div>
-      </div>
     </main>
     <button id="floatingBubbleTab" class="floating-bubble-tab" type="button" title="Show Token Monitor" aria-label="Show Token Monitor" data-i18n-title="floatingBubble.expand" data-i18n-aria-label="floatingBubble.expand">
       <span id="floatingBubbleContent" aria-hidden="true">Σ</span>
     </button>
+    <script src="../../shared/limitBalanceDisplay.js"></script>
     <script src="trayBars.js"></script>
     <script src="usageCharts.js"></script>
     <script src="homeOverview.js"></script>
@@ -1153,33 +1562,49 @@
     <script src="limitProviderPresentation.js"></script>
     <script src="limitDisplayMode.js"></script>
     <script src="clientStatusPresentation.js"></script>
+    <script src="clientHealthPresentation.js"></script>
+    <script src="clientSourceCache.js"></script>
+    <script src="clientRescanState.js"></script>
     <script src="wslStatusPresentation.js"></script>
     <script src="serviceStatusPresentation.js"></script>
     <script src="serviceStatusProviderPreferences.js"></script>
     <script src="clientDisplayPreferences.js"></script>
     <script src="viewDisplayPreferences.js"></script>
     <script src="homeModulePreferences.js"></script>
+    <script src="fixedPeriodRanges.js"></script>
     <script src="preferenceDragSort.js"></script>
+    <script src="verticalDragSort.js"></script>
+    <script src="rowDragController.js"></script>
     <script src="i18n.js"></script>
+    <script src="../../shared/reasonixSessionGuard.js"></script>
     <script src="sessionRows.js"></script>
     <script src="breakdownRenderPolicy.js"></script>
+    <script src="statsRenderScheduler.js"></script>
+    <script src="hubBuildPresentation.js"></script>
     <script src="deviceBreakdown.js"></script>
+    <script src="usageAttributionRows.js"></script>
     <script src="../../shared/projectKey.js"></script>
     <script src="projectRows.js"></script>
     <script src="sessionDetail.js"></script>
     <script src="customPricingForm.js"></script>
     <script src="../windowShortcut.js"></script>
     <script src="../../shared/currency.js"></script>
+    <script src="../../shared/subscriptionDisplay.js"></script>
+    <script src="../../shared/compactTokens.js"></script>
+    <script src="../../shared/compactMoney.js"></script>
+    <script src="../../shared/fontSettings.js"></script>
     <script src="../../shared/trayText.js"></script>
     <script src="../../shared/trayLayout.js"></script>
     <script src="../motionPreference.js"></script>
+    <script src="tokenRatePresentation.js"></script>
     <script src="customRangePicker.js"></script>
     <script src="../windowsBackdropMode.js"></script>
-    <script src="windowsGlass.js"></script>
     <script src="../macosGlassMode.js"></script>
     <script src="macosGlass.js"></script>
+    <script src="windowsGlass.js"></script>
     <script src="glassRendering.js"></script>
     <script src="trayComposer.js"></script>
+    <script src="diagnosticsPanel.js"></script>
     <script src="app.js"></script>
   </body>
 </html>

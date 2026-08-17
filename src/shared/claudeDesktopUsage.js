@@ -97,6 +97,7 @@ function discoverDesktopAppRoots(options = {}) {
   const home = options.homeDir || os.homedir();
   const env = envOf(options);
   const platform = platformOf(options);
+  const includeMissing = options.includeMissing === true;
   const candidates = [];
 
   if (platform === 'win32') {
@@ -142,7 +143,7 @@ function discoverDesktopAppRoots(options = {}) {
     const key = path.normalize(candidate).toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
-    if (dirExists(candidate)) roots.push(candidate);
+    if (includeMissing || dirExists(candidate)) roots.push(candidate);
   }
   return roots;
 }
@@ -152,6 +153,7 @@ function discoverDesktopAppRoots(options = {}) {
  * for waiting/missing status; empty containers simply yield zero usage.
  */
 function desktopSessionWatchDirs(options = {}) {
+  const includeMissing = options.includeMissing === true;
   const dirs = [];
   const seen = new Set();
   for (const appRoot of discoverDesktopAppRoots(options)) {
@@ -160,7 +162,7 @@ function desktopSessionWatchDirs(options = {}) {
       const key = path.normalize(dir).toLowerCase();
       if (seen.has(key)) continue;
       seen.add(key);
-      if (dirExists(dir)) dirs.push(dir);
+      if (includeMissing || dirExists(dir)) dirs.push(dir);
     }
   }
   return dirs;

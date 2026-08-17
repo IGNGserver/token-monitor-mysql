@@ -1,6 +1,7 @@
 'use strict';
 
 const mysql = require('mysql2/promise');
+const { emptySubscriptionDocument } = require('../shared/subscriptionDisplay');
 
 function createMySqlPool(options = {}) {
   return mysql.createPool({
@@ -35,6 +36,15 @@ function date(value) {
 function iso(value) {
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? '' : parsed.toISOString();
+}
+
+function subscriptionDocumentRow(row) {
+  if (!row) return emptySubscriptionDocument();
+  return {
+    version: 1,
+    updatedAt: row.updated_at ? iso(row.updated_at) : '',
+    subscriptions: parseJson(row.subscriptions, []) || []
+  };
 }
 
 function number(value) {
@@ -141,6 +151,38 @@ function createRepository(pool) {
   async function listPricing(executor = pool) {
     const [rows] = await executor.query('SELECT * FROM model_pricing ORDER BY model');
     return rows.map(pricingRow);
+  }
+
+  async function getSubscriptions(executor = pool) {
+    const [rows] = await executor.query('SELECT updated_at, subscriptions FROM hub_subscriptions WHERE id = 1');
+    return subscriptionDocumentRow(rows[0]);
+  }
+
+  async function setSubscriptions(document, baseUpdatedAt) {
+    return transaction(async (connection) => {
+      const [rows] = await connection.query('SELECT updated_at, subscriptions FROM hub_subscriptions WHERE id = 1 FOR UPDATE');
+      const current = subscriptionDocumentRow(rows[0]);
+      if (current.updatedAt !== String(baseUpdatedAt || '')) {
+        const error = new Error('stale_write');
+        error.code = 'stale_write';
+        error.current = current;
+        throw error;
+      }
+      const updatedAt = document.updatedAt ? date(document.updatedAt) : null;
+      const values = [updatedAt, JSON.stringify(document.subscriptions || [])];
+      if (rows.length === 0) {
+        await connection.execute(
+          'INSERT INTO hub_subscriptions (id, updated_at, subscriptions) VALUES (1, ?, ?)',
+          values
+        );
+      } else {
+        await connection.execute(
+          'UPDATE hub_subscriptions SET updated_at = ?, subscriptions = ? WHERE id = 1',
+          values
+        );
+      }
+      return document;
+    });
   }
 
   async function upsertPricing(model, prices, source, executor = pool) {
@@ -289,12 +331,14 @@ function createRepository(pool) {
     deleteDevice,
     getDeviceRecord,
     getPricing,
+    getSubscriptions,
     insertUsageEvents,
     listDeviceRecords,
     listKnownModels,
     listPricing,
     replaceSessions,
     saveDevice,
+    setSubscriptions,
     transaction,
     upsertPricing
   };

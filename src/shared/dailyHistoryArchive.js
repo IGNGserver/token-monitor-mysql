@@ -5,6 +5,7 @@ const path = require('node:path');
 const { isDeepStrictEqual } = require('node:util');
 const { readJson, sharedDataDir, writeJsonAtomic } = require('./config');
 const { num, sumTokens } = require('./history');
+const { REASONIX_CLIENT } = require('./reasonixPaths');
 
 const ARCHIVE_VERSION = 1;
 const DAY_KEY_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -24,6 +25,15 @@ function normalizeObservation(value) {
   const cost = Math.max(0, num(value.cost));
   const messages = Math.max(0, Math.round(num(value.messages)));
   const reasoningTokens = Math.max(0, Math.round(num(value.reasoningTokens ?? value.reasoning_tokens)));
+  const cacheReadTokens = Math.min(tokens, Math.max(0, Math.round(num(value.cacheReadTokens ?? value.cache_read_tokens))));
+  const cacheWriteTokens = Math.min(tokens - cacheReadTokens, Math.max(0, Math.round(num(value.cacheWriteTokens ?? value.cache_write_tokens))));
+  const outputTokens = Math.min(tokens - cacheReadTokens - cacheWriteTokens, Math.max(0, Math.round(num(value.outputTokens ?? value.output_tokens))));
+  const unclassifiedTokens = Math.min(
+    tokens - cacheReadTokens - cacheWriteTokens - outputTokens,
+    Math.max(0, Math.round(num(value.unclassifiedTokens ?? value.unclassified_tokens)))
+  );
+  const tokenComponentsAvailable = value.tokenComponentsAvailable === true
+    && unclassifiedTokens === 0;
   if (tokens === 0 && cost === 0 && messages === 0) return null;
   return {
     client,
@@ -34,6 +44,11 @@ function normalizeObservation(value) {
     tokens,
     cost,
     messages,
+    ...(cacheReadTokens > 0 ? { cacheReadTokens } : {}),
+    ...(cacheWriteTokens > 0 ? { cacheWriteTokens } : {}),
+    ...(outputTokens > 0 ? { outputTokens } : {}),
+    ...(unclassifiedTokens > 0 ? { unclassifiedTokens } : {}),
+    ...(tokenComponentsAvailable ? { tokenComponentsAvailable: true } : {}),
     ...(reasoningTokens > 0 ? { reasoningTokens } : {})
   };
 }
@@ -81,10 +96,26 @@ function observationsFromGraphs(graphs) {
       const day = days.get(date) || { date, activeTimeMs: 0, observations: {} };
       day.activeTimeMs += Math.max(0, Math.round(num(row.activeTimeMs ?? row.active_time_ms)));
       for (const raw of (Array.isArray(row?.clients) ? row.clients : [])) {
+        const rawTokens = raw?.tokens || {};
+        const hasComponentEvidence = [
+          rawTokens.cacheRead, rawTokens.cache_read,
+          rawTokens.cacheWrite, rawTokens.cache_write,
+          rawTokens.output,
+          raw?.unclassifiedTokens, raw?.unclassified_tokens
+        ].some((value) => num(value) > 0);
         const candidate = normalizeObservation({
           ...raw,
-          tokens: sumTokens(raw?.tokens),
-          reasoningTokens: raw?.tokens?.reasoning
+          tokens: sumTokens(raw?.tokens, raw?.client),
+          reasoningTokens: raw?.tokens?.reasoning,
+          ...(raw?.tokenComponentsAvailable === true || hasComponentEvidence
+            ? { tokenComponentsAvailable: raw?.tokenComponentsAvailable !== false }
+            : {}),
+          cacheReadTokens: raw?.tokens?.cacheRead ?? raw?.tokens?.cache_read,
+          cacheWriteTokens: raw?.tokens?.cacheWrite ?? raw?.tokens?.cache_write,
+          outputTokens: num(raw?.tokens?.output)
+            + (String(raw?.client || '').trim().toLowerCase() === REASONIX_CLIENT
+              ? num(raw?.tokens?.reasoning)
+              : 0)
         });
         if (!candidate) continue;
         const key = observationKey(candidate);
@@ -99,7 +130,10 @@ function observationsFromGraphs(graphs) {
           tokens: previous.tokens + candidate.tokens,
           cost: previous.cost + candidate.cost,
           messages: previous.messages + candidate.messages,
-          reasoningTokens: num(previous.reasoningTokens) + num(candidate.reasoningTokens)
+          reasoningTokens: num(previous.reasoningTokens) + num(candidate.reasoningTokens),
+          ...(previous.tokenComponentsAvailable || candidate.tokenComponentsAvailable
+            ? { tokenComponentsAvailable: true }
+            : {})
         });
       }
       days.set(date, day);
@@ -188,12 +222,18 @@ function graphFromDailyHistoryArchive(graphs, archive, options = {}) {
           modelId: observation.modelId,
           ...(observation.providerId ? { providerId: observation.providerId } : {}),
           tokens: {
-            input: observation.tokens,
-            output: 0,
-            cacheRead: 0,
-            cacheWrite: 0,
-            reasoning: num(observation.reasoningTokens)
+            input: Math.max(0, observation.tokens
+              - num(observation.outputTokens)
+              - num(observation.cacheReadTokens)
+              - num(observation.cacheWriteTokens)),
+            output: num(observation.outputTokens),
+            cacheRead: num(observation.cacheReadTokens),
+            cacheWrite: num(observation.cacheWriteTokens),
+            // Archive observations store one already-aggregated output family.
+            // Re-emitting reasoning separately would count it twice.
+            reasoning: 0
           },
+          ...(observation.tokenComponentsAvailable ? { tokenComponentsAvailable: true } : {}),
           cost: observation.cost,
           messages: observation.messages
         }))

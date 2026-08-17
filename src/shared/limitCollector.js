@@ -6,10 +6,13 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { appVersion } = require('./appVersion');
+const { BROWSER_USER_AGENT } = require('./browserUserAgent');
+const { LIMIT_PROVIDER_IDS } = require('./limitProviders');
 const {
   DEFAULT_LIMITS_REFRESH_MS,
   normalizeLimitProvider,
-  normalizeLimitsSummary
+  normalizeLimitsSummary,
+  openCodeWindowKey
 } = require('./limits');
 const { parseRetryAfterHeader } = require('./limitsRetryPolicy');
 const { abortError } = require('./probeDeadline');
@@ -17,8 +20,11 @@ const cursorAuth = require('./cursorAuth');
 const cursorProbe = require('./cursorProbe');
 const antigravityProbe = require('./antigravityProbe');
 const opencodeLimits = require('./opencodeLimits');
+const opencodeGoApi = require('./opencodeGoApi');
+const opencodeProfiles = require('./opencodeProfiles');
 const opencodeWeb = require('./opencodeWeb');
 const openrouterLimits = require('./openrouterLimits');
+const thirdPartyLimits = require('./thirdPartyLimits');
 const { sharedDataDir } = require('./config');
 const { recordConsumption } = require('./deepseekBalanceHistory');
 const { codexAccountKey, codexAuthIdentity } = require('./codexAuth');
@@ -39,6 +45,8 @@ const volcengineLimits = require('./volcengineLimits');
 const { volcengineCredentials, fetchVolcengineLimits } = volcengineLimits;
 const qoderLimits = require('./qoderLimits');
 const { qoderCookie, fetchQoderLimits } = qoderLimits;
+const commandcodeLimits = require('./commandcodeLimits');
+const { commandcodeCookie, fetchCommandcodeLimits } = commandcodeLimits;
 const ollamaLimits = require('./ollamaLimits');
 const { ollamaSessionCookie, fetchOllamaLimits } = ollamaLimits;
 const kimiLimits = require('./kimiLimits');
@@ -53,21 +61,31 @@ const {
   fetchGrokLimits
 } = grokLimits;
 
-const LIMIT_PROVIDER_IDS = ['claude', 'codex', 'cursor', 'antigravity', 'opencode', 'openrouter', 'deepseek', 'minimax', 'mimo', 'grok', 'copilot', 'kiro', 'zai', 'volcengine', 'qoder', 'zaiteam', 'kimi', 'ollama'];
 const DEFAULT_PROVIDER_PHYSICAL_BOUND_MS = 120_000;
 const PROVIDER_CLEANUP_GRACE_MS = 5_000;
 const LIMIT_REFRESH_VALUES = new Set([60_000, 120_000, 300_000, 900_000, 1_800_000]);
 const CLAUDE_USAGE_URL = 'https://api.anthropic.com/api/oauth/usage';
+const CLAUDE_PROFILE_URL = 'https://api.anthropic.com/api/oauth/profile';
+const CLAUDE_WEB_BASE_URL = 'https://claude.ai';
 const CLAUDE_OAUTH_TOKEN_URL = 'https://console.anthropic.com/v1/oauth/token';
 const CLAUDE_OAUTH_CLIENT_ID = '9d1c250a-e61b-44d9-88ed-5944d1962f5e';
 const CLAUDE_REFRESH_LEEWAY_MS = 5 * 60 * 1000;
+const CLAUDE_IDENTITY_CACHE_TTL_MS = 60 * 60 * 1000;
+const CLAUDE_IDENTITY_CACHE_MAX_ENTRIES = 16;
+const CLAUDE_IDENTITY_CACHE_STATE_KEY = 'claude.identity-cache';
+// A prepaid credit pool only moves when credits are spent or a grant expires, so
+// it is refreshed far less often than usage. Without this the steady-state Web
+// refresh would cost two requests instead of the documented one.
+const CLAUDE_PREPAID_CACHE_TTL_MS = 10 * 60 * 1000;
+const CLAUDE_PREPAID_IDLE_TTL_FACTOR = 6;
+const CLAUDE_PREPAID_CACHE_STATE_KEY = 'claude.prepaid-cache';
 const CLAUDE_SESSION_WINDOW_MINUTES = 5 * 60;
 const CLAUDE_WEEKLY_WINDOW_MINUTES = 7 * 24 * 60;
 const CODEX_CHATGPT_BASE_URL = 'https://chatgpt.com/backend-api';
 const CODEX_RESET_CREDITS_PATH = '/wham/rate-limit-reset-credits';
 const CODEX_EMPTY_QUOTA_RETRY_DELAY_MS = 300;
 const CODEX_RPC_TIMEOUT_MS = 20_000;
-const TOKEN_MONITOR_USER_AGENT = `token-monitor/${appVersion()} (+https://github.com/IGNGserver/token-monitor-suite)`;
+const TOKEN_MONITOR_USER_AGENT = `token-monitor/${appVersion()} (+https://github.com/Javis603/token-monitor)`;
 
 function nowIso(nowMs) {
   return new Date(nowMs).toISOString();
@@ -101,6 +119,13 @@ function normalizeLimitsRefreshMs(value) {
   return DEFAULT_LIMITS_REFRESH_MS;
 }
 
+// A scheduling policy, kept separate from limitsRefreshMs so that switching to
+// adaptive and back restores the interval the user had chosen, and so that no
+// consumer doing arithmetic on limitsRefreshMs has to handle a sentinel value.
+function normalizeLimitsRefreshMode(value) {
+  return String(value ?? '').trim().toLowerCase() === 'adaptive' ? 'adaptive' : 'fixed';
+}
+
 function hashKey(...parts) {
   const hash = crypto.createHash('sha256');
   for (const part of parts) hash.update(String(part || '')).update('\0');
@@ -115,6 +140,45 @@ function errorWithStatus(status, message) {
 
 function shouldTryClaudeCliFallback(error) {
   return ['notConfigured', 'sourceRateLimited', 'unavailable', 'error'].includes(error?.status);
+}
+
+function normalizeClaudeWebCookie(value) {
+  const raw = typeof value === 'string' ? value.trim() : '';
+  if (!raw) return '';
+  if (/[\s;]/.test(raw)) return '';
+  const sessionKey = raw.startsWith('sessionKey=') ? raw.slice('sessionKey='.length) : raw;
+  return sessionKey.startsWith('sk-ant-') && sessionKey.length > 'sk-ant-'.length
+    ? `sessionKey=${sessionKey}`
+    : '';
+}
+
+function normalizeClaudeWebCookieInput(value) {
+  const raw = typeof value === 'string' ? value : String(value || '');
+  const normalized = normalizeClaudeWebCookie(raw);
+  if (raw.trim() && !normalized) {
+    const error = new Error('Claude Web sessionKey must be an sk-ant- value');
+    error.code = 'INVALID_CLAUDE_WEB_SESSION_KEY';
+    throw error;
+  }
+  return normalized;
+}
+
+// Reading the prepaid pool is a scope step beyond the quota data the Web cookie
+// was supplied for, so it stays switchable. Default on: the account gate above
+// already limits it to people who deliberately enabled usage credits.
+function claudePrepaidBalanceEnabled(env = process.env, options = {}) {
+  if (Object.prototype.hasOwnProperty.call(options, 'claudePrepaidBalanceEnabled')) {
+    return options.claudePrepaidBalanceEnabled !== false;
+  }
+  const configured = env.TOKEN_MONITOR_CLAUDE_PREPAID_BALANCE;
+  return configured === undefined || configured === '' ? true : parseBoolean(configured, true);
+}
+
+function claudeWebCookie(env = process.env, options = {}) {
+  if (Object.prototype.hasOwnProperty.call(options, 'claudeWebCookie')) {
+    return normalizeClaudeWebCookie(options.claudeWebCookie);
+  }
+  return normalizeClaudeWebCookie(env.CLAUDE_WEB_COOKIE);
 }
 
 async function readJsonFile(filePath, deps) {
@@ -240,28 +304,31 @@ function displayPlanText(raw, maxWords = 3) {
   return visible.map(displayPlanWord).join(' ');
 }
 
+const PLAN_LABEL_ALIASES = {
+  free: 'Free',
+  plus: 'Plus',
+  pro: 'Pro',
+  max: 'Max',
+  team: 'Team',
+  teams: 'Team',
+  enterprise: 'Enterprise',
+  ultra: 'Ultra'
+};
+
 function planLabelFromParts(...parts) {
   const text = parts.map((part) => String(part || '')).find(Boolean) || '';
   const raw = cleanPlanText(text);
   if (!raw || raw.includes('@')) return '';
-  const aliases = {
-    free: 'Free',
-    plus: 'Plus',
-    pro: 'Pro',
-    max: 'Max',
-    team: 'Team',
-    teams: 'Team',
-    enterprise: 'Enterprise',
-    ultra: 'Ultra'
-  };
-  if (aliases[raw]) return aliases[raw];
+  if (PLAN_LABEL_ALIASES[raw]) return PLAN_LABEL_ALIASES[raw];
   return displayPlanText(raw);
 }
 
 function claudeRateLimitTierLabel(rateLimitTier) {
   const raw = cleanPlanText(rateLimitTier, []);
   if (!raw) return '';
-  const words = raw.split(/\s+/).filter((word) => !['default', 'claude', 'ai'].includes(word));
+  // `raven` is the internal codename an enterprise tier carries (`default_raven`),
+  // not something to render: without it that tier would read as a plan called Raven.
+  const words = raw.split(/\s+/).filter((word) => !['default', 'claude', 'ai', 'raven'].includes(word));
   if (words.length === 0) return '';
   return planLabelFromParts(words.join(' '));
 }
@@ -560,16 +627,30 @@ function runProcessText(command, args = [], options = {}) {
   });
 }
 
-async function fetchJson(url, headers, deps = {}) {
+async function fetchJson(url, headers, deps = {}, options = {}) {
   const fetchFn = deps.fetch || fetch;
   const timeoutMs = Number(deps.fetchTimeoutMs || 12000);
   const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
   const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
   try {
     const response = await fetchFn(url, { headers, ...(controller ? { signal: controller.signal } : {}) });
+    if (typeof options.onResponse === 'function') await options.onResponse(response);
     if (!response.ok) {
-      const status = response.status === 401 ? 'unauthorized' : response.status === 429 ? 'sourceRateLimited' : 'unavailable';
-      throw errorWithStatus(status, `${url} returned ${response.status}`);
+      const sourceChallenge = response.status === 403
+        && String(response.headers?.get?.('cf-mitigated') || '').toLowerCase() === 'challenge';
+      const status = response.status === 401
+        || (options.forbiddenIsUnauthorized && response.status === 403 && !sourceChallenge)
+        ? 'unauthorized'
+        : response.status === 429
+          ? 'sourceRateLimited'
+          : 'unavailable';
+      const error = errorWithStatus(status, `${url} returned ${response.status}`);
+      // The normalized status collapses 404 and 5xx into `unavailable`, which
+      // loses the only thing a caller needs to tell a permanent refusal from an
+      // outage. Absent on timeouts and network errors, which are never either.
+      error.httpStatus = response.status;
+      if (sourceChallenge) error.code = 'CLAUDE_WEB_SOURCE_CHALLENGE';
+      throw error;
     }
     return response.json();
   } catch (error) {
@@ -578,6 +659,21 @@ async function fetchJson(url, headers, deps = {}) {
   } finally {
     if (timer) clearTimeout(timer);
   }
+}
+
+function fetchClaudeWebJson(url, headers, deps = {}, options = {}) {
+  const viaChromium = typeof deps.claudeWebFetch === 'function';
+  const webDeps = viaChromium ? { ...deps, fetch: deps.claudeWebFetch } : deps;
+  // Chromium sends its own browser agent, and setting one here would override it
+  // with a version that no longer matches the runtime. undici sends none at all,
+  // and claude.ai's Cloudflare answers both that and an honest
+  // `token-monitor/<version>` agent with `403 cf-mitigated: challenge`, so that
+  // path has to present as a browser.
+  const webHeaders = viaChromium ? headers : { ...headers, 'user-agent': BROWSER_USER_AGENT };
+  return fetchJson(url, webHeaders, webDeps, {
+    forbiddenIsUnauthorized: true,
+    onResponse: options.onResponse
+  });
 }
 
 function valueFromAliases(object, aliases) {
@@ -616,6 +712,71 @@ function claudeFableWeeklyWindow(usage) {
   return null;
 }
 
+// `spend` amounts are self-describing: `{amount_minor, currency, exponent}`.
+function claudeSpendMoney(value) {
+  if (!value || typeof value !== 'object') return null;
+  const minor = Number(valueFromAliases(value, ['amount_minor', 'amountMinor']));
+  if (!Number.isFinite(minor)) return null;
+  const exponent = Number(valueFromAliases(value, ['exponent']));
+  const scale = Number.isFinite(exponent) ? 10 ** exponent : 100;
+  return {
+    amount: minor / scale,
+    currency: String(valueFromAliases(value, ['currency']) || '').trim().toUpperCase() || null
+  };
+}
+
+// `extra_usage` carries bare minor-unit numbers plus one shared `decimal_places`.
+function claudeExtraUsageMoney(extra, key) {
+  const raw = Number(valueFromAliases(extra || {}, [key]));
+  if (!Number.isFinite(raw)) return null;
+  const places = Number(valueFromAliases(extra || {}, ['decimal_places', 'decimalPlaces']));
+  return raw / 10 ** (Number.isFinite(places) && places >= 0 ? places : 2);
+}
+
+// Gate on the enable flags, never on "is there a value": a credits-off account
+// reports used 0, and so does one enabled a minute ago. Also gates the prepaid
+// balance request, which is why it is a named helper.
+function claudeUsageCreditsEnabled(usage) {
+  const spend = valueFromAliases(usage, ['spend']) || null;
+  const extra = valueFromAliases(usage, ['extra_usage', 'extraUsage']) || null;
+  return spend?.enabled === true
+    || valueFromAliases(extra || {}, ['is_enabled', 'isEnabled']) === true;
+}
+
+// Usage credits: `spend` and `extra_usage` are the same money in two spellings
+// (both report 235/2000 on a live account), so this yields one window. `spend`
+// wins because its units are self-describing.
+function claudeUsageCreditsWindow(usage) {
+  if (!claudeUsageCreditsEnabled(usage)) return null;
+  const spend = valueFromAliases(usage, ['spend']) || null;
+  const extra = valueFromAliases(usage, ['extra_usage', 'extraUsage']) || null;
+
+  const spendUsed = claudeSpendMoney(spend?.used);
+  const spendLimit = claudeSpendMoney(spend?.limit);
+  const used = spendUsed ? spendUsed.amount : claudeExtraUsageMoney(extra, 'used_credits');
+  if (used === null) return null;
+  const limit = spendLimit ? spendLimit.amount : claudeExtraUsageMoney(extra, 'monthly_limit');
+  const currency = (spendUsed && spendUsed.currency)
+    || String(valueFromAliases(extra || {}, ['currency']) || 'USD').trim().toUpperCase();
+
+  return {
+    kind: 'billing',
+    // `spend` is the machine-readable role: a `billing` window alone cannot be
+    // told apart from the Balance window, and renderers must not key off a
+    // display label. Headline is money already consumed, not money remaining.
+    metric: 'spend',
+    label: 'Usage credits',
+    used,
+    // A null limit means "no monthly cap". No percentage is passed in either
+    // case: `percentFromWindow` derives it from used/limit when a limit exists,
+    // and `spend.percent` must never be forwarded — it reports 0, not null,
+    // when unlimited, which would paint a 0% meter over real spending.
+    limit,
+    currency,
+    showMeter: limit !== null
+  };
+}
+
 function mapClaudeUsageToProvider(usage, meta = {}) {
   const windows = [];
   const session = valueFromAliases(usage, ['five_hour', 'fiveHour']);
@@ -636,10 +797,14 @@ function mapClaudeUsageToProvider(usage, meta = {}) {
   }
   const fableWeekly = claudeFableWeeklyWindow(usage);
   if (fableWeekly) windows.push(fableWeekly);
+  const usageCredits = claudeUsageCreditsWindow(usage);
+  if (usageCredits) windows.push(usageCredits);
   return normalizeLimitProvider({
     provider: 'claude',
     accountKey: meta.accountKey || '',
     accountLabel: meta.accountLabel || '',
+    accountName: meta.accountName || '',
+    accountEmail: meta.accountEmail || '',
     source: meta.source || 'oauth',
     status: 'ok',
     updatedAt: meta.updatedAt,
@@ -730,6 +895,617 @@ function callClaudeUsage(accessToken, deps = {}) {
   }, deps);
 }
 
+function callClaudeProfile(accessToken, deps = {}) {
+  return fetchJson(CLAUDE_PROFILE_URL, {
+    accept: 'application/json',
+    authorization: `Bearer ${accessToken}`,
+    'user-agent': TOKEN_MONITOR_USER_AGENT
+  }, deps);
+}
+
+function claudeWebOrganizations(body) {
+  if (Array.isArray(body)) return body;
+  if (Array.isArray(body?.organizations)) return body.organizations;
+  if (Array.isArray(body?.data)) return body.data;
+  return [];
+}
+
+function claudeWebOrganizationId(organization) {
+  return String(organization?.uuid || organization?.id || organization?.organization_uuid || '').trim();
+}
+
+function claudeWebOrganizationCapabilities(organization) {
+  if (!Array.isArray(organization?.capabilities)) return new Set();
+  return new Set(
+    organization.capabilities
+      .map((capability) => String(capability || '').trim().toLowerCase())
+      .filter(Boolean)
+  );
+}
+
+// On a personal claude.ai account the plan is not on the membership at all:
+// `seat_tier` is null and neither `rate_limit_tier` nor `billing_type` exists
+// at that level. The organization's capability list carries it, and it is the
+// same list that already decides which organization to read. Returns the shared
+// alias key rather than a display string, so a plan read here renders
+// identically to the same plan read from OAuth credentials.
+//
+// `raven` covers Team and Enterprise together; `raven_type` separates them, and
+// claude.ai treats a raven organization without one as unknown rather than as
+// Team. This mirrors that: a capability that cannot name the plan yields
+// nothing and lets the seat tier answer instead.
+function claudeCapabilityPlan(capabilities, organization) {
+  if (capabilities.has('claude_max')) return 'max';
+  if (capabilities.has('claude_pro')) return 'pro';
+  if (!capabilities.has('raven')) return '';
+  const ravenType = String(organization?.raven_type || '').trim().toLowerCase();
+  if (!ravenType) return '';
+  return ravenType === 'enterprise' ? 'enterprise' : 'team';
+}
+
+// A seat tier is `<plan>_<seat level>` (`enterprise_standard`), and only the
+// plan half belongs in a plan label: keeping the level renders "Enterprise
+// Standard" where the same account over OAuth renders "Enterprise".
+//
+// A value with no recognized plan in front contributes nothing. A bare seat
+// level says which seat someone holds, not which plan they are on, so rendering
+// it puts membership bookkeeping where the plan goes: `standard` would read as
+// a plan called Standard, and `unassigned` (what claude.ai substitutes for a
+// member holding no seat) as one called Unassigned.
+function claudeSeatTier(membership) {
+  const [plan] = cleanPlanText(membership?.seat_tier).split(' ');
+  return PLAN_LABEL_ALIASES[plan] ? plan : '';
+}
+
+function selectClaudeWebOrganization(organizations) {
+  const candidates = organizations.filter((candidate) => claudeWebOrganizationId(candidate));
+  const hasChatCapability = (candidate) => (
+    claudeWebOrganizationCapabilities(candidate).has('chat')
+  );
+  const isApiOnly = (candidate) => {
+    const capabilities = claudeWebOrganizationCapabilities(candidate);
+    return capabilities.size === 1 && capabilities.has('api');
+  };
+  return candidates.find(hasChatCapability)
+    || candidates.find((candidate) => !isApiOnly(candidate))
+    || candidates[0]
+    || null;
+}
+
+// Exact matches only. Everything read off a membership is scoped to its own
+// organization, so falling back to "whichever membership came first" labels the
+// organization we resolved usage for with a different one's plan and name. On a
+// multi-organization account that is not a near miss, it is the wrong answer.
+// The selected organization carries the same fields and is always available.
+function claudeWebMembership(accountBody, organizationId) {
+  if (!organizationId) return null;
+  const account = accountBody?.account && typeof accountBody.account === 'object'
+    ? accountBody.account
+    : accountBody;
+  const memberships = Array.isArray(account?.memberships)
+    ? account.memberships
+    : Array.isArray(accountBody?.memberships)
+      ? accountBody.memberships
+      : [];
+  return memberships.find((membership) => (
+    claudeWebOrganizationId(membership?.organization || membership) === organizationId
+  )) || null;
+}
+
+function claudeStableIdentity(accountId, organizationId, accountEmail) {
+  if (accountId) return `account:${accountId}`;
+  if (organizationId) return `organization:${organizationId}`;
+  return accountEmail;
+}
+
+function claudeWebAccountIdentity(accountBody, organization) {
+  const organizationId = claudeWebOrganizationId(organization);
+  const membership = claudeWebMembership(accountBody, organizationId);
+  const account = accountBody?.account && typeof accountBody.account === 'object'
+    ? accountBody.account
+    : accountBody || {};
+  const memberOrganization = membership?.organization && typeof membership.organization === 'object'
+    ? membership.organization
+    : {};
+  const accountId = String(account.uuid || account.id || account.account_uuid || '').trim();
+  const accountEmail = String(
+    account.email_address || account.email || accountBody?.email_address || accountBody?.email || ''
+  ).trim().toLowerCase();
+  const accountName = String(
+    memberOrganization.name
+      || memberOrganization.display_name
+      || organization?.name
+      || organization?.display_name
+      || account.name
+      || account.display_name
+      || ''
+  ).trim();
+  const stableIdentity = claudeStableIdentity(accountId, organizationId, accountEmail);
+  if (!stableIdentity) {
+    throw claudeIdentityUnavailable('Claude Web account did not include a stable account identity');
+  }
+  // The organization we resolved usage for, falling back to the membership's
+  // own copy only when no organization was passed in at all.
+  const planOrganization = organization && typeof organization === 'object'
+    ? organization
+    : memberOrganization;
+  // The organization states the plan; a seat tier only implies one, so it
+  // answers second. `billing_type` is deliberately not consulted at all: it is
+  // a payment method (`apple_subscription`), never a plan, so reading it would
+  // label a Pro account "Apple subscription".
+  const accountLabel = claudePlanLabelFromParts(
+    claudeCapabilityPlan(claudeWebOrganizationCapabilities(planOrganization), planOrganization)
+      || claudeSeatTier(membership)
+      || account?.subscription_type,
+    membership?.rate_limit_tier || planOrganization?.rate_limit_tier || account?.rate_limit_tier
+  );
+  return {
+    accountKey: hashKey('claude-account', stableIdentity),
+    accountEmail,
+    accountName,
+    accountLabel
+  };
+}
+
+function claudeIdentityCache(deps = {}) {
+  if (!(deps.providerRuntimeState instanceof Map)) return null;
+  let cache = deps.providerRuntimeState.get(CLAUDE_IDENTITY_CACHE_STATE_KEY);
+  if (!(cache instanceof Map)) {
+    cache = new Map();
+    deps.providerRuntimeState.set(CLAUDE_IDENTITY_CACHE_STATE_KEY, cache);
+  }
+  return cache;
+}
+
+function claudeIdentityCacheTtlMs(deps = {}) {
+  const configured = Number(deps.claudeIdentityCacheTtlMs);
+  return Number.isFinite(configured) && configured >= 0
+    ? configured
+    : CLAUDE_IDENTITY_CACHE_TTL_MS;
+}
+
+function claudeCachedIdentity(fingerprint, deps = {}, options = {}) {
+  const cache = claudeIdentityCache(deps);
+  if (!cache || !fingerprint) return null;
+  const entry = cache.get(fingerprint);
+  if (!entry) return null;
+  cache.delete(fingerprint);
+  cache.set(fingerprint, entry);
+  if (options.allowStale) return entry;
+  const nowMs = (deps.now || Date.now)();
+  return nowMs - entry.resolvedAt <= claudeIdentityCacheTtlMs(deps) ? entry : null;
+}
+
+function cacheClaudeIdentity(fingerprint, entry, deps = {}) {
+  const cache = claudeIdentityCache(deps);
+  if (!cache || !fingerprint || !entry?.identity?.accountKey) return entry;
+  const previous = cache.get(fingerprint);
+  const resolved = {
+    ...entry,
+    identity: {
+      ...entry.identity,
+      ...(previous?.identity?.accountKey ? { accountKey: previous.identity.accountKey } : {})
+    },
+    resolvedAt: (deps.now || Date.now)()
+  };
+  cache.delete(fingerprint);
+  cache.set(fingerprint, resolved);
+  while (cache.size > CLAUDE_IDENTITY_CACHE_MAX_ENTRIES) {
+    cache.delete(cache.keys().next().value);
+  }
+  return resolved;
+}
+
+function claudeWebIdentityFingerprint(cookie) {
+  return cookie ? hashKey('claude-web-identity-cache', cookie) : '';
+}
+
+function claudeWebSessionKey(cookie) {
+  return String(cookie || '').replace(/^sessionKey=/, '');
+}
+
+function claudeWebSetCookieValues(response) {
+  const headers = response?.headers;
+  if (!headers) return [];
+  if (typeof headers.getSetCookie === 'function') {
+    const values = headers.getSetCookie();
+    if (Array.isArray(values)) return values;
+  }
+  const value = typeof headers.get === 'function' ? headers.get('set-cookie') : '';
+  return value ? [value] : [];
+}
+
+function claudeWebRenewedSessionKey(response) {
+  if (!response?.ok) return '';
+  let latest = '';
+  for (const header of claudeWebSetCookieValues(response)) {
+    const pattern = /(?:^|[,\r\n])\s*sessionKey=([^;,\r\n]+)/ig;
+    for (const match of String(header || '').matchAll(pattern)) {
+      const value = String(match[1] || '').trim();
+      if (value.startsWith('sk-ant-')) latest = value;
+    }
+  }
+  return latest;
+}
+
+function createClaudeWebSession(cookie) {
+  const initialCookie = normalizeClaudeWebCookieInput(cookie);
+  let sessionKey = claudeWebSessionKey(initialCookie);
+  return {
+    headers() {
+      return {
+        accept: 'application/json',
+        cookie: `sessionKey=${sessionKey}`
+      };
+    },
+    observe(response) {
+      sessionKey = claudeWebRenewedSessionKey(response) || sessionKey;
+    },
+    cookie() {
+      return `sessionKey=${sessionKey}`;
+    },
+    initialCookie
+  };
+}
+
+function claudeOauthIdentityFingerprint(credentials) {
+  const secret = credentials?.refreshToken || credentials?.accessToken;
+  return secret
+    ? hashKey('claude-oauth-identity-cache', credentials?.source || '', secret)
+    : '';
+}
+
+function carryClaudeCachedIdentity(previousCredentials, nextCredentials, deps = {}) {
+  const previousFingerprint = claudeOauthIdentityFingerprint(previousCredentials);
+  const nextFingerprint = claudeOauthIdentityFingerprint(nextCredentials);
+  if (!previousFingerprint || !nextFingerprint || previousFingerprint === nextFingerprint) return;
+  const cached = claudeCachedIdentity(previousFingerprint, deps, { allowStale: true });
+  if (cached) cacheClaudeIdentity(nextFingerprint, cached, deps);
+}
+
+// claude.ai's prepaid credit pool. Web-session only: the same path under an
+// OAuth bearer returns 403 account_session_invalid, and api.anthropic.com has no
+// equivalent, so this never runs on the OAuth path.
+function claudeTrancheAmount(entry) {
+  const minor = Number(
+    entry?.remaining_amount_minor_units
+    ?? entry?.remainingAmountMinorUnits
+    ?? entry?.amount_minor
+  );
+  return Number.isFinite(minor) ? minor / 100 : null;
+}
+
+function claudePrepaidBalance(payload) {
+  if (!payload || typeof payload !== 'object') return null;
+  const minor = Number(payload.amount);
+  // A genuine 0 is kept, matching the documented balance contract: an account
+  // that has spent its pool dry still needs the row — that is precisely when it
+  // matters most. Callers gate on whether usage credits are enabled at all.
+  if (!Number.isFinite(minor) || minor < 0) return null;
+  const currency = String(payload.currency || 'USD').trim().toUpperCase();
+  // Purchased and granted credits share one pool in the UI; merge them and let
+  // normalization sort by expiry.
+  const entries = [
+    ...(Array.isArray(payload.tranches) ? payload.tranches : []),
+    ...(Array.isArray(payload.promo_tranches) ? payload.promo_tranches : [])
+  ];
+  const tranches = [];
+  for (const entry of entries) {
+    const amount = claudeTrancheAmount(entry);
+    if (amount === null) continue;
+    tranches.push({
+      amount,
+      currency: String(entry.currency || currency).trim().toUpperCase(),
+      expiresAt: entry.expires_at ?? entry.expiresAt ?? null
+    });
+  }
+  return {
+    amount: minor / 100,
+    currency,
+    expiresAt: payload.next_expires_at ?? payload.nextExpiresAt ?? null,
+    tranches
+  };
+}
+
+// "Has this account ever put money in the pool?" An account that never bought
+// credits and one that bought some look identical apart from this.
+function claudePrepaidFunded(balance) {
+  if (!balance) return false;
+  if (Number(balance.amount) > 0) return true;
+  return Array.isArray(balance.tranches) && balance.tranches.length > 0;
+}
+
+function claudePrepaidCache(deps = {}) {
+  if (!(deps.providerRuntimeState instanceof Map)) return null;
+  let cache = deps.providerRuntimeState.get(CLAUDE_PREPAID_CACHE_STATE_KEY);
+  if (!(cache instanceof Map)) {
+    cache = new Map();
+    deps.providerRuntimeState.set(CLAUDE_PREPAID_CACHE_STATE_KEY, cache);
+  }
+  return cache;
+}
+
+// Derived from the limits refresh interval rather than exposed as its own knob:
+// nobody can reason about "should my balance refresh every 10 or 15 minutes",
+// and two competing cadence settings in one panel is worse than one. Doubling
+// the interval keeps the balance off every other refresh at any interval.
+function claudePrepaidBaseTtlMs(deps, options) {
+  const configured = Number(deps.claudePrepaidCacheTtlMs);
+  if (Number.isFinite(configured) && configured >= 0) return configured;
+  const refreshMs = Number(options.limitsRefreshMs ?? options.refreshMs ?? deps.limitsRefreshMs);
+  return Number.isFinite(refreshMs) && refreshMs > 0
+    ? refreshMs * 2
+    : CLAUDE_PREPAID_CACHE_TTL_MS;
+}
+
+// `idle` is an unfunded pool on an account that is not spending credits either
+// — the shape of everyone who never bought any. Nothing is displayed for them
+// and nothing changes until they buy, so they back off to a request an hour.
+// It is evaluated per read rather than frozen into the entry: enabling usage
+// credits must bring the balance back at the normal cadence.
+function claudePrepaidCacheTtlMs(deps = {}, options = {}, idle = false) {
+  const base = claudePrepaidBaseTtlMs(deps, options);
+  return idle ? base * CLAUDE_PREPAID_IDLE_TTL_FACTOR : base;
+}
+
+// Returns the cached balance when it is still fresh. A cached `null` counts:
+// re-probing an account that has no prepaid credits every refresh would be the
+// same wasted request, just for the majority of users.
+function claudeCachedPrepaid(key, deps = {}, options = {}, creditsEnabled = false) {
+  const cache = claudePrepaidCache(deps);
+  if (!cache || !key) return null;
+  const entry = cache.get(key);
+  if (!entry) return null;
+  const nowMs = (deps.now || Date.now)();
+  const ttlMs = claudePrepaidCacheTtlMs(deps, options, !creditsEnabled && !entry.funded);
+  return nowMs - entry.resolvedAt <= ttlMs ? entry : null;
+}
+
+// The prepaid cache is keyed on the resolved account and the organization whose
+// pool it is, never on the cookie digest the identity cache uses. A sessionKey
+// rotates mid-session, and a credential-keyed entry is stranded the moment it
+// does: the next refresh re-reads the pool, and a read that fails then has no
+// last-good balance left to fall back on. Both parts are already hashed or
+// public identifiers — the pool belongs to the organization, and the account
+// decides whether it may be read at all.
+function claudePrepaidKey(context) {
+  const accountKey = context?.identity?.accountKey;
+  if (!accountKey) return '';
+  return `${accountKey}|${context?.organizationId || ''}`;
+}
+
+// The last balance read for this account, however old. Serving it through an
+// outage keeps a real balance on screen instead of blanking the row until the
+// endpoint recovers; the pool moves slowly enough that a stale figure beats no
+// figure, and the next successful read corrects it.
+function staleClaudePrepaid(key, deps = {}) {
+  const cache = claudePrepaidCache(deps);
+  if (!cache || !key) return null;
+  return cache.get(key)?.balance ?? null;
+}
+
+// A refusal this account will get again: reading the pool is not permitted, or
+// there is nothing at that path. A 403 carrying a Cloudflare challenge is not
+// one — that is an interstitial, and it clears.
+function claudePrepaidRefused(error) {
+  if (error?.code === 'CLAUDE_WEB_SOURCE_CHALLENGE') return false;
+  return error?.httpStatus === 403 || error?.httpStatus === 404;
+}
+
+function cacheClaudePrepaid(key, balance, deps = {}) {
+  const cache = claudePrepaidCache(deps);
+  if (!cache || !key) return balance;
+  cache.delete(key);
+  cache.set(key, {
+    balance,
+    funded: claudePrepaidFunded(balance),
+    resolvedAt: (deps.now || Date.now)()
+  });
+  while (cache.size > CLAUDE_IDENTITY_CACHE_MAX_ENTRIES) {
+    cache.delete(cache.keys().next().value);
+  }
+  return balance;
+}
+
+async function fetchClaudeWebLimits(cookie, deps = {}, options = {}) {
+  const nowMs = (deps.now || Date.now)();
+  const baseUrl = String(deps.claudeWebBaseUrl || CLAUDE_WEB_BASE_URL).replace(/\/$/, '');
+  const session = createClaudeWebSession(cookie);
+  let reportedCookie = session.initialCookie;
+  const observeResponse = async (response) => {
+    session.observe(response);
+    const renewedCookie = session.cookie();
+    if (renewedCookie === reportedCookie) return;
+    const previousCookie = reportedCookie;
+    try {
+      const persisted = await deps.onClaudeWebCookieRenewed?.({
+        previousCookie,
+        cookie: renewedCookie
+      });
+      if (persisted !== false) reportedCookie = renewedCookie;
+    } catch (error) {
+      deps.logger?.(`[limits] Claude Web session renewal could not be persisted: ${error.message}`);
+    }
+  };
+  const fetchWebJson = (url) => fetchClaudeWebJson(url, session.headers(), deps, {
+    onResponse: observeResponse
+  });
+  const fingerprint = claudeWebIdentityFingerprint(cookie);
+  let context = claudeCachedIdentity(fingerprint, deps);
+  let usage;
+  if (!context) {
+    const stale = claudeCachedIdentity(fingerprint, deps, { allowStale: true });
+    const organizationsBody = await fetchWebJson(`${baseUrl}/api/organizations`);
+    const organizations = claudeWebOrganizations(organizationsBody);
+    const organization = selectClaudeWebOrganization(organizations);
+    const organizationId = claudeWebOrganizationId(organization);
+    if (!organizationId) throw errorWithStatus('unavailable', 'Claude Web organization not found');
+    usage = await fetchWebJson(
+      `${baseUrl}/api/organizations/${encodeURIComponent(organizationId)}/usage`
+    );
+    try {
+      const accountBody = await fetchWebJson(`${baseUrl}/api/account`);
+      context = cacheClaudeIdentity(fingerprint, {
+        organizationId,
+        identity: claudeWebAccountIdentity(accountBody, organization)
+      }, deps);
+    } catch (error) {
+      if (!stale) {
+        throw claudeIdentityUnavailable('Claude Web usage is available, but stable account identity could not be resolved', error);
+      }
+      context = {
+        organizationId,
+        identity: stale.identity,
+        resolvedAt: stale.resolvedAt
+      };
+    }
+  } else {
+    usage = await fetchWebJson(
+      `${baseUrl}/api/organizations/${encodeURIComponent(context.organizationId)}/usage`
+    );
+  }
+  const renewedCookie = session.cookie();
+  if (renewedCookie !== session.initialCookie) {
+    const renewedFingerprint = claudeWebIdentityFingerprint(renewedCookie);
+    if (renewedFingerprint !== fingerprint) cacheClaudeIdentity(renewedFingerprint, context, deps);
+  }
+  // The pool is read whenever the setting allows it, deliberately not only when
+  // the account has usage credits switched on: switching them off is what you
+  // do to stop a balance you still hold from being spent, and the money and its
+  // expiry dates are exactly what you want to see while it is off.
+  const wantsPrepaid = claudePrepaidBalanceEnabled(deps.env || process.env, options);
+  const creditsEnabled = claudeUsageCreditsEnabled(usage);
+  const prepaidKey = claudePrepaidKey(context);
+  // Best-effort and throttled: a 403/404/timeout here must not cost the account
+  // its usage row, and the pool moves too slowly to re-read every refresh.
+  const cachedPrepaid = wantsPrepaid
+    ? claudeCachedPrepaid(prepaidKey, deps, options, creditsEnabled)
+    : null;
+  let balance = cachedPrepaid ? cachedPrepaid.balance : null;
+  if (wantsPrepaid && !cachedPrepaid) {
+    try {
+      const prepaid = await fetchWebJson(
+        `${baseUrl}/api/organizations/${encodeURIComponent(context.organizationId)}/prepaid/credits`
+      );
+      balance = cacheClaudePrepaid(prepaidKey, claudePrepaidBalance(prepaid), deps);
+    } catch (error) {
+      deps.logger?.(`[limits] Claude prepaid credits unavailable: ${error.message}`);
+      if (claudePrepaidRefused(error)) {
+        // Cache the refusal. An endpoint that refuses this account refuses it
+        // every refresh, and without an entry there is nothing to back off from.
+        cacheClaudePrepaid(prepaidKey, null, deps);
+      } else {
+        // A timeout, a 429 or a 5xx says nothing about this account. Caching it
+        // as "no balance" would blank a balance that is still there — and on a
+        // credits-off account the idle backoff would hold that blank for an
+        // hour. Keep the last figure and let the next refresh retry.
+        balance = staleClaudePrepaid(prepaidKey, deps);
+      }
+    }
+  }
+  // A pool nobody ever funded is not a balance. Reporting it would put a $0.00
+  // row on every Web account that has never touched credits. With usage credits
+  // on, a pool spent dry is precisely when the row matters, so zero is kept.
+  if (balance && !creditsEnabled && !claudePrepaidFunded(balance)) balance = null;
+  const provider = mapClaudeUsageToProvider(usage, {
+    ...context.identity,
+    updatedAt: nowIso(nowMs),
+    source: 'web'
+  });
+  if (!balance) return provider;
+  return normalizeLimitProvider({
+    ...provider,
+    balance,
+    // Emit the credits window ourselves. normalizeLimitProvider synthesizes a
+    // metered one whenever a balance has no credits window, and that meter
+    // derives amount/(amount+monthSpend) — a denominator this pool doesn't have.
+    windows: [
+      ...provider.windows,
+      {
+        kind: 'billing',
+        metric: 'credits',
+        label: 'Balance',
+        remaining: balance.amount,
+        currency: balance.currency,
+        showMeter: false
+      }
+    ]
+  });
+}
+
+function claudeIdentityUnavailable(message, cause) {
+  const error = errorWithStatus('unavailable', message);
+  error.code = 'CLAUDE_IDENTITY_UNAVAILABLE';
+  if (cause) error.cause = cause;
+  return error;
+}
+
+function claudeOauthAccountIdentity(profile) {
+  const account = profile?.account && typeof profile.account === 'object' ? profile.account : {};
+  const organization = profile?.organization && typeof profile.organization === 'object'
+    ? profile.organization
+    : {};
+  const accountId = String(account.uuid || account.id || profile?.account_uuid || '').trim();
+  const organizationId = String(
+    organization.uuid || organization.id || profile?.organization_uuid || ''
+  ).trim();
+  const accountEmail = String(
+    account.email || account.email_address || profile?.email || profile?.email_address || ''
+  ).trim().toLowerCase();
+  const accountName = String(
+    account.display_name
+      || account.full_name
+      || account.name
+      || organization.display_name
+      || organization.name
+      || ''
+  ).trim();
+  const stableIdentity = claudeStableIdentity(accountId, organizationId, accountEmail);
+  if (!stableIdentity) {
+    throw claudeIdentityUnavailable('Claude profile did not include a stable account identity');
+  }
+
+  return {
+    accountKey: hashKey('claude-account', stableIdentity),
+    accountEmail,
+    accountName
+  };
+}
+
+async function resolveClaudeOauthIdentity(credentials, deps = {}) {
+  const fingerprint = claudeOauthIdentityFingerprint(credentials);
+  const fresh = claudeCachedIdentity(fingerprint, deps);
+  if (fresh) return fresh.identity;
+  const stale = claudeCachedIdentity(fingerprint, deps, { allowStale: true });
+  try {
+    const profile = await callClaudeProfile(credentials.accessToken, deps);
+    let identity;
+    try {
+      identity = claudeOauthAccountIdentity(profile);
+    } catch (error) {
+      // Older embedders injected the usage response for every OAuth endpoint,
+      // before the profile probe existed. A successful response that is plainly
+      // a usage payload is not a real profile failure; keep those callers
+      // working with a credential-derived key. Real profile transport failures
+      // and successful responses with an unknown shape remain strict, so the
+      // stable account identity contract is still enforced for live traffic.
+      const looksLikeLegacyUsage = profile && typeof profile === 'object'
+        && ['five_hour', 'fiveHour', 'seven_day', 'sevenDay'].some((key) => key in profile);
+      if (!looksLikeLegacyUsage) throw error;
+      identity = {
+        accountKey: hashKey('claude-legacy', credentials.accessToken),
+        accountEmail: '',
+        accountName: ''
+      };
+    }
+    return cacheClaudeIdentity(fingerprint, { identity }, deps).identity;
+  } catch (error) {
+    if (stale) return stale.identity;
+    if (error?.code === 'CLAUDE_IDENTITY_UNAVAILABLE') throw error;
+    throw claudeIdentityUnavailable('Claude profile lookup failed', error);
+  }
+}
+
 async function delegatedClaudeRefresh(currentCredentials, deps = {}) {
   // Spawn `claude /status` in a PTY and let Claude Code itself refresh the token.
   // Matches CodexBar's strategy — Claude Code is a native Anthropic application,
@@ -754,18 +1530,28 @@ async function refreshClaudeCredentials(currentCredentials, deps = {}) {
   return { ...currentCredentials, ...refreshed };
 }
 
-async function fetchClaudeLimits(_options = {}, deps = {}) {
+async function fetchClaudeLimits(options = {}, deps = {}) {
   const nowMs = (deps.now || Date.now)();
   const platform = deps.platform || process.platform;
+  const webCookie = claudeWebCookie(deps.env || process.env, options);
+  if (webCookie) return fetchClaudeWebLimits(webCookie, deps, options);
+  let oauthIdentity = null;
   try {
     let credentials = await readClaudeCredentials(deps);
+    oauthIdentity = claudeCachedIdentity(
+      claudeOauthIdentityFingerprint(credentials),
+      deps,
+      { allowStale: true }
+    )?.identity || null;
 
     // Proactive refresh only on non-darwin: mac uses delegated (spawning Claude Code)
     // which is expensive; CodexBar's design likewise refreshes reactively, not on expiry.
     if (platform !== 'darwin' && credentials.refreshToken && credentials.expiresAt
       && credentials.expiresAt - nowMs < CLAUDE_REFRESH_LEEWAY_MS) {
       try {
+        const previousCredentials = credentials;
         credentials = await refreshClaudeCredentials(credentials, deps);
+        carryClaudeCachedIdentity(previousCredentials, credentials, deps);
       } catch (_) { /* fall through; reactive retry below may still succeed */ }
     }
 
@@ -774,25 +1560,47 @@ async function fetchClaudeLimits(_options = {}, deps = {}) {
       usage = await callClaudeUsage(credentials.accessToken, deps);
     } catch (error) {
       if (error?.status !== 'unauthorized') throw error;
+      const previousCredentials = credentials;
       credentials = await refreshClaudeCredentials(credentials, deps);
+      carryClaudeCachedIdentity(previousCredentials, credentials, deps);
       usage = await callClaudeUsage(credentials.accessToken, deps);
     }
 
+    try {
+      oauthIdentity = await resolveClaudeOauthIdentity(credentials, deps);
+    } catch (error) {
+      if (error?.cause?.status !== 'unauthorized') throw error;
+      const previousCredentials = credentials;
+      credentials = await refreshClaudeCredentials(credentials, deps);
+      carryClaudeCachedIdentity(previousCredentials, credentials, deps);
+      oauthIdentity = await resolveClaudeOauthIdentity(credentials, deps);
+    }
     const provider = mapClaudeUsageToProvider(usage, {
-      accountKey: hashKey('claude', credentials.identity),
+      ...oauthIdentity,
       accountLabel: credentials.accountLabel,
       updatedAt: nowIso(nowMs),
       source: 'oauth'
     });
     return provider;
   } catch (error) {
+    // A successful quota response without a stable account identity must not
+    // create a new row keyed by credential storage location or a different
+    // fallback source. Let LimitsRuntime retain the previous account row.
+    if (error?.code === 'CLAUDE_IDENTITY_UNAVAILABLE') throw error;
     if (!shouldTryClaudeCliFallback(error)) throw error;
     try {
       const text = await runClaudeUsageCli(deps);
-      return mapClaudeCliUsageToProvider(text, {
+      const provider = mapClaudeCliUsageToProvider(text, {
         updatedAt: nowIso(nowMs),
         now: new Date(nowMs)
       });
+      if (!oauthIdentity) return provider;
+      return {
+        ...provider,
+        accountKey: oauthIdentity.accountKey,
+        accountEmail: oauthIdentity.accountEmail,
+        accountName: oauthIdentity.accountName
+      };
     } catch (_) {
       throw error;
     }
@@ -954,6 +1762,8 @@ function parseClaudeCliUsageText(text, now = new Date()) {
     secondaryResetDescription,
     primaryResetsAt: parseClaudeResetDate(primaryResetDescription, now),
     secondaryResetsAt: parseClaudeResetDate(secondaryResetDescription, now),
+    accountEmail,
+    accountName: accountOrganization,
     accountLabel,
     accountKey: [accountEmail, accountOrganization].filter(Boolean).join('|') || 'claude-cli'
   };
@@ -980,6 +1790,8 @@ function mapClaudeCliUsageToProvider(text, meta = {}) {
     provider: 'claude',
     accountKey: hashKey('claude-cli', parsed.accountKey),
     accountLabel: parsed.accountLabel,
+    accountName: parsed.accountName,
+    accountEmail: parsed.accountEmail,
     source: 'cli',
     status: 'ok',
     updatedAt: meta.updatedAt,
@@ -1194,7 +2006,11 @@ async function touchClaudeAuthPath(deps = {}) {
 
 function codexWindowKind(name, window) {
   const mins = Number(window?.windowDurationMins || window?.window_duration_mins || 0);
+  // Monthly quotas use the shared wire contract's billing lane. The display
+  // label below keeps the cadence explicit instead of presenting it as money.
+  if (mins === 30 * 24 * 60) return 'billing';
   if (mins >= 7 * 24 * 60) return 'weekly';
+  if (mins === 5 * 60) return 'session';
   if (String(name).toLowerCase() === 'secondary') return 'weekly';
   return 'session';
 }
@@ -1494,8 +2310,10 @@ function mapCodexRateLimitsToProvider(payload, meta = {}) {
   for (const key of ['primary', 'secondary']) {
     const window = rateLimits[key];
     if (!window) continue;
+    const kind = codexWindowKind(key, window);
     windows.push({
-      kind: codexWindowKind(key, window),
+      kind,
+      ...(kind === 'billing' ? { label: 'Monthly' } : {}),
       usedPercent: window.usedPercent ?? window.used_percent,
       resetsAt: window.resetsAt ?? window.resets_at,
       windowMinutes: window.windowDurationMins ?? window.window_duration_mins
@@ -1592,6 +2410,13 @@ function codexLoginSpawnSpec(command, platform = process.platform) {
   };
 }
 
+// Absolute path on purpose: a bare `taskkill` is resolved through PATH, and a user
+// PATH that lost %SystemRoot%\System32 turns every tree-kill into a spawn ENOENT.
+function windowsTaskkillCommand(env = process.env) {
+  const root = env.SystemRoot || env.SYSTEMROOT || env.windir || 'C:\\Windows';
+  return path.win32.join(root, 'System32', 'taskkill.exe');
+}
+
 function killCodexLoginProcess(child, platform = process.platform, deps = {}) {
   if (!child || typeof child.kill !== 'function') return;
   const spawnFn = deps.spawn || spawn;
@@ -1599,7 +2424,17 @@ function killCodexLoginProcess(child, platform = process.platform, deps = {}) {
     // Login spawns a browser/callback helper, so kill the whole tree, not just codex.
     if (platform === 'win32') {
       if (child.pid) {
-        try { spawnFn('taskkill', ['/pid', String(child.pid), '/t', '/f'], { windowsHide: true }); } catch (_) {}
+        try {
+          const killer = spawnFn(
+            windowsTaskkillCommand(deps.env || process.env),
+            ['/pid', String(child.pid), '/t', '/f'],
+            { windowsHide: true }
+          );
+          // spawn() reports a missing or blocked taskkill.exe asynchronously as an
+          // 'error' event, so the enclosing try/catch never sees it. Without a
+          // listener the EventEmitter rethrows and crashes the main process.
+          killer?.on?.('error', () => {});
+        } catch (_) {}
       }
       child.kill();
       return;
@@ -1657,7 +2492,7 @@ function runCodexLoginWithCommand(command, options = {}, deps = {}) {
       resolve({ outcome, exitCode: exitCode ?? null, output: output.trim() });
     };
     const onAbort = () => {
-      killCodexLoginProcess(child, platform, { spawn: spawnFn });
+      killCodexLoginProcess(child, platform, { spawn: spawnFn, env });
       finish('cancelled', null);
     };
     child.stdout?.on('data', append);
@@ -1670,7 +2505,7 @@ function runCodexLoginWithCommand(command, options = {}, deps = {}) {
       return;
     }
     timer = setTimer(() => {
-      killCodexLoginProcess(child, platform, { spawn: spawnFn });
+      killCodexLoginProcess(child, platform, { spawn: spawnFn, env });
       finish('timedOut', null);
     }, timeoutMs);
   });
@@ -2111,7 +2946,7 @@ async function fetchManagedCodexAccountLimits(account, _options = {}, deps = {})
     return mapCodexRateLimitsToProvider(payload, {
       accountKey: managedCodexAccountKey(account, authIdentity, email),
       accountEmail: email,
-      accountLabel: account.accountLabel || codexAccountLabel(payload),
+      accountLabel: codexAccountLabel(payload) || account.accountLabel,
       accountName: account.workspaceLabel,
       workspaceKind: account.workspaceKind,
       updatedAt: nowIso(nowMs),
@@ -2288,10 +3123,80 @@ async function fetchAntigravityLimits(_options = {}, deps = {}) {
   }
 }
 
+function openCodeWebIdentity(goWeb, zen, cookie) {
+  const goWorkspaceId = goWeb?.status === 'ok' ? String(goWeb.workspaceId || '') : '';
+  const zenWorkspaceId = zen?.status === 'ok' ? String(zen.workspaceId || '') : '';
+  const workspaceConflict = Boolean(
+    goWorkspaceId && zenWorkspaceId && goWorkspaceId !== zenWorkspaceId
+  );
+  const includeZen = zen?.status === 'ok' && !workspaceConflict;
+  const hasSuccessfulWebProbe = goWeb?.status === 'ok' || includeZen;
+  // Go is the quota authority when two successful probes unexpectedly resolve
+  // different workspaces. Exclude the Zen observation instead of attaching its
+  // balance/windows to the wrong account identity.
+  const workspaceId = goWorkspaceId || (includeZen ? zenWorkspaceId : '');
+  if (hasSuccessfulWebProbe && workspaceId) {
+    return {
+      accountKey: hashKey('opencode', `workspace:${workspaceId}`),
+      aliases: [
+        hashKey('opencode', `go:${workspaceId}`),
+        hashKey('opencode', `zen:${workspaceId}`)
+      ],
+      includeZen
+    };
+  }
+  if (cookie && hasSuccessfulWebProbe) {
+    const cookieHash = crypto.createHash('sha256').update(cookie).digest('hex').slice(0, 12);
+    return { accountKey: hashKey('opencode', `cookie:${cookieHash}`), aliases: [], includeZen };
+  }
+  return { accountKey: '', aliases: [], includeZen };
+}
+
+const OPENCODE_COMPONENT_PROVENANCE_DETAIL = 'managed';
+
+// Statuses that mean "this source failed and the user should see it". Everything
+// else, notably `notConfigured`, is a fall-through: the source simply has nothing
+// for this account, so a later source may still answer.
+const OPENCODE_REMOTE_FAIL_STATUSES = ['unauthorized', 'sourceRateLimited', 'unavailable'];
+
+// Name for the account behind the key OpenCode stores for itself. Parallel to
+// the existing 'default (env)' entry: not a user-chosen name, so it cannot be
+// mistaken for a saved account, and stable so the row keeps its identity.
+// Shown as the account's name until the user gives it one, so it has to survive
+// `normalizeAccountName` intact — the previous "default (auto)" lost its
+// brackets there and reached the card as "default auto". Canonical English on
+// the wire, because a device record is read by devices in other locales; the
+// renderer localizes this exact string.
+const OPENCODE_AMBIENT_ACCOUNT_NAME = 'Auto-detected';
+
+// Supplemental windows fill kinds the Go source did not answer, and are dropped
+// for any kind it did. The comparison is against the windows actually taken
+// rather than against one candidate source: Go quota resolves api → web → local,
+// so naming a single source there leaves the other two unguarded and the account
+// reports one window kind twice, from two sources and with two different numbers.
+function openCodeSupplementalZenWindows(takenWindows, zen) {
+  const takenKeys = new Set(
+    (Array.isArray(takenWindows) ? takenWindows : [])
+      .map(openCodeWindowKey)
+      .filter(Boolean)
+  );
+  return (zen?.windows || []).filter((window) => {
+    const key = openCodeWindowKey(window);
+    return !key || !takenKeys.has(key);
+  });
+}
+
 async function fetchOpenCodeLimits(options = {}, deps = {}) {
   const nowMs = (deps.now || Date.now)();
   const updatedAt = nowIso(nowMs);
+  // Keep the pre-profile injection seam usable for callers that provide a
+  // local collector explicitly (tests and embedders). Production discovery of
+  // the Go API key remains unchanged below, but an injected collector must not
+  // be bypassed by a key found in the host's real auth.json.
+  const hasInjectedLocalCollector = typeof deps.opencodeCollectGo === 'function';
   const collectGo = deps.opencodeCollectGo || ((d) => opencodeLimits.collectGo(d));
+  const collectGoApi = deps.opencodeCollectGoApi || ((d) => opencodeGoApi.collectGoApi(d));
+  const readGoApiKey = deps.opencodeReadGoApiKey || ((env) => opencodeGoApi.readGoApiKey(env));
   const fetchGoWeb = deps.opencodeFetchGoWeb || ((cookie, d) => opencodeWeb.fetchGoWeb(cookie, d));
   const fetchZen = deps.opencodeFetchZen || ((cookie, d) => opencodeWeb.fetchZen(cookie, d));
 
@@ -2299,10 +3204,23 @@ async function fetchOpenCodeLimits(options = {}, deps = {}) {
   const explicitProfiles = options.opencodeProfiles;
   const envCookie = (deps.env || process.env).TOKEN_MONITOR_OPENCODE_COOKIE || '';
 
+  // An account is a name, and credentials belong to a name. A profile may hold
+  // any of: a cookie (Go quota plus Zen balance), a stored API key (Go quota),
+  // or a reference to the key OpenCode keeps in auth.json. Sharing a name is
+  // the user's own assertion that they are one account, which is the only thing
+  // that licenses reading quota from one credential while identity and balance
+  // come from another. The reference is stored rather than the key itself, so the
+  // key is re-read every tick; it resolves only while it is still the key the
+  // reference was bound to.
+  const ambientKey = hasInjectedLocalCollector ? '' : readGoApiKey(deps.env || process.env);
+  const ambientIdentity = ambientKey ? opencodeGoApi.goApiIdentity(ambientKey) : '';
+  const ambientFor = (p) => opencodeProfiles.ambientKeyFor(p, ambientKey, ambientIdentity);
   let cookies = [];
   if (explicitProfiles && Object.keys(explicitProfiles).length > 0) {
     for (const [name, p] of Object.entries(explicitProfiles)) {
-      if (p.enabled && p.cookie) cookies.push({ name, cookie: p.cookie });
+      if (!p.enabled) continue;
+      const apiKey = p.apiKey || ambientFor(p);
+      if (apiKey || p.cookie) cookies.push({ name, apiKey, cookie: p.cookie });
     }
   } else if (options.opencodeCookie) {
     cookies = [{ name: 'default', cookie: options.opencodeCookie }];
@@ -2313,27 +3231,62 @@ async function fetchOpenCodeLimits(options = {}, deps = {}) {
     cookies.push({ name: 'default (env)', cookie: envCookie });
   }
 
+  // The auto-detected key is an unnamed credential until someone names it, so it
+  // is tracked on its own and the zero-config path never disappears. Ownership is
+  // the shared predicate rather than a copy of it here, so the settings panel
+  // cannot end up offering a row this scan is not reading.
+  const ambientClaimed = opencodeProfiles.ambientKeyClaimed(explicitProfiles, ambientKey, ambientIdentity);
+  // Switched off for a machine signed in to an account the user does not want
+  // reported. Only the unclaimed row is suppressed: once an account has claimed
+  // the key it is that account's credential, and the account's own toggle owns
+  // it, exactly as for a cookie.
+  if (ambientKey && !ambientClaimed && options.opencodeAmbientEnabled !== false) {
+    cookies.push({ name: OPENCODE_AMBIENT_ACCOUNT_NAME, apiKey: ambientKey, ambient: true });
+  }
+
   const multiAccountMode = cookies.length > 1;
   const scope = options.limitRefreshScope?.provider === 'opencode'
     ? options.limitRefreshScope
     : null;
   if (scope && multiAccountMode) {
     const profileName = scope.accountName || scope.accountLabel;
+    // Every scope originates from an action on a *stored* account, and the
+    // auto-detected entry is by definition not one. Excluding it by that fact
+    // rather than by its name keeps a user who happens to name an account the
+    // same string from scoping a refresh onto both.
     cookies = profileName
-      ? cookies.filter(({ name }) => name === profileName)
+      ? cookies.filter(({ name, ambient }) => !ambient && name === profileName)
       : [];
   }
 
   // ── Single account (0 or 1 cookie): existing merged behavior ─────────────
   if (!multiAccountMode) {
-    const goLocal = collectGo({ env: deps.env || process.env, now: () => nowMs });
-    const cookie = cookies[0]?.cookie;
-    const [goWeb, zen] = cookie
-      ? await Promise.all([
-          fetchGoWeb(cookie, { now: () => nowMs }),
-          fetchZen(cookie, { now: () => nowMs, workspaceId: '' })
-        ])
-      : [null, null];
+    // The database is device-wide and has no stable account identity, so every
+    // caller must opt in explicitly before this process reads it.
+    const goLocal = (options.opencodeLocalLimitsEnabled === true || hasInjectedLocalCollector)
+      ? collectGo({ env: deps.env || process.env, now: () => nowMs })
+      : { status: 'notConfigured', windows: [] };
+    const primary = cookies[0] || {};
+    const cookie = primary.cookie;
+    // Only this entry's own key, never the ambient one as a stand-in. The
+    // ambient key is its own entry above; reaching for it here would pair it
+    // with a cookie whose account nothing can prove it shares, and the cookie's
+    // workspace identity wins below, so the result would publish one account's
+    // quota — and merge it across devices — under the other's identity.
+    const primaryApiKey = primary.apiKey || '';
+    const [goApi, goWeb, zen] = await Promise.all([
+      collectGoApi({
+        env: deps.env || process.env,
+        now: () => nowMs,
+        fetch: deps.fetch,
+        signal: deps.signal,
+        apiKey: primaryApiKey
+      }),
+      cookie ? fetchGoWeb(cookie, { now: () => nowMs, fetch: deps.fetch }) : null,
+      cookie ? fetchZen(cookie, { now: () => nowMs, workspaceId: '', fetch: deps.fetch }) : null
+    ]);
+    const webIdentity = openCodeWebIdentity(goWeb, zen, cookie);
+    const webAccountKey = webIdentity.accountKey;
 
     const windows = [];
     let status = 'notConfigured';
@@ -2342,42 +3295,109 @@ async function fetchOpenCodeLimits(options = {}, deps = {}) {
     let accountKey = '';
     let balanceUsd = null;
 
-    if (goWeb && goWeb.status === 'ok' && goWeb.windows.length > 0) {
-      windows.push(...goWeb.windows);
+    // Go quota resolves api → web → local. The official API needs no user setup
+    // and is the only source anchored on the real subscription month, so it
+    // outranks the cookie scrape; the local estimate stays last because it sees
+    // only this device's rows and under-reports whenever the same account is
+    // used elsewhere.
+    //
+    // API windows are tagged `web`, not `api`: windows[].source is a two-value
+    // wire enum ('web' | 'local') that hubs rank on, and a hub that predates
+    // this change would strip an unknown value and then rank the window *below*
+    // a local estimate. Both values mean the same thing here anyway — server
+    // truth from opencode.ai — and the finer provenance rides on the
+    // provider-level source below.
+    if (goApi.status === 'ok' && goApi.windows.length > 0) {
+      windows.push(...goApi.windows.map((window) => ({ ...window, source: 'web' })));
+      status = 'ok'; source = 'api'; accountLabel = 'Go';
+      accountKey = hashKey('opencode', goApi.identity || 'go-api');
+    } else if (goWeb && goWeb.status === 'ok' && goWeb.windows.length > 0) {
+      windows.push(...goWeb.windows.map((window) => ({ ...window, source: 'web' })));
       status = 'ok'; source = 'web'; accountLabel = 'Go';
       accountKey = hashKey('opencode', `go:${goWeb.workspaceId || ''}`);
-    } else if (goLocal.status === 'ok') {
-      windows.push(...goLocal.windows);
+    } else if (goLocal.status === 'ok' && goApi.entitled !== false) {
+      // `entitled === false` is the server saying this account has no Go plan,
+      // which the local estimate cannot know: it would keep deriving quota from
+      // rows a cancelled subscription left behind. Only an absent or failed API
+      // answer leaves room for the estimate.
+      windows.push(...goLocal.windows.map((window) => ({ ...window, source: 'local' })));
       status = 'ok'; accountLabel = 'Go';
       accountKey = hashKey('opencode', goLocal.identity || 'go');
-    } else if (goLocal.status === 'unavailable') {
+    } else if (goLocal.status === 'unavailable' && goApi.entitled !== false) {
       status = 'unavailable';
     }
 
-    if (zen && zen.status === 'ok') {
-      windows.push(...zen.windows);
-      status = 'ok'; source = 'web';
+    if (zen && webIdentity.includeZen) {
+      const supplemental = openCodeSupplementalZenWindows(windows, zen)
+        .map((window) => ({ ...window, source: 'web' }));
+      windows.push(...supplemental);
+      status = 'ok';
+      // The provider-level source is the compatibility envelope used by Hubs
+      // that predate windows[].source. It may claim Web only when every quota
+      // window is Web; otherwise an old Hub could turn a local estimate into a
+      // Web observation when it strips component provenance.
+      // 'api' already implies every quota window is server truth, so it keeps
+      // that stronger claim instead of being flattened to 'web' by a Zen window.
+      if (source !== 'api' && !windows.some((window) => window.source === 'local')) source = 'web';
       if (typeof zen.balanceUsd === 'number' && Number.isFinite(zen.balanceUsd)) balanceUsd = zen.balanceUsd;
       if (!accountLabel) accountLabel = 'Zen';
       if (!accountKey) accountKey = hashKey('opencode', `zen:${zen.workspaceId || ''}`);
     } else if (status !== 'ok') {
-      const webFail = ['unauthorized', 'sourceRateLimited', 'unavailable'];
-      const surfaced = (goWeb && webFail.includes(goWeb.status) && goWeb.status)
-        || (zen && webFail.includes(zen.status) && zen.status);
-      if (surfaced) { status = surfaced; source = 'web'; }
+      const remoteFail = OPENCODE_REMOTE_FAIL_STATUSES;
+      // Only reached when nothing produced windows. A stale API key would
+      // otherwise read as "not configured" and leave the user nothing to fix.
+      const surfaced = (remoteFail.includes(goApi.status) && { status: goApi.status, source: 'api' })
+        || (goWeb && remoteFail.includes(goWeb.status) && { status: goWeb.status, source: 'web' })
+        || (zen && remoteFail.includes(zen.status) && { status: zen.status, source: 'web' });
+      if (surfaced) { status = surfaced.status; source = surfaced.source; }
     }
 
-    return normalizeLimitProvider({ provider: 'opencode', accountKey, accountLabel, source, status, updatedAt, windows, balanceUsd });
+    // A failed API probe still names its account: the key identifies it, so a
+    // 401 or a rate limit must not leave an empty accountKey that matches
+    // nothing already stored on the Hub.
+    if (!accountKey && goApi.identity) accountKey = hashKey('opencode', goApi.identity);
+    if (webAccountKey) accountKey = webAccountKey;
+    // Publish the key's own identity as an alias whenever one was used. The
+    // cookie's workspace identity wins above, so without this a device holding
+    // only the key would never group with the account it belongs to.
+    const apiAlias = goApi.identity ? hashKey('opencode', goApi.identity) : '';
+    return normalizeLimitProvider({
+      provider: 'opencode',
+      // The account this row is for, whether or not more than one exists. Left
+      // off, a machine that resolves to exactly one OpenCode account showed it
+      // as "Account 1", and enabling a second account did not fix it until a
+      // restart: the scoped refresh only rebuilds the account it targets, so
+      // this row kept its nameless record while the new one arrived named.
+      accountName: primary.name || '',
+      accountKey,
+      webAccountKey,
+      accountKeyAliases: [...webIdentity.aliases, apiAlias].filter(Boolean),
+      accountLabel,
+      source,
+      sourceDetail: OPENCODE_COMPONENT_PROVENANCE_DETAIL,
+      status,
+      updatedAt,
+      windows,
+      balanceUsd
+    });
   }
 
   // ── Multi-account (2+ cookies): separate per-profile providers ────────────
   const providers = [];
 
-  // Each enabled profile — query in parallel
+  // Each enabled profile — query in parallel. One path for every credential
+  // combination: an account holding only a key is the same shape with no cookie,
+  // and keeping it as a separate function is what let the two drift apart.
   const results = await Promise.all(
-    cookies.map(({ name, cookie }) =>
-      fetchSingleOpenCodeProfile(name, cookie, fetchGoWeb, fetchZen, nowMs, updatedAt)
-    )
+    cookies.map((profile) => fetchOpenCodeProfile(
+      profile.name,
+      profile.cookie,
+      fetchGoWeb,
+      fetchZen,
+      nowMs,
+      updatedAt,
+      { apiKey: profile.apiKey, collectGoApi, deps }
+    ))
   );
   for (const provider of results) {
     if (provider) providers.push(provider);
@@ -2393,18 +3413,32 @@ async function fetchOpenCodeLimits(options = {}, deps = {}) {
   return providers;
 }
 
-async function fetchSingleOpenCodeProfile(name, cookie, fetchGoWeb, fetchZen, nowMs, updatedAt) {
+// One account, whichever credentials it holds. `cookie` and `api.apiKey` are
+// each optional: sharing a name is the user's assertion that they are the same
+// account, which is what licenses reading Go quota from the key while Zen
+// balance and the workspace identity come from the cookie. An account holding
+// only one of them is the same shape with the other absent.
+async function fetchOpenCodeProfile(name, cookie, fetchGoWeb, fetchZen, nowMs, updatedAt, api = {}) {
   const PROFILE_TIMEOUT_MS = 15000;
   let timer;
 
   try {
     const result = await Promise.race([
       (async () => {
-        const [goWeb, zen] = await Promise.all([
-          fetchGoWeb(cookie, { now: () => nowMs }),
-          fetchZen(cookie, { now: () => nowMs, workspaceId: '' })
+        const [goWeb, zen, goApi] = await Promise.all([
+          cookie ? fetchGoWeb(cookie, { now: () => nowMs, fetch: api.deps?.fetch }) : null,
+          cookie ? fetchZen(cookie, { now: () => nowMs, workspaceId: '', fetch: api.deps?.fetch }) : null,
+          api.apiKey
+            ? api.collectGoApi({
+              env: api.deps?.env || process.env,
+              now: () => nowMs,
+              fetch: api.deps?.fetch,
+              signal: api.deps?.signal,
+              apiKey: api.apiKey
+            })
+            : null
         ]);
-        return { goWeb, zen };
+        return { goWeb, zen, goApi };
       })(),
       new Promise((_, reject) => {
         timer = setTimeout(() => reject(new Error('timeout')), PROFILE_TIMEOUT_MS);
@@ -2412,65 +3446,121 @@ async function fetchSingleOpenCodeProfile(name, cookie, fetchGoWeb, fetchZen, no
     ]);
     clearTimeout(timer);
 
-    const { goWeb, zen } = result;
+    const { goWeb, zen, goApi } = result;
     const windows = [];
     let status = 'notConfigured';
     let planLabel = '';
     let balanceUsd = null;
+    let source = 'web';
 
-    if (goWeb && goWeb.status === 'ok' && goWeb.windows.length > 0) {
-      windows.push(...goWeb.windows);
+    if (goApi && goApi.status === 'ok' && goApi.windows.length > 0) {
+      windows.push(...goApi.windows.map((window) => ({ ...window, source: 'web' })));
+      status = 'ok';
+      planLabel = 'Go';
+      source = 'api';
+    } else if (goWeb && goWeb.status === 'ok' && goWeb.windows.length > 0) {
+      windows.push(...goWeb.windows.map((window) => ({ ...window, source: 'web' })));
       status = 'ok';
       planLabel = 'Go';
     }
 
-    if (zen && zen.status === 'ok') {
-      windows.push(...zen.windows);
+    const webIdentity = openCodeWebIdentity(goWeb, zen, cookie);
+    if (zen && webIdentity.includeZen) {
+      const supplemental = openCodeSupplementalZenWindows(windows, zen)
+        .map((window) => ({ ...window, source: 'web' }));
+      windows.push(...supplemental);
       status = 'ok';
       if (!planLabel) planLabel = 'Zen';
       if (typeof zen.balanceUsd === 'number' && Number.isFinite(zen.balanceUsd)) balanceUsd = zen.balanceUsd;
     }
 
     if (status !== 'ok') {
-      const failStatus = goWeb?.status || zen?.status || 'unauthorized';
-      status = failStatus;
+      // `notConfigured` from the API means "this account has no Go subscription",
+      // which is a fallback condition rather than a failure. Letting it win here
+      // would hide the cookie's own `unauthorized` and tell the user nothing is
+      // configured when what actually happened is that their cookie expired.
+      // The API's own `notConfigured` is ranked last rather than dropped: it
+      // must not outrank an expired cookie, but on an account with no cookie at
+      // all it is the true answer, and falling through to the literal would
+      // report "sign in again" for a workspace that simply has no Go plan.
+      //
+      // Provenance travels with the status, as it does on the single-account
+      // path and in the timeout branch below. Left behind, the `web` default
+      // stood while the status came from the key, so one expired API key read
+      // as an `API` failure on a machine with a single account and as a `Web`
+      // failure the moment a second account existed. How many accounts are
+      // configured cannot change which credential failed.
+      const failure = (OPENCODE_REMOTE_FAIL_STATUSES.includes(goApi?.status) && { status: goApi.status, source: 'api' })
+        || (goWeb && { status: goWeb.status, source: 'web' })
+        || (zen && { status: zen.status, source: 'web' })
+        || (goApi && { status: goApi.status, source: 'api' })
+        || { status: 'unauthorized', source: api.apiKey && !cookie ? 'api' : 'web' };
+      status = failure.status;
+      source = failure.source;
     }
 
-    // Stable accountKey derived from workspaceId (preferred) or cookie hash,
-    // not from the user-editable profile name — so the same account is
-    // consistently identified across machines and renames.
-    const goWid = goWeb?.workspaceId || '';
-    const zenWid = zen?.workspaceId || '';
-    let accountKey;
-    if (goWeb && goWeb.status === 'ok' && goWid) {
-      accountKey = hashKey('opencode', `go:${goWid}`);
-    } else if (zen && zen.status === 'ok' && zenWid) {
-      accountKey = hashKey('opencode', `zen:${zenWid}`);
-    } else {
+    // The key's own identity, published whenever this account holds one. The
+    // same key on another device that has no cookie identifies itself by that
+    // key alone, so without this the two devices never group into one account.
+    const keyIdentity = api.apiKey
+      ? hashKey('opencode', opencodeGoApi.goApiIdentity(api.apiKey))
+      : '';
+
+    // Stable accountKey derived from workspaceId (preferred), then the key, then
+    // the cookie hash — never from the user-editable profile name, so the same
+    // account is identified consistently across machines and renames. The key
+    // ranks above the cookie hash because it is the same string on every device,
+    // while a cookie is per-browser-session.
+    let accountKey = webIdentity.accountKey || keyIdentity;
+    if (!accountKey && cookie) {
       const cookieHash = crypto.createHash('sha256').update(cookie).digest('hex').slice(0, 12);
       accountKey = hashKey('opencode', `cookie:${cookieHash}`);
     }
+    const boundKeyAlias = accountKey === keyIdentity ? '' : keyIdentity;
 
     return normalizeLimitProvider({
       provider: 'opencode',
       accountKey,
+      // Only a cookie yields this. The Hub picks the canonical identity for a
+      // merged account from the webAccountKeys it collects, and it picks by
+      // sorting them, so publishing the key's hash here would let an API-only
+      // device's identity win over a real workspace id — deciding an account's
+      // canonical identity by which devices happen to be online.
+      webAccountKey: webIdentity.accountKey,
+      accountKeyAliases: [...webIdentity.aliases, boundKeyAlias].filter(Boolean),
       accountName: name,
       // Keep accountLabel as the profile name for pre-accountName renderers.
       // New renderers use planLabel for Go/Zen and accountName for identity.
       accountLabel: name,
       planLabel,
-      source: 'web',
+      source,
+      sourceDetail: OPENCODE_COMPONENT_PROVENANCE_DETAIL,
       status,
       updatedAt,
       windows,
       balanceUsd
     });
-  } catch {
+  } catch (error) {
     clearTimeout(timer);
-    const cookieHash = crypto.createHash('sha256').update(cookie).digest('hex').slice(0, 12);
+    // Routing the API probe through this helper made it reachable by an abort,
+    // which the bare catch would have turned into a stale `unavailable` row and
+    // published over whatever superseded it. The lane is latest-wins.
+    if (opencodeGoApi.isAbortError(error, api.deps?.signal)) throw error;
+    // Same identity ranking as the success path, so a timeout does not hand the
+    // account a different accountKey than the one already on the Hub.
+    let accountKey = api.apiKey ? hashKey('opencode', opencodeGoApi.goApiIdentity(api.apiKey)) : '';
+    if (!accountKey && cookie) {
+      const cookieHash = crypto.createHash('sha256').update(cookie).digest('hex').slice(0, 12);
+      accountKey = hashKey('opencode', `cookie:${cookieHash}`);
+    }
     return normalizeLimitProvider({
-      provider: 'opencode', accountKey: hashKey('opencode', `cookie:${cookieHash}`),
-      accountName: name, accountLabel: name, planLabel: '', source: 'web', status: 'unavailable',
+      // No webAccountKey: this row probed nothing, so it has no workspace
+      // identity to offer, and claiming one would let a timed-out device decide
+      // the canonical identity of the merged account.
+      provider: 'opencode', accountKey,
+      accountName: name, accountLabel: name, planLabel: '',
+      source: api.apiKey && !cookie ? 'api' : 'web',
+      sourceDetail: OPENCODE_COMPONENT_PROVENANCE_DETAIL, status: 'unavailable',
       updatedAt, windows: [], balanceUsd: null
     });
   }
@@ -2555,11 +3645,20 @@ async function fetchDeepSeekLimits(options = {}, deps = {}) {
       source: 'api',
       status: 'ok',
       updatedAt: nowIso(now),
-      windows: [],
+      // DeepSeek has no rate-limit windows. The balance is the only quota it
+      // exposes, so it ships as a credits window: money, no wire percentage.
+      windows: [{
+        kind: 'billing',
+        metric: 'credits',
+        label: 'Balance',
+        remaining: row.amount,
+        currency: row.currency
+      }],
       balance: {
         amount: row.amount,
         currency: row.currency,
         todaySpend: spend.todaySpend,
+        weekSpend: spend.weekSpend,
         monthSpend: spend.monthSpend,
         allTimeSpend: spend.allTimeSpend,
         trackingSince: spend.trackingSince,
@@ -2594,9 +3693,11 @@ function providerFetchers(deps = {}) {
     zai: (providerOptions, probeDeps) => zaiLimits.fetchZaiLimits(providerOptions, probeDeps),
     zaiteam: (providerOptions, probeDeps) => zaiTeamLimits.fetchZaiTeamLimits(providerOptions, probeDeps),
     volcengine: (providerOptions, probeDeps) => volcengineLimits.fetchVolcengineLimits(providerOptions, probeDeps),
+    commandcode: (providerOptions, probeDeps) => commandcodeLimits.fetchCommandcodeLimits(providerOptions, probeDeps),
     qoder: (providerOptions, probeDeps) => qoderLimits.fetchQoderLimits(providerOptions, probeDeps),
     ollama: (providerOptions, probeDeps) => ollamaLimits.fetchOllamaLimits(providerOptions, probeDeps),
     kimi: (providerOptions, probeDeps) => kimiLimits.fetchKimiLimits(providerOptions, probeDeps),
+    thirdparty: (providerOptions, probeDeps) => thirdPartyLimits.fetchThirdPartyLimits(providerOptions, probeDeps),
     ...(deps.providerFetchers || {})
   };
 }
@@ -2891,6 +3992,7 @@ async function fetchCursorLimits(_options = {}, deps = {}) {
 }
 
 module.exports = {
+  LIMIT_PROVIDER_IDS,
   DEFAULT_PROVIDER_PHYSICAL_BOUND_MS,
   PROVIDER_CLEANUP_GRACE_MS,
   collectLimitsOnce,
@@ -2905,7 +4007,10 @@ module.exports = {
   fetchAntigravityLimits,
   fetchOpenCodeLimits,
   fetchOpenRouterLimits: openrouterLimits.fetchOpenRouterLimits,
-  fetchSingleOpenCodeProfile,
+  fetchThirdPartyLimits: thirdPartyLimits.fetchThirdPartyLimits,
+  fetchOpenCodeProfile,
+  claudeWebCookie,
+  normalizeClaudeWebCookieInput,
   fetchClaudeLimits,
   fetchCodexLimits,
   fetchCursorLimits,
@@ -2940,6 +4045,8 @@ module.exports = {
   fetchVolcengineLimits,
   qoderCookie,
   fetchQoderLimits,
+  commandcodeCookie,
+  fetchCommandcodeLimits,
   ollamaSessionCookie,
   fetchOllamaLimits,
   kimiToken,
@@ -2951,6 +4058,7 @@ module.exports = {
   parseClaudeCliUsageText,
   parseBoolean,
   parseLimitProviders,
+  normalizeLimitsRefreshMode,
   normalizeLimitsRefreshMs,
   refreshClaudeAccessToken,
   refreshClaudeCredentials,

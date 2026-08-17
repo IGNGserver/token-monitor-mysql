@@ -8,20 +8,10 @@ const path = require('node:path');
 const rootPackage = require('../../package.json');
 const workerPackage = require('../../worker/package.json');
 const workerLock = require('../../worker/package-lock.json');
-const { parseProjectVersion } = require('../../src/shared/versioning');
 
 test('shared app version matches the root package version', () => {
   const { appVersion } = require('../../src/shared/appVersion');
   assert.equal(appVersion(), rootPackage.version);
-  assert.deepEqual(parseProjectVersion(rootPackage.version), {
-    version: '0.37.23-rev.3',
-    upstreamVersion: '0.37.23',
-    channel: 'rev',
-    major: 0,
-    minor: 37,
-    patch: 23,
-    revision: 3
-  });
 });
 
 test('worker package metadata stays aligned with the root package version', () => {

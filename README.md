@@ -1,280 +1,308 @@
-# Token Monitor Suite
+<p align="right">
+   <strong>EN</strong> | <a href="./README.zh-CN.md">简</a> | <a href="./README.zh-TW.md">繁</a> | <a href="./README.ko.md">KO</a> | <a href="./README.ja.md">JA</a>
+</p>
+<div align="center">
+    <img src=".github/assets/app.png" alt="Token Monitor logo" width="120">
+    <h1>Token Monitor</h1>
+</div>
 
-Token Monitor Suite 是一个用来查看 AI 编程工具用量的完整工具套件。它包含桌面小组件、无头 agent、Hub、Android 客户端和 Cloudflare Worker 部署，能够显示 Token、费用、模型、会话和额度，也可以把多台电脑的数据汇总到一个 Hub，方便你在电脑或手机上查看。
+<p align="center">
+    <em>One live dashboard for every AI coding tool, synced across every machine.</em>
+</p>
 
-本项目基于 [Javis603/token-monitor](https://github.com/Javis603/token-monitor)，在保留上游桌面采集能力的基础上持续扩展，并继续使用 [MIT License](LICENSE)。
+<p align="center">
+    <a href="https://github.com/IGNGserver/token-monitor-suite/releases"><img src="https://img.shields.io/github/v/release/IGNGserver/token-monitor-suite?include_prereleases&style=flat-square&label=release&color=22c55e" alt="Latest release" /></a>
+    <a href="https://github.com/IGNGserver/token-monitor-suite/releases"><img src="https://img.shields.io/github/downloads/IGNGserver/token-monitor-suite/total?style=flat-square&color=22c55e" alt="Total downloads" /></a>
+    <img src="https://img.shields.io/badge/Windows-10%2B-0078D4?style=flat-square" alt="Windows 10 or later" />
+    <img src="https://img.shields.io/badge/macOS-12%2B-0A84FF?style=flat-square&logo=apple&logoColor=white" alt="macOS 12 or later" />
+    <img src="https://img.shields.io/badge/Linux-x64-64748b?style=flat-square&logo=linux&logoColor=white" alt="Linux x64" />
+    <a href="https://discord.gg/HmdNVVvw5P"><img src="https://img.shields.io/discord/1344259784219689031?color=5865F2&label=Discord&logo=discord&logoColor=white&style=flat-square" alt="Discord"></a>
+    <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-A855F7?style=flat-square" alt="License: MIT" /></a>
+</p>
 
+<div align="center">
+    <img src=".github/assets/demo.gif">
+</div>
 
-## 支持的工具（节选）
+## What is Token Monitor?
 
-完整工具表见 [README.zh-CN.md](README.zh-CN.md)。本项目额外支持 **Claude Desktop Local Agent / Cowork**（`claude-desktop`）。
+A desktop widget that shows live token usage and AI Tool Limits across 30+ AI coding tools — Claude Code, Codex, Cursor, GitHub Copilot, and more — with real-time multi-device sync, historical usage trends, and breakdowns by tool, device, model, session, or project.
 
-| | 工具 | 数据源 | 用量 | 额度 | Session |
-|---|---|---|---|---|---|
+## Supported Tools
+
+Token Monitor supports token usage, account-limit checks, and session details separately:
+
+| Logo | Tool | Data path | Token Usage | AI Tool Limits | Session Details |
+|:---:|------|-----------|:---:|:---:|:---:|
+| <img src=".github/assets/tools-icon/claude.png" width="28" alt="Claude Code" /> | Claude Code | `~/.claude/projects/`, `~/.claude/transcripts/` | ✅ | ✅ | ✅ |
+| <img src=".github/assets/tools-icon/codex.png" width="28" alt="Codex" /> | Codex | `~/.codex/` (`sessions/`, `archived_sessions/`) | ✅ | ✅ | ✅ |
+| <img src=".github/assets/tools-icon/opencode.png" width="28" alt="OpenCode" /> | OpenCode | `~/.local/share/opencode/` (`opencode*.db`, `storage/message/`) | ✅ | ✅ | ✅ |
+| <img src=".github/assets/tools-icon/hermes-agent.png" width="28" alt="Hermes Agent" /> | Hermes Agent | `~/.hermes/state.db` | ✅ | — | — |
+| <img src=".github/assets/tools-icon/openclaw.png" width="28" alt="OpenClaw" /> | OpenClaw | `~/.openclaw/agents/` | ✅ | — | — |
+| <img src=".github/assets/tools-icon/cursor.png" width="28" alt="Cursor" /> | Cursor | `~/.config/tokscale/cursor-cache/` | ✅ | ✅ | — |
+| <img src=".github/assets/tools-icon/antigravity.png" width="28" alt="Antigravity" /> | Antigravity | `~/.gemini/` (`antigravity/`, `antigravity-ide/`, `antigravity-backup/`, `antigravity-cli/conversations/`) | ✅ | ✅ | — |
+| <img src=".github/assets/tools-icon/cline.png" width="28" alt="Cline" /> | Cline | VS Code globalStorage tasks (`.../saoudrizwan.claude-dev/tasks/`), `~/.cline/data/sessions/` | ✅ | — | — |
+| <img src=".github/assets/tools-icon/kimi.png" width="28" alt="Kimi" /> | Kimi CLI / Kimi Code | `~/.kimi/sessions/`, `~/.kimi-code/sessions/` | ✅ | ✅ | — |
+| <img src=".github/assets/tools-icon/qwen.png" width="28" alt="Qwen" /> | Qwen CLI | `~/.qwen/projects/` | ✅ | — | — |
+| <img src=".github/assets/tools-icon/xai.png" width="28" alt="Grok Build" /> | Grok Build | `~/.grok/` (`sessions/`, `logs/unified.jsonl`) | ✅ | ✅ | — |
+| <img src=".github/assets/tools-icon/copilot.png" width="28" alt="GitHub Copilot" /> | GitHub Copilot | VS Code `workspaceStorage/*/chatSessions/`, `~/.copilot/` (`otel/`, `data.db`) | ✅ | ✅ | — |
+| <img src=".github/assets/tools-icon/pi.png" width="28" alt="Pi" /> | Pi / Oh My Pi | `~/.pi/agent/sessions/`, `~/.omp/agent/sessions/` | ✅ | — | — |
+| <img src=".github/assets/tools-icon/zed.png" width="28" alt="Zed" /> | Zed | `~/.local/share/zed/threads/threads.db` | ✅ | — | — |
+| <img src=".github/assets/tools-icon/kilocode.png" width="28" alt="Kilo Code" /> | Kilo Code | VS Code globalStorage tasks (`.../kilocode.kilo-code/tasks/`) — Linux & remote/WSL only | ✅ | — | — |
+| <img src=".github/assets/tools-icon/commandcode.png" width="28" alt="Command Code" /> | Command Code | `~/.commandcode/projects/**/*.jsonl` | ✅ | ✅ | — |
+| <img src=".github/assets/tools-icon/mimo-code.png" width="28" alt="MiMo Code" /> | MiMo Code | `~/.local/share/mimocode/mimocode.db` | ✅ | ✅ | — |
+| <img src=".github/assets/tools-icon/zcode.png" width="28" alt="ZCode" /> | ZCode / GLM | `~/.zcode/` (`projects/`, `cli/db/db.sqlite`) | ✅ | ✅ | — |
+| <img src=".github/assets/tools-icon/kiro.png" width="28" alt="Kiro" /> | Kiro | `~/.kiro/sessions/cli/`, Kiro IDE globalStorage & `kiro-cli` DB | ✅ | ✅ | — |
+| <img src=".github/assets/tools-icon/codebuddy.png" width="28" alt="CodeBuddy" /> | CodeBuddy | `~/.codebuddy/projects/` + IDE / VS Code extension logs | ✅ | — | — |
+| <img src=".github/assets/tools-icon/workbuddy.png" width="28" alt="WorkBuddy" /> | WorkBuddy | `~/.workbuddy/projects/`, `~/.workbuddy/workbuddy.db` | ✅ | — | — |
+| <img src=".github/assets/tools-icon/proma.png" width="28" alt="Proma" /> | Proma | `~/.proma/agent-sessions/*.jsonl` | ✅ | — | — |
+| <img src=".github/assets/tools-icon/qoder.png" width="28" alt="Qoder" /> | Qoder | `<platform-app-data>/QoderCN/SharedClientCache/cache/db/local.db` (CN only); Qoder dashboard cookie (big-model credits via Qoder usage API) | ✅ | ✅ | — |
+| <img src=".github/assets/tools-icon/reasonix.png" width="28" alt="Reasonix" /> | Reasonix | `~/.reasonix/` (`stats/`, `sessions/`, `projects/*/sessions/`) | ✅ | — | — |
+| <img src=".github/assets/tools-icon/deepseek.png" width="28" alt="DeepSeek" /> | DeepSeek | DeepSeek API key (balance via DeepSeek API) | — | ✅ | — |
 | <img src=".github/assets/tools-icon/openrouter.png" width="28" alt="OpenRouter" /> | OpenRouter | OpenRouter API key (usage/key limit; balance when credits access is authorized, documented for Management keys) | — | ✅ | — |
+| <img src=".github/assets/tools-icon/minimax.png" width="28" alt="Minimax" /> | Minimax | Minimax API key (Token Plan quota via Minimax API) | — | ✅ | — |
+| <img src=".github/assets/tools-icon/volcengine.png" width="28" alt="Volcengine" /> | Volcengine | Ark API key or Volcengine AK/SK (Ark Coding Plan quota via Volcengine API) | — | ✅ | — |
+| <img src=".github/assets/tools-icon/ollama.png" width="28" alt="Ollama" /> | Ollama | Ollama Cloud cookie (session/weekly usage via ollama.com/settings) | — | ✅ | — |
+| <img src=".github/assets/tools-icon/newapi.png" width="28" alt="Third-party APIs" /> | Third-party APIs | New API-compatible account preset (including compatible One API forks), New API API-key preset, and a declarative Custom balance endpoint | — | ✅ | — |
 
-## 直接下载安装
+<details>
+<summary><strong>Notes, Custom balance endpoints, and data paths overridden by environment variables</strong></summary>
 
-如果你只想使用，不想安装 Node.js 或执行命令，请前往 [GitHub Releases](https://github.com/IGNGserver/token-monitor-suite/releases) 下载：
+<br>
 
-- **Windows**：下载 `Token-Monitor-Setup-版本号.exe`，双击安装。
-- **macOS**：Apple Silicon 下载 `Token-Monitor-版本号-arm64.dmg`，Intel Mac 下载 `Token-Monitor-版本号-x64.dmg`。这是未签名构建，首次打开时请在 Finder 中右键选择“打开”。
-- **macOS 原生玻璃样式**：在设置 → 外观中，可选择 macOS 26 以前的原生毛玻璃，或 macOS 26 及以后的原生 Liquid Glass；旧系统会自动回退到毛玻璃。
-- **Linux**：Debian/Ubuntu 下载 `Token-Monitor-版本号.deb` 后运行 `sudo apt install ./Token-Monitor-版本号.deb`；其他发行版可下载 `Token-Monitor-版本号.AppImage`，赋予执行权限后运行。
-- **Android**：下载 `Token-Monitor-Android-版本号.apk`，在手机上安装。
-- **Hub（Docker）**：下载 `Token-Monitor-Hub-Compose-版本号.zip`，或直接拉取正式版镜像 `ghcr.io/igngserver/token-monitor-hub:latest`；预发布版本请使用指定版本标签。
+- Paths above are the defaults. Token Monitor follows the same environment overrides Tokscale does — `$XDG_DATA_HOME` for the `~/.local/share/` roots, and per-tool variables such as `$CODEX_HOME`, `$GROK_HOME`, `$HERMES_HOME`, `$KIMI_CODE_HOME`, `$REASONIX_STATE_HOME`, `$REASONIX_HOME` and the `$CLINE_*` family.
 
-安装客户端后仍需要先部署一个 Hub，再在桌面小组件或 Android 应用中填写 Hub 地址和共享密钥。没有 Hub 时，桌面小组件也可以选择“仅本机”模式使用。
+- Command Code transcripts do not contain actual token counts or per-message model metadata. Token usage is estimated from transcript text, while model attribution and derived cost may reflect the currently configured model rather than the model historically used for each request.
 
-## 你需要准备什么
+- Custom maps numeric JSON fields from one GET balance endpoint; OpenAI or Anthropic compatibility alone is not enough.
 
-最常见的使用方式是：
+#### Qoder CN (local adapter)
 
-```text
-常驻服务器（Docker Hub）
-        ↑
-电脑 A（采集）   电脑 B（采集）   Android 手机（查看）
-```
+Qoder CN token usage is read from the app's local SQLite database, not an API — enable it in Settings → tools (opt-in, off by default). The database is auto-detected per platform: macOS `~/Library/Application Support/QoderCN/SharedClientCache/cache/db/local.db`, Windows `%APPDATA%\QoderCN\SharedClientCache\cache\db\local.db`, Linux `~/.config/QoderCN/SharedClientCache/cache/db/local.db` — overridable with `TOKEN_MONITOR_QODER_CN_DB_PATH`.
 
-- 只看一台电脑：只安装桌面小组件，不需要服务器。
-- 看多台电脑：准备一台能长期运行 Docker 的服务器，部署 Hub。
-- 想在手机查看：先部署 Hub，再安装 Android 客户端。
+This is an advanced local integration: reading needs a `sqlite3` CLI on PATH or a Node runtime with unflagged `node:sqlite` (Node ≥ 23.4; the Electron widget may need the CLI). Read failures are logged, and an existing complete snapshot is retained instead of being replaced with zero usage. Costs are estimated from the models.dev catalog for each mapped model; the adapter may break if Qoder changes its database schema.
+</details>
 
-系统只上传 Token 和费用等汇总数据，不上传提示词、源代码、聊天内容或登录密钥。
+## Showcase
 
-## 第一步：部署 Hub
+<table>
+<tr>
+<td width="290" align="center"><img src=".github/assets/home-view.png" width="250" alt="Home View"><br><sub>Customizable dashboard — choose which modules show and their order</sub></td>
+<td width="290" align="center"><img src=".github/assets/limits-view.png" width="250" alt="Limits View"><br><sub>Multiple accounts side by side, one-click switch of the active Codex account</sub></td>
+<td width="290" align="center"><img src=".github/assets/tools-view.png" width="250" alt="Tools View"><br><sub>Click any tool to expand input / output and cache-hit detail</sub></td>
+</tr>
+<tr>
+<td width="290" align="center"><img src=".github/assets/sessions-view.png" width="250" alt="Session View"><br><sub>Open a single session to break each prompt into tokens and tools used</sub></td>
+<td width="290" align="center"><img src=".github/assets/models-view.png" width="250" alt="Models View"><br><sub>Every model's usage and cost, aggregated across tools</sub></td>
+<td width="290" align="center"><img src=".github/assets/devices-view.png" width="250" alt="Devices View"><br><sub>Each device's usage, cost, and sync status — expand for per-machine detail</sub></td>
+</tr>
+</table>
 
-这一步只在一台常驻服务器上做一次。服务器可以是 Linux 主机、NAS、云服务器或个人设备，但必须能运行 Docker，并且电脑和手机能够访问它。
+<table>
+<tr>
+<td width="435" align="center"><img src=".github/assets/dashboard-overview.png" width="400" alt="Usage Dashboard Overview"><br><sub>A year of activity heatmap and streaks, aggregated across all devices</sub></td>
+<td width="435" align="center"><img src=".github/assets/dashboard-trends.png" width="400" alt="Usage Dashboard Trends"><br><sub>A year of daily trends, stacked by tool / model, with K-line</sub></td>
+</tr>
+</table>
 
-Hub 镜像与 Windows / Android 安装包在同一套 GitHub Release 中发布，镜像托管在 GHCR：
+## Why Token Monitor?
 
-```text
-ghcr.io/igngserver/token-monitor-hub:latest
-ghcr.io/igngserver/token-monitor-hub:<version>
-```
+Most usage monitors are useful on the machine they run on. Token Monitor is built for multi-device work: each device watches its own local logs, sends summary updates to your hub, and every connected widget sees token changes almost immediately.
 
-### 1. 安装 Docker
+## Features
 
-安装 Docker Engine 和 Docker Compose v2，然后确认：
+### Tracking usage
+
+- **Live token tracking** — Claude Code, Codex, Cursor, GitHub Copilot, Antigravity, OpenCode, and 24+ AI tools, with the UI updating within seconds of each turn (full list in the table above)
+- **Per-session detail** — open a Claude Code, Codex, or OpenCode session to see tokens per prompt, expandable to each reply's exact token split and tools used (read on-demand from local transcripts or databases, never synced)
+- **Cache hit statistics** — click any tool or model to expand a detailed breakdown of input tokens (cache hit vs miss), output tokens, and hit-rate percentages
+- **Cost & currency** — cost alongside token counts, shown in USD, TWD, HKD, or CNY; exchange rates auto-update daily and can be manually overridden in Settings
+- **WSL usage (Windows)** — file-based usage from a running WSL distro is detected automatically and merged about every 5 minutes; SQLite-backed tools such as OpenCode and Hermes may require a [headless agent inside WSL](docs/wsl-sqlite-setup.md)
+
+### Limits, trends & export
+
+- **AI Tool Limits detection** — provider-specific session, weekly, billing, and credits windows for Claude Code, Codex, Cursor, OpenRouter, third-party APIs, GLM, Kimi, and 19+ providers, including multiple OpenRouter/third-party profiles and DeepSeek prepaid balance/spend
+- **Multiple accounts & Codex switching** — track several accounts per provider, each with its own limits; a tracked Codex account can be switched as the active local account in one click, without re-authenticating
+- **Preserve deleted session usage** — many tools prune old sessions (Claude Code drops transcripts after 30 days by default), losing that history. When enabled, Token Monitor archives observed daily tool/model usage locally so the heatmap and trends survive even after the source files are gone (see [Session data retention](#session-data-retention) below)
+- **Usage Trends & Dashboard** — a home-screen activity heatmap and trend chart, plus a dedicated dashboard window with streaks and stacked per-tool/per-model history (bar and K-line views) across all your devices
+- **Optional Status view** — Claude, OpenAI, Cursor, and DeepSeek status pages, with manual or interval re-checks
+- **Data export** — export usage as tool-agnostic CSV + JSON, manually or auto-written to a folder, for spreadsheets, Obsidian, Grafana, or scripts; see [docs/export.md](docs/export.md)
+- **Subscription records** — record by hand what each AI account actually costs; the plan label's tooltip then reports the price, the next renewal or end date, time subscribed, and the month's usage cost as a multiple of what the plan costs, for recurring plans and top-up ledgers alike
+
+### Multi-device & deployment
+
+- **Real-time multi-device sync** — Server-Sent Events push an update on one device to the others within seconds
+- **Local-first** — no servers needed for single-device use
+- **Self-hosted sync backend** — in-widget hub, Node CLI hub, or Cloudflare Worker
+- **iOS widget support** — Widgy and Scriptable through the Worker hub
+- **Privacy-first** — prompts, responses, source code, and file contents stay on your machine
+
+### Interface & surfaces
+
+- **Breakdown views** — grouped by tool, device, model, session, project, or account limits
+- **Menu bar (macOS) and system tray (Windows) popover** — live cost, tokens, or the closest-to-empty provider limit % next to the icon
+- **Floating Bubble mode** — collapses the widget into a draggable mini-window with click or hover preview and tray-style content
+- **Menu bar layout composer** — the menu bar and the floating bubble can use a built-in preset or a layout you build yourself: pick "Custom…" to add AI tool icons, quota bars, percentages, reset times, cost, or custom text, drag to reorder against a live preview, and give each item its own AI tool, account, quota window, and typeface
+- **Appearance controls** — interface theme switching (incl. a light mode), per-tool vendor colours, glass opacity, blur, and transparent window mode
+- **Experimental native macOS Widget** — macOS 14+ support in Small, Medium, and Large sizes, with Overview, Quota, Models, Activity, and Trend pages. This source-only preview is not yet promised in published releases.
+- **Customizable tool list** — hide, pin, and reorder tools in the main dashboard without changing what gets tracked
+- **Recordable global shortcut** — show or hide the window from anywhere
+- **Discord Rich Presence** — broadcast today's tokens, cost, and top client (opt-in)
+
+## Installation
+
+Download from [GitHub Releases](https://github.com/IGNGserver/token-monitor-suite/releases).
+
+- **macOS (Apple Silicon)** — `.dmg`, signed and notarized
+- **macOS (Intel)** — x64 `.dmg`, signed and notarized
+- **Windows 10/11** — setup and portable `.exe`, [code-signed](docs/code-signing.md)
+- **Linux x64** — `.AppImage`
+
+Packaged builds check GitHub Releases automatically. When an update is available, the app shows an update indicator; supported platforms can also install from Settings → General.
+
+### First run
+
+Local mode is the default: launch the app and it starts tracking this device. No hub, agent, or config required.
+
+## Multi-device sync
+
+Pick ONE hub backend that all your devices (and any headless agents) connect to. On each device, open the widget and pick a mode under Settings → Multi-device Sync. The widget contributes this device's usage automatically; run `npm run agent` only on machines without a widget.
+
+#### Option A — Host the hub from the widget (easiest, no CLI)
+
+In the widget on one always-on machine, open Settings → Multi-device Sync and pick **Host hub on this device**. The widget generates a random secret and lists the LAN URLs other devices can connect to (Tailscale or ZeroTier addresses appear here too). On every other device, pick **Connect to a hub** and paste the URL + secret.
+
+The hub runs while Token Monitor is running — quitting (not just closing the window) stops it for all connected devices.
+
+#### Option B — Self-hosted Node hub (always-on headless machine)
 
 ```bash
-docker --version
-docker compose version
-```
-
-### 2. 获取 Compose 配置
-
-**推荐（拉取正式镜像，无需本地 build）：**
-
-- 从 [GitHub Releases](https://github.com/IGNGserver/token-monitor-suite/releases) 下载 `Token-Monitor-Hub-Compose-<version>.zip` 并解压；或
-- 克隆仓库后使用根目录的 `docker-compose.yml`：
-
-```bash
-git clone https://github.com/IGNGserver/token-monitor-suite.git
-cd token-monitor-suite
-```
-
-```bash
+# on the always-on machine
 cp .env.example .env
+# set TOKEN_MONITOR_SECRET to something private, then:
+npm run hub
 ```
 
-打开 .env，至少修改以下三项。请使用你自己生成的长随机值：
+#### Option C — Cloudflare Worker hub (across networks, including iPhone)
 
-```dotenv
-TOKEN_MONITOR_SECRET=请替换为随机共享密钥
-MYSQL_PASSWORD=请替换为数据库密码
-MYSQL_ROOT_PASSWORD=请替换为数据库管理员密码
-# 可选：TOKEN_MONITOR_VERSION=latest   # 默认 latest；生产可钉死如 0.34.2
-```
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/IGNGserver/token-monitor-suite/tree/main/worker)
 
-TOKEN_MONITOR_SECRET 是之后连接电脑和手机时要填写的共享密钥。不要把 .env 上传到 GitHub。
-
-### 3. 启动 Hub
+One-click deploy — Cloudflare will prompt for the `TOKEN_MONITOR_SECRET` during setup. Or deploy manually:
 
 ```bash
-docker compose pull
-docker compose up -d
-docker compose ps
+cd worker
+npm install
+npx wrangler login
+npx wrangler secret put TOKEN_MONITOR_SECRET
+npx wrangler deploy
 ```
 
-说明：
+Paste the deployed URL into each device's widget at Settings → Multi-device Sync. See [worker/README.md](worker/README.md) for the iOS widget recipe and endpoint reference, or [docs/API.md](docs/API.md) for the hub HTTP API.
 
-- 默认 `TOKEN_MONITOR_VERSION=latest`，跟随最新正式版 Hub 镜像。
-- 生产环境建议钉版本：在 `.env` 写 `TOKEN_MONITOR_VERSION=0.34.2`（或 `v0.34.2`）后再 `pull` / `up`。
-- 开发者若要在本机从源码构建镜像：`docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build`。
+## App data
 
-如果 hub 和 mysql 都在运行，就可以使用了。默认地址是：
+App state lives in the OS user-data dir — delete it along with the app to fully uninstall.
+
+| Platform | Path |
+|----------|------|
+| macOS | `~/Library/Application Support/Token Monitor/` |
+| Windows | `%APPDATA%/Token Monitor/` |
+| Linux | `~/.config/Token Monitor/` |
+
+## Build from source
+
+To build your own installer, use Node.js 22.13+ on the **target** OS (electron-builder can't cross-build a macOS `.dmg` on Windows, or vice-versa).
+
+```bash
+npm install
+npm run dist:mac     # macOS arm64 .dmg           → dist/
+npm run dist:mac:x64 # macOS Intel x64 .dmg       → dist/
+npm run dist:win     # Windows x64 installer .exe → dist/
+npm run dist:linux   # Linux x64 AppImage         → dist/
+npm run pack         # unpacked app dir (no installer), for quick local testing
+```
+
+Output lands in `dist/`. Windows and Linux use the matching `dist:*` script above on the target OS. Packaging the macOS release build requires a local Developer ID Application signing identity; use `npm start` for local development or unsupported platforms.
+
+## How it works
 
 ```text
-http://服务器地址:17321
+Mode A — Local (default, no setup)
+    widget (Electron) ──▶ tokscale ──▶ ~/.claude, ~/.codex, $HERMES_HOME
+
+Mode B — Sync (opt-in, multi-device)
+    device A agent ──▶
+    device B agent ──▶  hub  ──▶  widget on any device
+    device C agent ──▶
 ```
 
-浏览器直接打开上述地址即可使用 **Hub 网页仪表板**（与 API 同端口，Docker 只需开放一个端口）。网页支持 PWA，可在 iOS / 鸿蒙等无官方客户端的设备上“添加到主屏幕”后离线打开壳层并查看已同步数据。首次进入若 Hub 配置了共享密钥，在页面中填写即可；密钥只保存在本机浏览器。
+The widget chooses local vs sync mode based on Settings → Multi-device Sync. The hub itself can run as a separate `npm run hub` process, a Cloudflare Worker, or directly inside one of the widgets (Host mode). In sync mode the hub pushes aggregated stats to every connected widget over Server-Sent Events, so updates on one device appear on the others within a few seconds.
 
-在服务器本机检查：
+## Session data retention
 
-```bash
-curl http://127.0.0.1:17321/api/health
+With **Preserve deleted session usage** enabled (Settings → Collection), Token Monitor archives observed daily tool/model usage locally with no time limit — so even after a source tool prunes its own sessions, the heatmap and trends are unaffected.
+
+<details>
+<summary><strong>Advanced: extend the source tool's own retention</strong></summary>
+
+<br>
+
+The heatmap and sync payload use a rolling 370-day window (older observations remain available locally for future views). **Claude Code keeps only 30 days of transcripts by default** (`cleanupPeriodDays`); to keep the full rolling year before the archive kicks in, raise it in `~/.claude/settings.json` before the window passes:
+
+```json
+{
+  "cleanupPeriodDays": 370
+}
 ```
 
-返回包含 "ok":true 即表示 Hub 正常。局域网设备直接使用服务器局域网地址；跨网络访问建议使用 VPN、Tailscale 或 HTTPS 反向代理。
+A larger value keeps more, at the cost of transcripts living on disk for as long as you set. tokscale's [Session Data Retention](https://github.com/junhoyeo/tokscale#session-data-retention) table covers the other tools' defaults and config paths.
 
-## 第二步：连接桌面小组件
+This archive only covers days Token Monitor has already observed; data deleted before it started tracking cannot be recovered.
 
-每台需要统计的电脑都要运行桌面小组件。
+</details>
 
-### 安装
+## Settings
 
-当前仓库提供 Windows 安装包、Linux AppImage、Debian `.deb` 包和源码运行方式。Debian/Ubuntu 可直接安装 `.deb`；Linux AppImage 无需安装 Node.js；源码运行需要 Node.js 22.13 或更高版本：
+There are two places to configure Token Monitor; day-to-day use only needs the first:
 
-```bash
-git clone https://github.com/IGNGserver/token-monitor-suite.git
-cd token-monitor-suite
-npm ci
-npm start
-```
+- **Widget (GUI)** — click the `⚙` button in the bottom-right corner. Sections, in order: General (language, launch at login, updates), Main (Home modules and display currency), Window (window behavior, menu bar and floating-bubble layout, tray mode, shortcut), Appearance (theme and vendor colours), Collection (tracked tools, collection cadence, Preserve deleted session usage, data export), AI Tool Limits (provider selection, limits, and credentials), Subscriptions (what you pay per account), and Multi-device Sync. The `⇧` button in the title bar cycles the window behavior.
+- **Headless agent & hub** — no UI; configured with a `.env` file at the project root (copy from `.env.example`), precedence CLI flag → env var → built-in default.
 
-Windows 用户可以在 PowerShell 中运行相同的 git 和 npm 命令。
+See the [configuration reference](docs/configuration.md) for every setting and all environment variables.
 
-### 只使用本机数据
+## Privacy
 
-打开小组件的 **设置 → 多设备同步**，选择 **仅本机**。这种模式不需要 Hub，也不会向网络发送数据。
+Token Monitor processes usage logs locally and sends no analytics or telemetry to the project maintainer. Network access occurs only for documented or user-enabled features. See the [privacy policy](docs/privacy.md) for the data used by updates, provider integrations, Discord Rich Presence, and optional multi-device sync.
 
-### 连接到 Hub
+## Star History
 
-1. 打开 **设置 → 多设备同步**。
-2. 选择 **连接到 Hub**。
-3. Hub URL 填写服务器地址，例如 http://192.168.x.x:17321。
-4. 共享密钥填写服务器 .env 中的 TOKEN_MONITOR_SECRET。
-5. 保存设置。
+<a href="https://github.com/IGNGserver/token-monitor-suite/tree/star-history">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/IGNGserver/token-monitor-suite/star-history/star-history-dark.svg" />
+   <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/IGNGserver/token-monitor-suite/star-history/star-history.svg" />
+   <img alt="Star History Chart" src="https://raw.githubusercontent.com/IGNGserver/token-monitor-suite/star-history/star-history.svg" />
+ </picture>
+</a>
 
-连接成功后，小组件会读取本机 AI 工具用量并自动上报。其他连接到同一 Hub 的设备也会看到这台电脑的数据。
+## Contributing
 
-## 第三步：使用无界面 Agent（可选）
+Issues and PRs are welcome. Project conventions, architecture notes, and the command reference live in [AGENTS.md](AGENTS.md) — written for coding agents, but it doubles as the contributor guide.
 
-不需要桌面窗口的电脑可以只运行后台 Agent：
+## Acknowledgments
 
-```bash
-git clone https://github.com/IGNGserver/token-monitor-suite.git
-cd token-monitor-suite
-npm ci
-cp .env.example .env
-```
+- [tokscale](https://github.com/junhoyeo/tokscale) for log parsing and token accounting.
+- [CodexBar](https://github.com/steipete/CodexBar) for AI Tool Limits research.
+- **[Code signing policy](docs/code-signing.md):** Free code signing provided by [SignPath.io](https://signpath.io/), certificate by [SignPath Foundation](https://signpath.org/).
 
-编辑 .env：
+## Token Monitor Suite additions
 
-```env
-TOKEN_MONITOR_HUB_URL=http://你的服务器地址:17321
-TOKEN_MONITOR_SECRET=与服务器相同的共享密钥
-TOKEN_MONITOR_DEVICE_ID=这台电脑的名称
-TOKEN_MONITOR_SYNC_UPLOAD_INTERVAL_MS=0
-TOKEN_MONITOR_CLIENTS=
-TOKEN_MONITOR_PROJECTS_ENABLED=
-TOKEN_MONITOR_HISTORY_ENABLED=
-TOKEN_MONITOR_SESSION_USAGE_ARCHIVE_ENABLED=
-TOKEN_MONITOR_LIMITS_ENABLED=
-TOKEN_MONITOR_LIMIT_PROVIDERS=
-```
+This repository keeps the upstream desktop collector and adds the project-specific deployment surfaces:
 
-先运行一次确认连接：
+- **Claude Desktop Local Agent / Cowork** usage and session details.
+- **Android client** for viewing synced usage from a Worker or MySQL-backed Hub.
+- **MySQL Hub** with Docker Compose deployment, plus the compatible Cloudflare Worker hub.
+- The project release stream and package metadata live at [IGNGserver/token-monitor-suite](https://github.com/IGNGserver/token-monitor-suite).
 
-```bash
-npm run agent:once
-```
+## License
 
-确认没有报错后持续运行：
-
-```bash
-npm run agent
-```
-
-实际使用时，建议把它注册为 Windows 服务、Linux systemd 服务或开机启动任务。
-
-## 第四步：安装 Android 客户端
-
-Android 客户端用于查看 Hub 数据和管理模型价格，本身不采集电脑上的 AI 用量。
-
-使用 Android SDK 和 JDK 17 或更高版本构建：
-
-```bash
-cd android
-./gradlew test
-./gradlew assembleDebug
-```
-
-APK 位于：
-
-```text
-android/app/build/outputs/apk/debug/app-debug.apk
-```
-
-安装后打开应用的 **设置**：
-
-1. Hub URL 填写与桌面端相同的服务器地址。
-2. 共享密钥填写相同的 TOKEN_MONITOR_SECRET。
-3. 保存并返回概览页面。
-
-Android 客户端包含概览、模型、会话、设备、定价和设置页面。会话页显示 Hub 当前提供的会话快照，暂不提供单个会话的完整时间范围历史。
-
-## 日常使用
-
-部署完成后，只需要：
-
-1. 保持服务器上的 Docker Hub 运行。
-2. 保持每台采集电脑的小组件或 Agent 运行。
-3. 在桌面小组件或 Android 客户端查看概览、模型、设备和费用。
-4. 需要修改模型价格时，打开 Android 的 **定价** 页面，或使用桌面小组件的定价设置。
-
-设备暂时关机时，Hub 会显示它离线；重新启动采集器后会自动恢复。删除设备只会删除当前设备显示，已记录的历史用量仍会保留。
-
-## 常见问题
-
-### 页面打不开
-
-在服务器运行 docker compose ps，确认 hub 和 mysql 都在运行。客户端不能填写服务器内部的 127.0.0.1，应填写服务器在局域网或 VPN 中的地址。
-
-### 提示未授权或 401
-
-确认客户端和服务器的共享密钥完全一致。修改 .env 后重新执行：
-
-```bash
-docker compose up -d
-```
-
-### 看不到某台电脑
-
-确认小组件选择了 **连接到 Hub**，或 Agent 的 TOKEN_MONITOR_HUB_URL 已填写。也可以运行 npm run agent:once 查看连接错误。
-
-### 升级项目
-
-**镜像部署（推荐）：**
-
-```bash
-# 跟随 latest
-docker compose pull
-docker compose up -d
-
-# 或钉死版本
-# 在 .env 设置 TOKEN_MONITOR_VERSION=0.34.2 后：
-docker compose pull
-docker compose up -d
-```
-
-若你是从 git 维护配置文件，也可先 `git pull` 再执行上面的 `pull` / `up`（一般不必 `--build`）。
-
-开发者本地构建：
-
-```bash
-git pull
-docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
-```
-
-不要使用 docker compose down -v，否则会删除 MySQL 数据卷。
-
-## 隐私、致谢与许可证
-
-系统只上传设备信息、Token/费用汇总、工具和模型明细、可选项目汇总及额度状态，不上传原始日志、提示词、代码、对话或登录凭据。请只向信任的设备开放 Hub，并优先使用局域网或 VPN。
-
-感谢 [Javis603/token-monitor](https://github.com/Javis603/token-monitor)、[tokscale](https://github.com/junhoyeo/tokscale) 和 [CodexBar](https://github.com/steipete/CodexBar)。
-
-本项目遵循 [MIT License](LICENSE)。
+[MIT](LICENSE) © [@Javis](https://github.com/Javis603)

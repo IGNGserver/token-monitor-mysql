@@ -11,6 +11,7 @@ const {
   parseMimoPlanUsage,
   parseMimoProfile
 } = require('../../src/shared/mimoLimits');
+const { createLimitsCollector } = require('../../src/shared/limitCollector');
 
 const COOKIE = 'unrelated=drop; userId=123; api-platform_serviceToken=secret; api-platform_ph=optional';
 
@@ -26,6 +27,12 @@ function managed(cookieHeader = COOKIE, overrides = {}) {
     enabled: true,
     ...overrides
   };
+}
+
+// Every funded MiMo account ships a `credits` balance window. The Token Plan
+// assertions below are about metered quota only, so they look past it.
+function planWindows(provider) {
+  return (provider.windows || []).filter((window) => window.metric !== 'credits');
 }
 
 test('normalizeMimoCookieHeader keeps only the required MiMo allowlist', () => {
@@ -84,6 +91,25 @@ test('MiMo parsers match the official balance and Token Plan shapes', () => {
   assert.deepEqual(parseMimoProfile({ data: { email: 'user@example.com' } }), {
     email: 'user@example.com'
   });
+});
+
+test('MiMo usage parser reads an over-consumed plan as fully used', () => {
+  // MiMo reports `percent` as a 0-1 ratio, and a spent plan overshoots it: the
+  // request that exhausts the quota pushes used past limit, so percent lands at
+  // 1.005. Reading that as "1% used" rendered an empty plan as 99% left (#292).
+  assert.deepEqual(parseMimoPlanUsage({ data: { monthUsage: { items: [{
+    name: 'month_total_token', used: 10_050_000, limit: 10_000_000, percent: 1.005
+  }] } } }), { used: 10_050_000, limit: 10_000_000, usedPercent: 100 });
+  // Same overshoot with no `used` to fall back on.
+  assert.deepEqual(parseMimoPlanUsage({ data: { monthUsage: { items: [{
+    name: 'month_total_token', limit: 10_000_000, percent: 1.02
+  }] } } }), { used: null, limit: 10_000_000, usedPercent: 100 });
+});
+
+test('MiMo usage parser prefers used/limit over the reported ratio', () => {
+  assert.deepEqual(parseMimoPlanUsage({ data: { monthUsage: { items: [{
+    name: 'month_total_token', used: 25, limit: 100, percent: 0.9
+  }] } } }), { used: 25, limit: 100, usedPercent: 25 });
 });
 
 test('MiMo usage parser selects only the exact month_total_token item', () => {
@@ -148,7 +174,7 @@ test('fetchMimoLimits requests fixed official endpoints concurrently with minimi
   });
   assert.equal(result.length, 1);
   assert.equal(result[0].status, 'ok');
-  assert.equal(result[0].windows[0].usedPercent, 10);
+  assert.equal(planWindows(result[0])[0].usedPercent, 10);
   assert.deepEqual(calls.map(({ url }) => new URL(url).pathname).sort(), [
     '/api/v1/balance', '/api/v1/tokenPlan/detail', '/api/v1/tokenPlan/usage', '/api/v1/userProfile'
   ]);
@@ -159,6 +185,28 @@ test('fetchMimoLimits requests fixed official endpoints concurrently with minimi
   }
 });
 
+test('fetchMimoLimits reports an exhausted Token Plan as 0% left', async () => {
+  const [provider] = await fetchMimoLimits({ mimoManagedAccounts: [managed()] }, {
+    fetch: async (url) => {
+      if (url.endsWith('/balance')) return response({ code: 0, data: { balance: '0.34', currency: 'USD' } });
+      if (url.endsWith('/tokenPlan/detail')) return response({ code: 0, data: {
+        planCode: 'MiMo Lite', status: 'active', currentPeriodEnd: '2099-01-01 00:00:00'
+      } });
+      if (url.endsWith('/tokenPlan/usage')) return response({ code: 0, data: {
+        monthUsage: { items: [{
+          name: 'month_total_token', used: 10_050_000, limit: 10_000_000, percent: 1.005
+        }] }
+      } });
+      return response({ code: 0, data: {} });
+    }
+  });
+  const [plan] = planWindows(provider);
+  assert.equal(plan.usedPercent, 100);
+  assert.equal(plan.remainingPercent, 0);
+  assert.equal(plan.remaining, 0);
+  assert.equal(provider.balance.planPercent, 100);
+});
+
 test('fetchMimoLimits keeps balance when optional Token Plan endpoints fail', async () => {
   const [provider] = await fetchMimoLimits({ mimoManagedAccounts: [managed()] }, {
     fetch: async (url) => url.endsWith('/balance')
@@ -167,7 +215,7 @@ test('fetchMimoLimits keeps balance when optional Token Plan endpoints fail', as
   });
   assert.equal(provider.status, 'ok');
   assert.equal(provider.balance.amount, 7.51);
-  assert.deepEqual(provider.windows, []);
+  assert.deepEqual(planWindows(provider), []);
 });
 
 test('fetchMimoLimits does not synthesize a Token Plan from zero-valued no-plan responses', async () => {
@@ -179,7 +227,7 @@ test('fetchMimoLimits does not synthesize a Token Plan from zero-valued no-plan 
     }
   });
   assert.equal(provider.status, 'ok');
-  assert.deepEqual(provider.windows, []);
+  assert.deepEqual(planWindows(provider), []);
   assert.equal(provider.balance.amount, 0);
   assert.equal(provider.balance.planUsed, null);
   assert.equal(provider.balance.planLimit, null);
@@ -200,7 +248,7 @@ test('fetchMimoLimits does not activate a default plan with positive quota', asy
       return response({ code: 0, data: {} });
     }
   });
-  assert.equal(provider.windows.length, 0);
+  assert.equal(planWindows(provider).length, 0);
   assert.equal(provider.balance.planUsed, null);
   assert.equal(provider.balance.planLimit, null);
   assert.equal(provider.balance.planPercent, null);
@@ -229,7 +277,7 @@ test('fetchMimoLimits does not infer a Token Plan from quota without detail evid
       return response({ code: 0, data: {} });
     }
   });
-  assert.equal(provider.windows.length, 0);
+  assert.equal(planWindows(provider).length, 0);
 });
 
 test('fetchMimoLimits activates an explicitly active Token Plan', async () => {
@@ -245,8 +293,8 @@ test('fetchMimoLimits activates an explicitly active Token Plan', async () => {
       return response({ code: 0, data: {} });
     }
   });
-  assert.equal(provider.windows.length, 1);
-  assert.equal(provider.windows[0].remainingPercent, 90);
+  assert.equal(planWindows(provider).length, 1);
+  assert.equal(planWindows(provider)[0].remainingPercent, 90);
   assert.equal(provider.balance.planUsed, 100);
   assert.equal(provider.balance.planLimit, 1000);
 });
@@ -264,8 +312,8 @@ test('fetchMimoLimits keeps an explicitly active exhausted plan at zero remainin
       return response({ code: 0, data: {} });
     }
   });
-  assert.equal(provider.windows[0].remaining, 0);
-  assert.equal(provider.windows[0].remainingPercent, 0);
+  assert.equal(planWindows(provider)[0].remaining, 0);
+  assert.equal(planWindows(provider)[0].remainingPercent, 0);
 });
 
 test('fetchMimoLimits keeps expired Token Plan behavior', async () => {
@@ -281,7 +329,7 @@ test('fetchMimoLimits keeps expired Token Plan behavior', async () => {
       return response({ code: 0, data: {} });
     }
   });
-  assert.equal(provider.windows.length, 0);
+  assert.equal(planWindows(provider).length, 0);
   assert.equal(provider.balance.planStatus, 'expired');
 });
 
@@ -361,6 +409,113 @@ test('fetchMimoLimits returns one row per enabled account and skips disabled acc
   assert.equal(result[0].accountKey, 'sha256:mimo-1');
 });
 
+test('fetchMimoLimits refresh scope probes only the requested account', async () => {
+  const accounts = [
+    managed(COOKIE),
+    managed('userId=456; api-platform_serviceToken=second', {
+      id: 'mimo-2', accountKey: 'sha256:mimo-2'
+    })
+  ];
+  const cookies = [];
+  const result = await fetchMimoLimits({
+    mimoManagedAccounts: accounts,
+    limitRefreshScope: { provider: 'mimo', accountKey: 'sha256:mimo-2' }
+  }, {
+    fetch: async (url, init) => {
+      cookies.push(init.headers.Cookie);
+      return url.endsWith('/balance')
+        ? response({ code: 0, data: { balance: '1', currency: 'USD' } })
+        : response({ code: 0, data: {} });
+    }
+  });
+
+  assert.equal(result.length, 1);
+  assert.equal(result[0].accountKey, 'sha256:mimo-2');
+  assert.ok(cookies.length > 0);
+  assert.ok(cookies.every((cookie) => cookie.includes('userId=456')));
+});
+
+test('fetchMimoLimits fails closed for a provider-only scope with multiple accounts', async () => {
+  const accounts = [
+    managed(COOKIE),
+    managed('userId=456; api-platform_serviceToken=second', {
+      id: 'mimo-2', accountKey: 'sha256:mimo-2'
+    })
+  ];
+  let fetchCalls = 0;
+
+  await assert.rejects(fetchMimoLimits({
+    mimoManagedAccounts: accounts,
+    limitRefreshScope: { provider: 'mimo' }
+  }, {
+    fetch: async () => {
+      fetchCalls += 1;
+      return response({ code: 0, data: {} });
+    }
+  }), /requires an account identifier/);
+
+  assert.equal(fetchCalls, 0);
+});
+
+test('LimitsRuntime compatibility distinguishes provider-wide and account-scoped MiMo refreshes', async () => {
+  const accounts = [
+    managed(COOKIE),
+    managed('userId=456; api-platform_serviceToken=second', {
+      id: 'mimo-2', accountKey: 'sha256:mimo-2'
+    })
+  ];
+  let fetchCalls = 0;
+  const cookies = [];
+  const oldAt = '2026-07-20T00:00:00.000Z';
+  const collector = createLimitsCollector({
+    limitsEnabled: true,
+    limitProviders: 'mimo',
+    mimoManagedAccounts: accounts,
+    previousLimits: {
+      updatedAt: oldAt,
+      refreshMs: 300000,
+      providers: accounts.map((account) => ({
+        provider: 'mimo',
+        accountKey: account.accountKey,
+        status: 'ok',
+        updatedAt: oldAt,
+        windows: []
+      }))
+    }
+  }, {
+    fetch: async (url, init) => {
+      fetchCalls += 1;
+      cookies.push(init.headers.Cookie);
+      return url.endsWith('/balance')
+        ? response({ code: 0, data: { balance: '1', currency: 'USD' } })
+        : response({ code: 0, data: {} });
+    }
+  });
+
+  const full = await collector.refreshScope({ provider: 'mimo' });
+  assert.deepEqual(
+    full.providers.map((provider) => provider.accountKey),
+    ['sha256:mimo-1', 'sha256:mimo-2']
+  );
+  assert.ok(fetchCalls > 0);
+  assert.ok(cookies.some((cookie) => cookie.includes('userId=123')));
+  assert.ok(cookies.some((cookie) => cookie.includes('userId=456')));
+  const firstAccountUpdatedAt = full.providers[0].updatedAt;
+  cookies.length = 0;
+
+  const summary = await collector.refreshScope({
+    provider: 'mimo',
+    accountKey: 'sha256:mimo-2'
+  });
+  assert.deepEqual(
+    summary.providers.map((provider) => provider.accountKey),
+    ['sha256:mimo-1', 'sha256:mimo-2']
+  );
+  assert.equal(summary.providers[0].updatedAt, firstAccountUpdatedAt);
+  assert.ok(cookies.length > 0);
+  assert.ok(cookies.every((cookie) => cookie.includes('userId=456')));
+});
+
 test('fetchMimoLimits starts managed accounts in parallel', async () => {
   const accounts = [
     managed(COOKIE),
@@ -412,4 +567,44 @@ test('fetchMimoLimits times out one account without blocking the others', async 
   assert.equal(result.length, 2);
   assert.equal(result.find((provider) => provider.accountKey === 'sha256:mimo-1').status, 'unavailable');
   assert.equal(result.find((provider) => provider.accountKey === 'sha256:mimo-2').status, 'ok');
+});
+
+test('MiMo exposes the balance as a credits window alongside the token plan', async () => {
+  const [provider] = await fetchMimoLimits({ mimoManagedAccounts: [managed()] }, {
+    now: () => Date.parse('2026-07-26T00:00:00Z'),
+    fetch: async (url) => {
+      if (url.endsWith('/balance')) return response({ code: 0, data: { balance: '12.50', currency: 'CNY' } });
+      if (url.endsWith('/userProfile')) return response({ code: 0, data: { email: 'user@example.com' } });
+      if (url.endsWith('/tokenPlan/detail')) return response({ code: 0, data: { planCode: 'standard', currentPeriodEnd: '2099-01-01 00:00:00', expired: false } });
+      return response({ code: 0, data: { monthUsage: { items: [{ name: 'month_total_token', used: 22, limit: 100, percent: 0.22 }] } } });
+    }
+  });
+
+  const plan = provider.windows.find((window) => window.label === 'Token Plan');
+  const balance = provider.windows.find((window) => window.metric === 'credits');
+
+  // The token plan is a real metered quota and keeps its percentage.
+  assert.ok(plan);
+  assert.equal(plan.usedPercent, 22);
+
+  // The balance is money and carries no wire percentage.
+  assert.ok(balance);
+  assert.equal(balance.kind, 'billing');
+  assert.equal(balance.label, 'Balance');
+  assert.equal(balance.remaining, provider.balance.amount);
+  assert.equal(balance.currency, provider.balance.currency);
+  assert.equal(balance.usedPercent, null);
+  assert.equal(balance.remainingPercent, null);
+});
+
+test('MiMo without a token plan still exposes the balance window', async () => {
+  const [provider] = await fetchMimoLimits({ mimoManagedAccounts: [managed()] }, {
+    fetch: async (url) => url.endsWith('/balance')
+      ? response({ code: 0, data: { balance: '7.51', currency: 'CNY' } })
+      : response({}, 500)
+  });
+
+  assert.equal(provider.windows.length, 1);
+  assert.equal(provider.windows[0].metric, 'credits');
+  assert.equal(provider.windows[0].remaining, 7.51);
 });

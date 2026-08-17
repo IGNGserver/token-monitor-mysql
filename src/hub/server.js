@@ -6,6 +6,14 @@ const fs = require('node:fs');
 const { URL } = require('node:url');
 const { aggregateDevices, aggregateHistory, mergeDeviceRecord } = require('../shared/usage');
 const { historyPreview, historyRevision } = require('../shared/history');
+const { deviceHistoryRevision } = require('../shared/history');
+const {
+  emptySubscriptionDocument,
+  isStaleSubscriptionWrite,
+  subscriptionDocument
+} = require('../shared/subscriptionDisplay');
+const { CURRENCY_CODES, normalizeCurrency } = require('../shared/currency');
+const { currentHubBuild } = require('../shared/hubBuildIdentity');
 const { isAuthorized, readJsonBody, sendJson, sendText } = require('../shared/http');
 const { loadDotEnv, parseArgs } = require('../shared/config');
 const { tryServeStatic } = require('./static');
@@ -229,6 +237,14 @@ function createHub({
   const tlsOptions = loadTlsOptions(tls);
   const protocol = tlsOptions ? 'https' : 'http';
   let statsCache = null;
+  let subscriptionsCache = emptySubscriptionDocument();
+
+  async function getSubscriptions() {
+    if (typeof store.getSubscriptions === 'function') {
+      subscriptionsCache = await store.getSubscriptions();
+    }
+    return subscriptionsCache;
+  }
 
   async function getStats() {
     const records = await store.listDeviceRecords();
@@ -237,12 +253,47 @@ function createHub({
     const history = aggregateHistory(records);
     stats.historyPreview = historyPreview(history);
     stats.historyRevision = historyRevision(history);
+    stats.deviceHistoryRevision = deviceHistoryRevision(records);
+    stats.subscriptionsUpdatedAt = (await getSubscriptions()).updatedAt || '';
     statsCache = stats;
     return stats;
   }
 
   async function getHistory() {
     return aggregateHistory(await store.listDeviceRecords());
+  }
+
+  async function setSubscriptions(subscriptions, baseUpdatedAt) {
+    if (!Array.isArray(subscriptions)) {
+      const error = new Error('subscriptions must be an array');
+      error.code = 'bad_subscriptions';
+      throw error;
+    }
+    const current = await getSubscriptions();
+    if (isStaleSubscriptionWrite(current, baseUpdatedAt)) {
+      const error = new Error('stale_write');
+      error.code = 'stale_write';
+      error.current = current;
+      throw error;
+    }
+    const unsupported = subscriptions.find(
+      (entry) => entry?.currency && !CURRENCY_CODES.includes(String(entry.currency).trim().toUpperCase())
+    );
+    if (unsupported) {
+      const error = new Error(`unsupported currency: ${String(unsupported.currency).trim().toUpperCase()}`);
+      error.code = 'bad_subscriptions';
+      throw error;
+    }
+    const next = subscriptionDocument(subscriptions, {
+      previousUpdatedAt: current.updatedAt,
+      currencyApi: { normalizeCurrency }
+    });
+    if (typeof store.setSubscriptions === 'function') {
+      await store.setSubscriptions(next, current.updatedAt);
+    }
+    subscriptionsCache = next;
+    await broadcastStats('subscriptions');
+    return subscriptionsCache;
   }
 
   function localDayKey(date = new Date()) {
@@ -541,7 +592,9 @@ function createHub({
       return sendJson(res, 200, {
         ok: true,
         role: 'hub',
+        runtime: 'node-hub',
         version: 1,
+        hubBuild: currentHubBuild('node-hub'),
         deviceCount: await store.countDevices(),
         secretRequired: Boolean(secret),
         now: new Date().toISOString()
@@ -559,6 +612,24 @@ function createHub({
       return sendJson(res, 200, { devices: await store.listDeviceRecords() });
     }
     if (req.method === 'GET' && url.pathname === '/api/history') return sendJson(res, 200, await getHistory());
+    if (req.method === 'GET' && url.pathname === '/api/subscriptions') {
+      return sendJson(res, 200, { ok: true, ...(await getSubscriptions()) });
+    }
+    if (req.method === 'PUT' && url.pathname === '/api/subscriptions') {
+      try {
+        const payload = await readJsonBody(req);
+        const stored = await setSubscriptions(payload?.subscriptions, payload?.baseUpdatedAt);
+        return sendJson(res, 200, { ok: true, ...stored });
+      } catch (error) {
+        if (error.code === 'stale_write') return sendJson(res, 409, { error: 'stale_write', ...error.current });
+        if (error.code === 'bad_subscriptions') return sendJson(res, 400, { error: 'bad_request', message: error.message });
+        if (error.code === 'payload_too_large') {
+          res.shouldKeepAlive = false;
+          return sendJson(res, 413, { error: 'payload_too_large', message: error.message }, { connection: 'close' });
+        }
+        return sendJson(res, 400, { error: 'bad_request', message: error.message });
+      }
+    }
     if (req.method === 'GET' && url.pathname === '/api/usage/range') {
       try {
         return sendJson(res, 200, await getUsageRange({
@@ -685,11 +756,13 @@ function createHub({
     server,
     getStats,
     getHistory,
+    getSubscriptions,
     getUsageRange,
     ingest,
     deleteDevice,
     onStats,
     setPricing,
+    setSubscriptions,
     fetchUpstreamPricing,
     fetchAllUpstreamPricing,
     bindHost,
@@ -712,4 +785,3 @@ if (require.main === module) {
 }
 
 module.exports = { createHub, normalizePrices, priceSnapshot, resolveBindHost, loadTlsOptions, upstreamPrices, aggregateHistoryRange, emptyUsageRangePayload };
-

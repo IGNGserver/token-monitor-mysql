@@ -1,18 +1,21 @@
 'use strict';
 
-const clientLabels = { claude: 'Claude Code', codex: 'Codex', hermes: 'Hermes', gemini: 'Gemini', cursor: 'Cursor', opencode: 'OpenCode', openclaw: 'OpenClaw', antigravity: 'Antigravity', cline: 'Cline', kimi: 'Kimi', qwen: 'Qwen', grok: 'Grok Build', copilot: 'GitHub Copilot', pi: 'Pi', zed: 'Zed', kilocode: 'Kilo Code', micode: 'MiMo Code', zcode: 'ZCode', kiro: 'Kiro', codebuddy: 'CodeBuddy', workbuddy: 'WorkBuddy', proma: 'Proma', 'claude-desktop': 'Claude Desktop' };
+const clientLabels = { claude: 'Claude Code', codex: 'Codex', hermes: 'Hermes', gemini: 'Gemini', cursor: 'Cursor', opencode: 'OpenCode', openclaw: 'OpenClaw', antigravity: 'Antigravity', cline: 'Cline', kimi: 'Kimi', qwen: 'Qwen', grok: 'Grok Build', copilot: 'GitHub Copilot', pi: 'Pi', zed: 'Zed', kilocode: 'Kilo Code', commandcode: 'Command Code', micode: 'MiMo Code', zcode: 'ZCode', kiro: 'Kiro', codebuddy: 'CodeBuddy', workbuddy: 'WorkBuddy', proma: 'Proma', qodercn: 'Qoder CN', reasonix: 'Reasonix', 'claude-desktop': 'Claude Desktop' };
+const reasonixSessionGuard = window.TokenMonitorReasonixSessionGuard;
 const { clientColors, fallbackModelColors, modelVendorFor, modelColor } = window.TokenMonitorUsageCharts;
 const motionPreferenceApi = window.TokenMonitorMotionPreference;
 const windowsGlassApi = window.TokenMonitorWindowsGlass;
 const macosGlassApi = window.TokenMonitorMacosGlass;
-const macosGlassModeApi = window.TokenMonitorMacosGlassMode;
 const glassRenderingApi = window.TokenMonitorGlassRendering;
+const fontSettingsApi = window.TokenMonitorFontSettings;
 const wslStatusPresentationApi = window.TokenMonitorWslStatusPresentation;
+const statsRenderSchedulerApi = window.TokenMonitorStatsRenderScheduler;
+const tokenRateApi = window.TokenMonitorTokenRate;
+const { tokenRatePerSecond, tokenBurnPerMinute } = tokenRateApi;
 const reducedMotionMedia = window.matchMedia?.('(prefers-reduced-motion: reduce)');
-const systemDarkThemeMedia = window.matchMedia?.('(prefers-color-scheme: dark)');
 const clientsWithIcon = new Set([
-  'claude', 'codex', 'gemini', 'cursor', 'opencode', 'openclaw', 'hermes', 'antigravity', 'cline', 'kimi', 'qwen', 'grok', 'copilot', 'pi', 'zed', 'kilocode', 'micode', 'zcode', 'kiro', 'codebuddy', 'workbuddy', 'proma', 'claude-desktop',
-  'xai', 'openrouter', 'deepseek', 'meta', 'mistral', 'qwen', 'moonshot', 'zai', 'zaiteam', 'cohere', 'xiaomi', 'mimo', 'minimax', 'doubao', 'volcengine', 'qoder', 'ollama'
+  'claude', 'codex', 'gemini', 'cursor', 'opencode', 'openclaw', 'hermes', 'antigravity', 'cline', 'kimi', 'qwen', 'grok', 'copilot', 'pi', 'zed', 'kilocode', 'commandcode', 'micode', 'zcode', 'kiro', 'codebuddy', 'workbuddy', 'proma', 'qodercn', 'reasonix', 'claude-desktop',
+  'xai', 'openrouter', 'deepseek', 'meta', 'mistral', 'qwen', 'moonshot', 'zai', 'zaiteam', 'cohere', 'xiaomi', 'mimo', 'minimax', 'doubao', 'volcengine', 'qoder', 'ollama', 'thirdparty'
 ]);
 
 function osIconFor(platform) {
@@ -49,8 +52,8 @@ function iconKindFor(rowData, breakdown) {
 const KNOWN_CLIENTS = [
   { id: 'claude', label: 'Claude Code' },
   { id: 'codex', label: 'Codex' },
-  { id: 'hermes', label: 'Hermes' },
   { id: 'opencode', label: 'OpenCode' },
+  { id: 'hermes', label: 'Hermes Agent' },
   { id: 'openclaw', label: 'OpenClaw' },
   { id: 'cursor', label: 'Cursor' },
   { id: 'antigravity', label: 'Antigravity' },
@@ -62,34 +65,84 @@ const KNOWN_CLIENTS = [
   { id: 'pi', label: 'Pi' },
   { id: 'zed', label: 'Zed' },
   { id: 'kilocode', label: 'Kilo Code' },
+  { id: 'commandcode', label: 'Command Code' },
   { id: 'micode', label: 'MiMo Code' },
   { id: 'zcode', label: 'ZCode' },
   { id: 'kiro', label: 'Kiro' },
   { id: 'codebuddy', label: 'CodeBuddy' },
   { id: 'workbuddy', label: 'WorkBuddy' },
   { id: 'proma', label: 'Proma' },
+  { id: 'qodercn', label: 'Qoder CN' },
+  { id: 'reasonix', label: 'Reasonix' },
   { id: 'claude-desktop', label: 'Claude Desktop' }
 ];
 const LIMIT_PROVIDERS = [
   { id: 'claude', label: 'Claude', settingsLabel: 'Claude Code' },
   { id: 'codex', label: 'Codex' },
+  { id: 'opencode', label: 'OpenCode' },
   { id: 'cursor', label: 'Cursor' },
   { id: 'antigravity', label: 'Antigravity' },
-  { id: 'opencode', label: 'OpenCode' },
-  { id: 'openrouter', label: 'OpenRouter' },
-  { id: 'deepseek', label: 'DeepSeek' },
-  { id: 'minimax', label: 'Minimax' },
-  { id: 'mimo', label: 'MiMo' },
+  { id: 'kimi', label: 'Kimi' },
   { id: 'grok', label: 'Grok' },
   { id: 'copilot', label: 'GitHub Copilot' },
-  { id: 'kiro', label: 'Kiro' },
+  { id: 'commandcode', label: 'Command Code' },
+  { id: 'mimo', label: 'MiMo' },
   { id: 'zai', label: 'GLM' },
   { id: 'zaiteam', label: 'GLM Team' },
-  { id: 'volcengine', label: 'Volcengine' },
+  { id: 'kiro', label: 'Kiro' },
   { id: 'qoder', label: 'Qoder' },
+  { id: 'commandcode', label: 'Command Code' },
   { id: 'kimi', label: 'Kimi' },
-  { id: 'ollama', label: 'Ollama' }
+  { id: 'deepseek', label: 'DeepSeek' },
+  { id: 'openrouter', label: 'OpenRouter' },
+  { id: 'minimax', label: 'Minimax' },
+  { id: 'volcengine', label: 'Volcengine' },
+  { id: 'ollama', label: 'Ollama' },
+  { id: 'thirdparty', label: 'Third-party APIs' }
 ];
+const LIMIT_PROVIDER_ACCOUNT_GROUP_IDS = {
+  claude: 'claudeAccountGroup',
+  codex: 'codexAccountGroup',
+  opencode: 'opencodeCookieGroup',
+  cursor: 'cursorAccountGroup',
+  kimi: 'kimiAccountGroup',
+  copilot: 'copilotAccountGroup',
+  mimo: 'mimoAccountGroup',
+  zai: 'zaiAccountGroup',
+  zaiteam: 'zaiteamAccountGroup',
+  deepseek: 'deepseekAccountGroup',
+  openrouter: 'openrouterAccountGroup',
+  minimax: 'minimaxAccountGroup',
+  volcengine: 'volcengineAccountGroup',
+  qoder: 'qoderAccountGroup',
+  commandcode: 'commandcodeAccountGroup',
+  ollama: 'ollamaAccountGroup',
+  thirdparty: 'thirdpartyAccountGroup'
+};
+const LIMIT_PROVIDER_ACCOUNT_STATUS_IDS = {
+  claude: 'claudeAccountStatus',
+  codex: 'codexAccountStatus',
+  opencode: 'opencodeCookieStatus',
+  cursor: 'cursorAccountStatus',
+  kimi: 'kimiAccountStatus',
+  copilot: 'copilotApiTokenStatus',
+  mimo: 'mimoAccountStatus',
+  zai: 'zaiAccountStatus',
+  zaiteam: 'zaiteamAccountStatus',
+  deepseek: 'deepseekApiKeyStatus',
+  openrouter: 'openrouterStatus',
+  minimax: 'minimaxApiKeyStatus',
+  volcengine: 'volcengineAccountStatus',
+  qoder: 'qoderAccountStatus',
+  commandcode: 'commandcodeAccountStatus',
+  ollama: 'ollamaAccountStatus',
+  thirdparty: 'thirdpartyStatus'
+};
+const LIMIT_PROVIDER_CONNECTION_DETAIL_KEYS = {
+  antigravity: 'settings.limits.connection.antigravity',
+  grok: 'settings.limits.connection.grok',
+  kiro: 'settings.limits.connection.kiro'
+};
 const TRAY_ICON_VARIANTS = [
   { id: 'claude-brand', label: 'Claude', after: 'claude' },
   { id: 'chatgpt', label: 'ChatGPT', after: 'codex' }
@@ -115,16 +168,25 @@ const limitProviderPresentationApi = window.TokenMonitorLimitProviderPresentatio
 const appUpdatePresentationApi = window.TokenMonitorAppUpdatePresentation;
 const accountIdentityApi = window.TokenMonitorAccountIdentity;
 const clientStatusPresentationApi = window.TokenMonitorClientStatusPresentation;
+const clientHealthPresentationApi = window.TokenMonitorClientHealthPresentation;
+const clientSourceCacheApi = window.TokenMonitorClientSourceCache;
+const clientRescanStateApi = window.TokenMonitorClientRescanState;
 const serviceStatusPresentationApi = window.TokenMonitorServiceStatusPresentation;
 const clientDisplayPreferencesApi = window.TokenMonitorClientDisplayPreferences;
 const customPricingFormApi = window.TokenMonitorCustomPricingForm;
 const viewDisplayPreferencesApi = window.TokenMonitorViewDisplayPreferences;
 const preferenceDragSortApi = window.TokenMonitorPreferenceDragSort;
+const verticalDragSortApi = window.TokenMonitorVerticalDragSort;
+const rowDragControllerApi = window.TokenMonitorRowDragController;
 const homeOverviewApi = window.TokenMonitorHomeOverview;
 const homeModulePreferencesApi = window.TokenMonitorHomeModulePreferences;
+const fixedPeriodRangesApi = window.TokenMonitorFixedPeriodRanges;
+const hubBuildPresentationApi = window.TokenMonitorHubBuildPresentation;
 const { limitFillPercent, limitModeSuffix } = window.TokenMonitorLimitDisplayMode;
 const i18n = window.TokenMonitorI18n;
 const currencyApi = window.TokenMonitorCurrency;
+const subscriptionApi = window.TokenMonitorSubscriptionDisplay;
+const compactTokenApi = window.TokenMonitorCompactTokens;
 const trayLayoutApi = window.TokenMonitorTrayLayout;
 const sessionRowsApi = window.TokenMonitorSessionRows;
 const breakdownRenderPolicyApi = window.TokenMonitorBreakdownRenderPolicy;
@@ -136,6 +198,7 @@ const {
   toolIconsEnabled
 } = breakdownRenderPolicyApi;
 const deviceBreakdownApi = window.TokenMonitorDeviceBreakdown;
+const usageAttributionRowsApi = window.TokenMonitorUsageAttributionRows;
 const projectRowsApi = window.TokenMonitorProjectRows;
 const sessionDetailApi = window.TokenMonitorSessionDetail;
 const windowShortcutApi = window.TokenMonitorWindowShortcut;
@@ -152,6 +215,7 @@ const LIMIT_CAPABILITY_TAG_KEYS = {
   'Manual login': 'settings.limits.capability.manualLogin',
   Web: 'settings.limits.capability.web',
   'Web/API': 'settings.limits.capability.webApi',
+  'API/Web': 'settings.limits.capability.apiWeb',
   'App/CLI must be open': 'settings.limits.capability.appMustBeOpen',
   RPC: 'settings.limits.capability.rpc',
   'Local/Zen': 'settings.limits.capability.localZen',
@@ -159,7 +223,7 @@ const LIMIT_CAPABILITY_TAG_KEYS = {
   Subscription: 'settings.limits.capability.subscription',
   'Token Plan': 'settings.limits.capability.tokenPlan',
   'Coding Plan': 'settings.limits.capability.codingPlan',
-  'Membership/Coding Plan': 'settings.limits.capability.membershipCodingPlan',
+  Relay: 'settings.limits.capability.relay',
   'API key': 'settings.limits.capability.apiKey',
   'AK/SK': 'settings.limits.capability.akSk',
   'GitHub OAuth': 'settings.limits.capability.githubOAuth',
@@ -199,8 +263,7 @@ const VIEW_DISPLAY_OPTIONS = [
   { id: 'limits', labelKey: 'views.limits' },
   { id: 'trends', labelKey: 'views.trends' }
 ];
-const viewPeriodValues = new Set(['today', 'month', 'allTime', 'custom']);
-const customRangePickerApi = window.TokenMonitorCustomRangePicker;
+const viewPeriodValues = new Set(['today', 'month', 'week', 'last7', 'last30', 'allTime']);
 const viewBreakdownValues = new Set(['home', ...baseBreakdownOrder, 'status', 'limits', 'trends']);
 const HOME_MODULE_OPTIONS = [
   { id: 'limits', labelKey: 'home.limits', viewId: 'limits' },
@@ -231,9 +294,10 @@ const SERVICE_STATUS_PLACEHOLDERS = [
 const SERVICE_PROVIDER_OPTIONS = SERVICE_STATUS_PLACEHOLDERS.map((entry) => ({ id: entry.id, label: entry.label }));
 const TOKEN_MONITOR_REPOSITORY_URL = 'https://github.com/IGNGserver/token-monitor-suite';
 const TOKEN_MONITOR_ISSUES_URL = `${TOKEN_MONITOR_REPOSITORY_URL}/issues/new/choose`;
+const TOKEN_MONITOR_WEBSITE_URL = 'https://javis-ai.com/token-monitor/';
 const TOKEN_MONITOR_WSL_SQLITE_GUIDE_URL = `${TOKEN_MONITOR_REPOSITORY_URL}/blob/main/docs/wsl-sqlite-setup.md`;
 const serviceStatusProviderPreferencesApi = window.TokenMonitorServiceStatusProviderPreferences;
-const SETTINGS_SECTION_IDS = ['general', 'main', 'window', 'appearance', 'tools', 'limits', 'accounts', 'sync'];
+const SETTINGS_SECTION_IDS = ['general', 'main', 'window', 'appearance', 'tools', 'limits', 'subscriptions', 'sync'];
 const REFRESH_BUTTON_FEEDBACK_MS = 700;
 const CODEX_PENDING_ACTIVE_GRACE_MS = 30000;
 const initialFloatingBubble = window.__TOKEN_MONITOR_INITIAL_FLOATING_BUBBLE__ || { collapsed: false, side: null };
@@ -245,33 +309,58 @@ function normalizeInitialViewValue(value, allowed, fallback) {
   return allowed.has(raw) ? raw : fallback;
 }
 
-const state = { period: normalizeInitialViewValue(initialViewState.period, viewPeriodValues, 'today'), appUpdate: null, breakdown: normalizeInitialViewValue(initialViewState.breakdown, viewBreakdownValues, 'home'), viewSwitcherOpen: false, viewSwitcherHasOpened: false, limitDetailTooltipHasOpened: false, limitDetailTooltipActive: false, limitDetailTooltipRenderPending: false, settings: null, stats: null, homeHistory: null, homeHistoryBusy: false, homeHistoryRequested: false, homeHistorySignature: '', homeHistoryRetries: 0, homeHistoryRetryTimer: null, homeActivityScrollLeft: null, homeActivityFollowEnd: true, homeActivityResizeObserver: null, serviceStatus: null, serviceStatusBusy: false, serviceProvidersExpanded: false, trendSettingsExpanded: false, trendsActivating: false, homeSettingsExpanded: false, homeLimitSettingsExpanded: false, serviceStatusTicker: null, refreshTimer: null, refreshBusy: false, refreshFeedbackTimer: null, currentTotal: 0, rowSignature: '', streamConnected: false, streamFailure: null, mode: 'idle', appInfo: null, tokscaleStatus: null, tokscaleCheck: null, tokscaleBusy: false, hubInfo: null, cursorAccount: { status: null, error: '' }, cursorAccountExpanded: false, codexAccountExpanded: false, codexAccountError: '', codexSignInBusy: false, codexSignInFlowId: '', codexLoginUrl: '', codexLoginStatus: '', codexLoginOutput: '', codexWorkspaceChoices: [], codexWorkspaceId: '', codexActiveAccount: null, codexPendingActiveAccount: null, codexPendingActiveAccountUntil: 0, codexPendingActiveAccountTimer: null, codexSystemSwitchingAccountId: '', codexSystemSwitchErrorAccountId: '', codexSystemSwitchError: '', codexSwitchPopoverHasOpened: false, codexSwitchPopoverActive: false, codexSwitchPopoverRenderPending: false, customPricingExpanded: false, opencodeProfileCount: 0, opencodeCookieExpanded: false, openrouterProfileCount: 0, openrouterAccountExpanded: false, deepseekAccountExpanded: false, deepseekPendingCheckSince: 0, minimaxAccountExpanded: false, minimaxPendingCheckSince: 0, zaiAccountExpanded: false, zaiPendingCheckSince: 0, zaiteamAccountExpanded: false, zaiteamPendingCheckSince: 0, volcengineAccountExpanded: false, volcenginePendingCheckSince: 0, qoderAccountExpanded: false, qoderPendingCheckSince: 0, kimiAccountExpanded: false, kimiPendingCheckSince: 0, ollamaAccountExpanded: false, ollamaPendingCheckSince: 0, mimoAccountExpanded: false, mimoAccountError: '', copilotAccountExpanded: false, copilotManualExpanded: false, copilotPendingCheckSince: 0, copilotSignInBusy: false, copilotSignInCancelable: false, copilotSignInFlowId: '', copilotAuthorizeMessage: '', copilotLoginStatus: '', copilotErrorMessage: '', floatingBubble: initialFloatingBubble, suppressInitialNumberAnimation: window.__TOKEN_MONITOR_SUPPRESS_INITIAL_NUMBER_ANIMATION__ === true, openSession: null, detailSort: 'time', recordingWindowShortcut: false, windowShortcutInvalid: false };
+const state = { period: normalizeInitialViewValue(initialViewState.period, viewPeriodValues, 'today'), appUpdate: null, breakdown: normalizeInitialViewValue(initialViewState.breakdown, viewBreakdownValues, 'home'), viewSwitcherOpen: false, viewSwitcherHasOpened: false, limitDetailTooltipHasOpened: false, limitDetailTooltipActive: false, limitDetailTooltipRenderPending: false, settings: null, stats: null, homeHistory: null, homeHistoryBusy: false, homeHistoryRequested: false, homeHistorySignature: '', homeHistoryRetries: 0, homeHistoryRetryTimer: null, homeActivityScrollLeft: null, homeActivityFollowEnd: true, homeActivityResizeObserver: null, serviceStatus: null, serviceStatusBusy: false, serviceProvidersExpanded: false, trendSettingsExpanded: false, trendsActivating: false, homeSettingsExpanded: false, homeLimitSettingsExpanded: false, limitProviderSettingsExpanded: '', clientHealthExpanded: '', clientSources: clientSourceCacheApi.createClientSourceCache(), clientSourcesKey: '', clientSourcesRequest: 0, subscriptionEditingId: '', subscriptionTopUps: [], subscriptionFormBase: null, subscriptionEditorTransitionId: 0, serviceStatusTicker: null, refreshTimer: null, refreshBusy: false, refreshFeedbackTimer: null, currentTotal: 0, rowSignature: '', streamConnected: false, streamFailure: null, mode: 'idle', appInfo: null, systemDarkUi: false, tokscaleStatus: null, tokscaleCheck: null, tokscaleBusy: false, hubInfo: null, hubBuildStatus: null, cursorAccount: { status: null, error: '' }, cursorAccountExpanded: false, codexAccountExpanded: false, codexAccountError: '', codexSignInBusy: false, codexSignInFlowId: '', codexLoginUrl: '', codexLoginStatus: '', codexLoginOutput: '', codexWorkspaceChoices: [], codexWorkspaceId: '', codexActiveAccount: null, codexPendingActiveAccount: null, codexPendingActiveAccountUntil: 0, codexPendingActiveAccountTimer: null, codexSystemSwitchingAccountId: '', codexSystemSwitchErrorAccountId: '', codexSystemSwitchError: '', codexSwitchPopoverHasOpened: false, codexSwitchPopoverActive: false, codexSwitchPopoverRenderPending: false, customPricingExpanded: false, claudeAccountExpanded: false, claudePendingCheckSince: 0, opencodeProfileCount: 0, opencodeCookieExpanded: false, openrouterProfileCount: 0, openrouterAccountExpanded: false, thirdPartyProfileCount: 0, thirdPartyAccountExpanded: false, deepseekAccountExpanded: false, deepseekPendingCheckSince: 0, minimaxAccountExpanded: false, minimaxPendingCheckSince: 0, zaiAccountExpanded: false, zaiPendingCheckSince: 0, zaiteamAccountExpanded: false, zaiteamPendingCheckSince: 0, volcengineAccountExpanded: false, volcenginePendingCheckSince: 0, qoderAccountExpanded: false, qoderPendingCheckSince: 0, commandcodeAccountExpanded: false, commandcodePendingCheckSince: 0, kimiAccountExpanded: false, kimiPendingCheckSince: 0, ollamaAccountExpanded: false, ollamaPendingCheckSince: 0, mimoAccountExpanded: false, mimoAccountError: '', copilotAccountExpanded: false, copilotManualExpanded: false, copilotPendingCheckSince: 0, copilotSignInBusy: false, copilotSignInCancelable: false, copilotSignInFlowId: '', copilotAuthorizeMessage: '', copilotLoginStatus: '', copilotErrorMessage: '', floatingBubble: initialFloatingBubble, suppressInitialNumberAnimation: window.__TOKEN_MONITOR_SUPPRESS_INITIAL_NUMBER_ANIMATION__ === true, openSession: null, detailSort: 'time', recordingWindowShortcut: false, windowShortcutInvalid: false };
+state.clientRescans = clientRescanStateApi.createClientRescanState({
+  onChange: (clientId) => {
+    if (state.clientHealthExpanded === clientId) refillOpenClientHealthPanel();
+  }
+});
+state.toolPreferenceRenderSignature = '';
+state.toolPreferenceDetailSignature = '';
+state.toolPreferenceSourceSignature = '';
+state.limitProviderRenderSignature = '';
+state.limitPanelRenderSignature = '';
+state.settingsPushRevision = 0;
 state.homeHistoryLoadedSignature = '';
 state.homeHistoryRetrySignature = '';
 state.homeReturnVisible = false;
 state.appUpdateNotesPresentedVersion = '';
 state.periodMotionActive = false;
-state.customRange = null;
-state.customRangeDraft = null;
-state.customRangeOpen = false;
-state.customRangeBusy = false;
-state.customRangeError = '';
-state.customRangeMonth = null;
 state.animateBarsFromZero = false;
 state.animateChartsOnRender = true;
+state.fixedPeriodHistory = null;
+state.fixedPeriodHistoryBusy = false;
+state.fixedPeriodHistoryRequested = false;
+state.fixedPeriodHistoryFailed = false;
+state.fixedPeriodHistorySignature = '';
+state.fixedPeriodHistoryRetries = 0;
+state.fixedPeriodHistoryRetrySignature = '';
+state.fixedPeriodHistoryRetryTimer = null;
+state.fixedPeriodHistoryPromise = null;
+state.fixedPeriodHistoryCoordinator = null;
+state.fixedPeriodSnapshot = null;
+state.periodMenuOpen = false;
 let directBreakdownOverride = null;
 state.projectSettingsExpanded = false;
 state.homeActivitySettingsExpanded = false;
 state.settingsSections = Object.fromEntries(SETTINGS_SECTION_IDS.map((id) => [id, false]));
-const defaultAppearance = { glassOpacity: 68, glassBlur: 32, zoomFactor: 1, systemGlass: true, macosGlassStyle: macosGlassModeApi.MACOS_GLASS_LIQUID, windowsBackdrop: 'acrylic', reduceMotion: 'system', showLiveDot: true, showToolIcons: true, titleIconOnly: true, showCompactTotalTokens: false, settingsInTitlebar: false };
+const defaultAppearance = { glassOpacity: 68, glassBlur: 32, zoomFactor: 1, systemGlass: true, windowsBackdrop: 'acrylic', reduceMotion: 'system', showLiveDot: true, showToolIcons: true, titleIconOnly: true, showCompactTotalTokens: false, compactTokenUnits: 'western', settingsInTitlebar: false };
 let preferenceDrag = null;
 let viewSwitcherLongPressTimer = null;
 let viewSwitcherLongPressTriggered = false;
 let viewSwitcherHoverCloseTimer = null;
 const els = {
-  shell: document.querySelector('.shell'), status: document.getElementById('status'), liveDot: document.getElementById('liveDot'), totalTokens: document.getElementById('totalTokens'), totalTokensCompact: document.getElementById('totalTokensCompact'), cost: document.getElementById('cost'), homePanel: document.getElementById('homePanel'), breakdown: document.getElementById('breakdown'), serviceStatusPanel: document.getElementById('serviceStatusPanel'), limitsPanel: document.getElementById('limitsPanel'), trendsPanel: document.getElementById('trendsPanel'), viewSwitcher: document.getElementById('viewSwitcher'), pinButton: document.getElementById('pinButton'), utilityActions: document.getElementById('utilityActions'), settingsButton: document.getElementById('settingsButton'), settingsPanel: document.getElementById('settingsPanel'), languageInput: document.getElementById('languageInput'), currencyInput: document.getElementById('currencyInput'), currencyRateRow: document.getElementById('currencyRateRow'), currencyRateModeAuto: document.getElementById('currencyRateModeAuto'), currencyRateModeManual: document.getElementById('currencyRateModeManual'), currencyRateManualField: document.getElementById('currencyRateManualField'), currencyRateOverrideInput: document.getElementById('currencyRateOverrideInput'), currencyRateStatus: document.getElementById('currencyRateStatus'), hubUrlInput: document.getElementById('hubUrlInput'), secretInput: document.getElementById('secretInput'), deviceIdInput: document.getElementById('deviceIdInput'), limitProviderCheckboxes: document.getElementById('limitProviderCheckboxes'), limitsRefreshInput: document.getElementById('limitsRefreshInput'), showLimitSourceInput: document.getElementById('showLimitSourceInput'), maskLimitAccountEmailsInput: document.getElementById('maskLimitAccountEmailsInput'), showLimitUsedInput: document.getElementById('showLimitUsedInput'), liveDotInput: document.getElementById('liveDotInput'), toolIconsInput: document.getElementById('toolIconsInput'), floatingBubbleInput: document.getElementById('floatingBubbleInput'), floatingBubbleTriggerInput: document.getElementById('floatingBubbleTriggerInput'), floatingBubbleTriggerRow: document.getElementById('floatingBubbleTriggerRow'), floatingBubbleContentInput: document.getElementById('floatingBubbleContentInput'), floatingBubbleContentRow: document.getElementById('floatingBubbleContentRow'), floatingBubbleComposer: document.getElementById('floatingBubbleComposer'), floatingBubbleContent: document.getElementById('floatingBubbleContent'), discordRpcInput: document.getElementById('discordRpcInput'), windowBehaviorInput: document.getElementById('windowBehaviorInput'), showTrayIconInput: document.getElementById('showTrayIconInput'), showTrayProviderBadgeInput: document.getElementById('showTrayProviderBadgeInput'), trayModeInput: document.getElementById('trayModeInput'), trayContentInput: document.getElementById('trayContentInput'), trayComposer: document.getElementById('trayComposer'), windowToggleShortcutValue: document.getElementById('windowToggleShortcutValue'), windowToggleShortcutClearButton: document.getElementById('windowToggleShortcutClearButton'), windowToggleShortcutNote: document.getElementById('windowToggleShortcutNote'), glassInput: document.getElementById('glassInput'), blurInput: document.getElementById('blurInput'), zoomInput: document.getElementById('zoomInput'), resetGlassButton: document.getElementById('resetGlassButton'), resetDepthButton: document.getElementById('resetDepthButton'), resetZoomButton: document.getElementById('resetZoomButton'), saveSettingsButton: document.getElementById('saveSettingsButton'), clientDisplayList: document.getElementById('clientDisplayList'), wslScanInput: document.getElementById('wslScanInput'), wslScanRow: document.getElementById('wslScanRow'), wslPanel: document.getElementById('wslPanel'), openConfigButton: document.getElementById('openConfigButton'), exportAutoInput: document.getElementById('exportAutoInput'), exportAutoDetails: document.getElementById('exportAutoDetails'), exportAutoStatus: document.getElementById('exportAutoStatus'), exportDirLabel: document.getElementById('exportDirLabel'), exportPickDirButton: document.getElementById('exportPickDirButton'), exportIntervalInput: document.getElementById('exportIntervalInput'), exportNowButton: document.getElementById('exportNowButton'), refreshButton: document.getElementById('refreshButton'), minButton: document.getElementById('minButton'), closeButton: document.getElementById('closeButton'), floatingBubbleTab: document.getElementById('floatingBubbleTab')
+  shell: document.querySelector('.shell'), status: document.getElementById('status'), liveDot: document.getElementById('liveDot'), tokenRateReveal: document.getElementById('tokenRateReveal'), totalTokens: document.getElementById('totalTokens'), totalTokensCompact: document.getElementById('totalTokensCompact'), cost: document.getElementById('cost'), homePanel: document.getElementById('homePanel'), breakdown: document.getElementById('breakdown'), serviceStatusPanel: document.getElementById('serviceStatusPanel'), limitsPanel: document.getElementById('limitsPanel'), trendsPanel: document.getElementById('trendsPanel'), viewSwitcher: document.getElementById('viewSwitcher'), pinButton: document.getElementById('pinButton'), utilityActions: document.getElementById('utilityActions'), settingsButton: document.getElementById('settingsButton'), settingsPanel: document.getElementById('settingsPanel'), languageInput: document.getElementById('languageInput'), currencyInput: document.getElementById('currencyInput'), currencyRateRow: document.getElementById('currencyRateRow'), currencyRateModeAuto: document.getElementById('currencyRateModeAuto'), currencyRateModeManual: document.getElementById('currencyRateModeManual'), currencyRateManualField: document.getElementById('currencyRateManualField'), currencyRateOverrideInput: document.getElementById('currencyRateOverrideInput'), currencyRateStatus: document.getElementById('currencyRateStatus'), hubUrlInput: document.getElementById('hubUrlInput'), secretInput: document.getElementById('secretInput'), deviceIdInput: document.getElementById('deviceIdInput'), limitProviderCheckboxes: document.getElementById('limitProviderCheckboxes'), limitsRefreshInput: document.getElementById('limitsRefreshInput'), limitsRefreshAdaptiveNote: document.getElementById('limitsRefreshAdaptiveNote'), showLimitSourceInput: document.getElementById('showLimitSourceInput'), maskLimitAccountEmailsInput: document.getElementById('maskLimitAccountEmailsInput'), showLimitUsedInputs: Array.from(document.querySelectorAll('input[name="showLimitUsed"]')), showLimitUsedInput: document.getElementById('showLimitUsedInput') || document.querySelector('input[name="showLimitUsed"]'), liveDotInput: document.getElementById('liveDotInput'), toolIconsInput: document.getElementById('toolIconsInput'), floatingBubbleInput: document.getElementById('floatingBubbleInput'), floatingBubbleTriggerInputs: Array.from(document.querySelectorAll('input[name="floatingBubbleTrigger"]')), floatingBubbleTriggerInput: document.getElementById('floatingBubbleTriggerInput') || document.querySelector('input[name="floatingBubbleTrigger"]'), floatingBubbleTriggerRow: document.getElementById('floatingBubbleTriggerRow'), floatingBubbleContentInput: document.getElementById('floatingBubbleContentInput'), floatingBubbleContentRow: document.getElementById('floatingBubbleContentRow'), floatingBubbleComposer: document.getElementById('floatingBubbleComposer'), floatingBubbleContent: document.getElementById('floatingBubbleContent'), discordRpcInput: document.getElementById('discordRpcInput'), windowBehaviorInput: document.getElementById('windowBehaviorInput'), showTrayIconInput: document.getElementById('showTrayIconInput'), showTrayProviderBadgeInput: document.getElementById('showTrayProviderBadgeInput'), trayModeInput: document.getElementById('trayModeInput'), trayContentInput: document.getElementById('trayContentInput'), trayComposer: document.getElementById('trayComposer'), windowToggleShortcutValue: document.getElementById('windowToggleShortcutValue'), windowToggleShortcutClearButton: document.getElementById('windowToggleShortcutClearButton'), windowToggleShortcutNote: document.getElementById('windowToggleShortcutNote'), glassInput: document.getElementById('glassInput'), blurInput: document.getElementById('blurInput'), zoomInput: document.getElementById('zoomInput'), resetGlassButton: document.getElementById('resetGlassButton'), resetDepthButton: document.getElementById('resetDepthButton'), resetZoomButton: document.getElementById('resetZoomButton'), saveSettingsButton: document.getElementById('saveSettingsButton'), clientDisplayList: document.getElementById('clientDisplayList'), wslScanInput: document.getElementById('wslScanInput'), wslScanRow: document.getElementById('wslScanRow'), wslPanel: document.getElementById('wslPanel'), openConfigButton: document.getElementById('openConfigButton'), exportAutoInput: document.getElementById('exportAutoInput'), exportAutoDetails: document.getElementById('exportAutoDetails'), exportAutoStatus: document.getElementById('exportAutoStatus'), exportDirLabel: document.getElementById('exportDirLabel'), exportPickDirButton: document.getElementById('exportPickDirButton'), exportIntervalInput: document.getElementById('exportIntervalInput'), exportNowButton: document.getElementById('exportNowButton'), refreshButton: document.getElementById('refreshButton'), minButton: document.getElementById('minButton'), closeButton: document.getElementById('closeButton'), floatingBubbleTab: document.getElementById('floatingBubbleTab'),
+  subscriptionList: document.getElementById('subscriptionList'), subscriptionAddForm: document.getElementById('subscriptionAddForm'), subscriptionAddToggle: document.getElementById('subscriptionAddToggle'), subscriptionAddDetails: document.getElementById('subscriptionAddDetails'), subscriptionProviderInput: document.getElementById('subscriptionProviderInput'), subscriptionAccountInput: document.getElementById('subscriptionAccountInput'), subscriptionPlanNameInput: document.getElementById('subscriptionPlanNameInput'), subscriptionAmountInput: document.getElementById('subscriptionAmountInput'), subscriptionCurrencyInput: document.getElementById('subscriptionCurrencyInput'), subscriptionIntervalCountInput: document.getElementById('subscriptionIntervalCountInput'), subscriptionIntervalInput: document.getElementById('subscriptionIntervalInput'), subscriptionStartDateInput: document.getElementById('subscriptionStartDateInput'), subscriptionAutoRenewInput: document.getElementById('subscriptionAutoRenewInput'), subscriptionNextRenewalInput: document.getElementById('subscriptionNextRenewalInput'), subscriptionNote: document.getElementById('subscriptionNote'), subscriptionOrphanNotice: document.getElementById('subscriptionOrphanNotice'), subscriptionOrphanText: document.getElementById('subscriptionOrphanText'), subscriptionOrphanAdopt: document.getElementById('subscriptionOrphanAdopt'), subscriptionOrphanDiscard: document.getElementById('subscriptionOrphanDiscard'), subscriptionSyncError: document.getElementById('subscriptionSyncError'), subscriptionNextRenewalLabel: document.getElementById('subscriptionNextRenewalLabel'), subscriptionNextRenewalNote: document.getElementById('subscriptionNextRenewalNote'), subscriptionSubmit: document.getElementById('subscriptionSubmit'), subscriptionCancelEdit: document.getElementById('subscriptionCancelEdit'), subscriptionTotalRow: document.getElementById('subscriptionTotalRow'), subscriptionErrorMessage: document.getElementById('subscriptionErrorMessage'), subscriptionPlanFields: document.getElementById('subscriptionPlanFields'), subscriptionTopUpFields: document.getElementById('subscriptionTopUpFields'), subscriptionTopUpList: document.getElementById('subscriptionTopUpList'), subscriptionTopUpDateInput: document.getElementById('subscriptionTopUpDateInput'), subscriptionTopUpAmountInput: document.getElementById('subscriptionTopUpAmountInput'), subscriptionTopUpAddButton: document.getElementById('subscriptionTopUpAddButton'), subscriptionAmountRow: document.getElementById('subscriptionAmountRow'), subscriptionTopUpHeadingRow: document.getElementById('subscriptionTopUpHeadingRow'), subscriptionKindInputs: [...document.querySelectorAll('input[name="subscriptionKind"]')]
 };
 Object.assign(els, {
+  fixedPeriodMessage: document.getElementById('fixedPeriodMessage'),
+  monthPeriodMenu: document.getElementById('monthPeriodMenu'),
+  monthPeriodTab: document.getElementById('monthPeriodTab'),
+  periodMonthModeInput: document.getElementById('periodMonthModeInput')
+});
+Object.assign(els, {
+  appTitleMark: document.querySelector('.app-title-mark'),
   viewBackRow: document.getElementById('viewBackRow'),
   backHomeButton: document.getElementById('backHomeButton'),
   systemGlassInputs: Array.from(document.querySelectorAll('input[name="systemGlassOption"]')),
@@ -279,6 +368,7 @@ Object.assign(els, {
   trayIconOptions: document.getElementById('trayIconOptions'),
   trayOptions: document.getElementById('trayOptions'),
   hubModeOptions: document.getElementById('hubModeOptions'),
+  hubBuildStatus: document.getElementById('hubBuildStatus'),
   hubClientFields: document.getElementById('hubClientFields'),
   hubHostFields: document.getElementById('hubHostFields'),
   hubPortInput: document.getElementById('hubPortInput'),
@@ -304,9 +394,11 @@ Object.assign(els, {
   clearSessionUsageArchiveButton: document.getElementById('clearSessionUsageArchiveButton'),
   startupGroup: document.getElementById('startupGroup'),
   startAtLoginInput: document.getElementById('startAtLoginInput'),
-  startInTrayInput: document.getElementById('startInTrayInput'),
-  closeToTrayInput: document.getElementById('closeToTrayInput'),
   startupNote: document.getElementById('startupNote'),
+  advancedSettingsGroup: document.getElementById('advancedSettingsGroup'),
+  advancedSettingsToggle: document.getElementById('advancedSettingsToggle'),
+  advancedSettingsDetails: document.getElementById('advancedSettingsDetails'),
+  advancedSettingsSummary: document.getElementById('advancedSettingsSummary'),
   tokscaleGroup: document.getElementById('tokscaleGroup'),
   tokscaleInstalled: document.getElementById('tokscaleInstalled'),
   tokscaleBundledLine: document.getElementById('tokscaleBundledLine'),
@@ -319,6 +411,7 @@ Object.assign(els, {
   openTokscaleLinkButton: document.getElementById('openTokscaleLinkButton'),
   aboutVersion: document.getElementById('aboutVersion'),
   openRepositoryButton: document.getElementById('openRepositoryButton'),
+  openWebsiteButton: document.getElementById('openWebsiteButton'),
   reportIssueButton: document.getElementById('reportIssueButton'),
   appUpdatePill: document.getElementById('appUpdatePill'),
   appUpdatePillAction: document.getElementById('appUpdatePillAction'),
@@ -332,22 +425,6 @@ Object.assign(els, {
   appUpdatePopoverAction: document.getElementById('appUpdatePopoverAction'),
   appUpdatePopoverRelease: document.getElementById('appUpdatePopoverRelease'),
   appUpdatePopoverClose: document.getElementById('appUpdatePopoverClose'),
-  customRangeButton: document.getElementById('customRangeButton'),
-  customRangePopover: document.getElementById('customRangePopover'),
-  customRangeClose: document.getElementById('customRangeClose'),
-  customRangePrevMonth: document.getElementById('customRangePrevMonth'),
-  customRangeNextMonth: document.getElementById('customRangeNextMonth'),
-  customRangeMonthLabel: document.getElementById('customRangeMonthLabel'),
-  customRangeWeekdays: document.getElementById('customRangeWeekdays'),
-  customRangeGrid: document.getElementById('customRangeGrid'),
-  customRangeStartDate: document.getElementById('customRangeStartDate'),
-  customRangeEndDate: document.getElementById('customRangeEndDate'),
-  customRangeStartHour: document.getElementById('customRangeStartHour'),
-  customRangeEndHour: document.getElementById('customRangeEndHour'),
-  customRangeError: document.getElementById('customRangeError'),
-  customRangeClear: document.getElementById('customRangeClear'),
-  customRangeApply: document.getElementById('customRangeApply'),
-  customRangeTitle: document.getElementById('customRangeTitle'),
   appUpdateInstalled: document.getElementById('appUpdateInstalled'),
   automaticAppUpdatesRow: document.getElementById('automaticAppUpdatesRow'),
   automaticAppUpdatesInput: document.getElementById('automaticAppUpdatesInput'),
@@ -356,12 +433,16 @@ Object.assign(els, {
   appUpdateCheckButton: document.getElementById('appUpdateCheckButton'),
   appUpdateViewReleaseButton: document.getElementById('appUpdateViewReleaseButton'),
   appUpdateNotes: document.getElementById('appUpdateNotes'),
+  appUpdateNotesToggle: document.getElementById('appUpdateNotesToggle'),
+  appUpdateNotesDetails: document.getElementById('appUpdateNotesDetails'),
   appUpdateNotesTitle: document.getElementById('appUpdateNotesTitle'),
   appUpdateNotesBody: document.getElementById('appUpdateNotesBody'),
   appUpdateReleaseNotesButton: document.getElementById('appUpdateReleaseNotesButton'),
   appUpdateMessage: document.getElementById('appUpdateMessage'),
   titleIconInput: document.getElementById('titleIconInput'),
   showCompactTotalTokensInput: document.getElementById('showCompactTotalTokensInput'),
+  compactTokenUnitsRow: document.getElementById('compactTokenUnitsRow'),
+  compactTokenUnitsInput: document.getElementById('compactTokenUnitsInput'),
   swapSettingsRefreshInput: document.getElementById('swapSettingsRefreshInput'),
   resetClientDisplayOrderButton: document.getElementById('resetClientDisplayOrderButton'),
   showAllClientsButton: document.getElementById('showAllClientsButton'),
@@ -370,12 +451,12 @@ Object.assign(els, {
   viewDisplayList: document.getElementById('viewDisplayList'),
   syncSettingsSummary: document.getElementById('syncSettingsSummary'),
   toolsSettingsSummary: document.getElementById('toolsSettingsSummary'),
-  accountsSettingsSummary: document.getElementById('accountsSettingsSummary'),
   limitsSettingsSummary: document.getElementById('limitsSettingsSummary'),
   generalSettingsSummary: document.getElementById('generalSettingsSummary'),
   mainSettingsSummary: document.getElementById('mainSettingsSummary'),
   windowSettingsSummary: document.getElementById('windowSettingsSummary'),
   appearanceSettingsSummary: document.getElementById('appearanceSettingsSummary'),
+  subscriptionsSettingsSummary: document.getElementById('subscriptionsSettingsSummary'),
   themePresetChips: document.getElementById('themePresetChips'),
   themeColorGrid: document.getElementById('themeColorGrid'),
   themeCodeInput: document.getElementById('themeCodeInput'),
@@ -385,6 +466,16 @@ Object.assign(els, {
   themeAdvancedGroup: document.getElementById('themeAdvancedGroup'),
   themeAdvancedToggle: document.getElementById('themeAdvancedToggle'),
   themeAdvancedDetails: document.getElementById('themeAdvancedDetails'),
+  interfaceFontPreset: document.getElementById('interfaceFontPreset'),
+  interfaceFontInput: document.getElementById('interfaceFontInput'),
+  interfaceFontCustomRow: document.getElementById('interfaceFontCustomRow'),
+  interfaceFontPreview: document.getElementById('interfaceFontPreview'),
+  displayFontPreset: document.getElementById('displayFontPreset'),
+  displayFontInput: document.getElementById('displayFontInput'),
+  displayFontCustomRow: document.getElementById('displayFontCustomRow'),
+  displayFontPreview: document.getElementById('displayFontPreview'),
+  resetInterfaceFontButton: document.getElementById('resetInterfaceFontButton'),
+  resetDisplayFontButton: document.getElementById('resetDisplayFontButton'),
   themeVendorGroup: document.getElementById('themeVendorGroup'),
   themeVendorToggle: document.getElementById('themeVendorToggle'),
   themeVendorDetails: document.getElementById('themeVendorDetails'),
@@ -429,14 +520,16 @@ document.addEventListener('pointerdown', (event) => {
   }
 });
 
-document.addEventListener('pointerup', () => {
+document.addEventListener('pointerup', (event) => {
+  releaseTokenRateBoost(event);
   clearViewSwitcherLongPress();
   if (viewSwitcherLongPressTriggered) {
     setTimeout(() => { viewSwitcherLongPressTriggered = false; }, 0);
   }
 });
 
-document.addEventListener('pointercancel', () => {
+document.addEventListener('pointercancel', (event) => {
+  cancelTokenRateBoost(event);
   clearViewSwitcherLongPress();
   viewSwitcherLongPressTriggered = false;
 });
@@ -450,12 +543,34 @@ function currentLanguage() {
 }
 
 function currentLocale() {
-  return i18n.resolveLocale(currentLanguage(), preferredLanguages());
+  return i18n.resolveLocale(state.settings?.locale || currentLanguage(), preferredLanguages());
+}
+
+function currentCalendarLocale() {
+  return i18n.resolveRegionalLocale([...preferredLanguages(), state.settings?.locale]);
+}
+
+function supportsLocalizedCompactTokenUnits(locale) {
+  return compactTokenApi.supportsLocalizedCompactTokenUnits(locale);
+}
+
+function effectiveCompactTokenUnits() {
+  return compactTokenApi.effectiveCompactTokenUnits(state.settings?.compactTokenUnits, currentLocale());
+}
+
+function compactTokenDisplayOptions() {
+  return { ...(state.settings || {}), locale: currentLocale() };
 }
 
 function t(key, params) {
   return i18n.translate(currentLocale(), key, params);
 }
+
+const diagnosticsPanel = window.TokenMonitorDiagnosticsPanel?.createDiagnosticsPanel({
+  api: window.tokenMonitor,
+  translate: t,
+  getLocale: currentLocale
+});
 
 function translatedLimitCapabilityTag(label) {
   const key = LIMIT_CAPABILITY_TAG_KEYS[label];
@@ -470,11 +585,9 @@ function translatedLimitProviderTag(tagInfo) {
 function applySettingsTranslations() {
   if (els.languageInput) els.languageInput.value = currentLanguage();
   i18n.applyTranslations(document, currentLocale());
-  if (customRangePickerApi) {
-    syncCustomRangeButton();
-    // Month/weekday labels are built from locale, not data-i18n nodes.
-    if (state.customRangeOpen || state.customRangeDraft || state.customRange) syncCustomRangeFields();
-  }
+  setThirdPartyAdapterFields();
+  setSubscriptionFormMode();
+  diagnosticsPanel?.render();
 }
 
 function applySettingsSectionDom(id, open) {
@@ -509,6 +622,7 @@ function setSettingsSectionExpanded(section, expanded) {
 const SETTINGS_SCROLL_ANCHOR_MS = 360;
 const SETTINGS_SCROLL_KEYS = new Set(['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' ', 'Tab']);
 let settingsScrollAnchorFrame = null;
+let settingsScrollInteractionRevision = 0;
 
 function cancelSettingsScrollAnchor() {
   if (settingsScrollAnchorFrame === null) return;
@@ -516,8 +630,13 @@ function cancelSettingsScrollAnchor() {
   settingsScrollAnchorFrame = null;
 }
 
+function cancelSettingsScrollAnchorOnInteraction() {
+  settingsScrollInteractionRevision += 1;
+  cancelSettingsScrollAnchor();
+}
+
 function cancelSettingsScrollAnchorOnKeydown(event) {
-  if (SETTINGS_SCROLL_KEYS.has(event.key)) cancelSettingsScrollAnchor();
+  if (SETTINGS_SCROLL_KEYS.has(event.key)) cancelSettingsScrollAnchorOnInteraction();
 }
 
 function shouldAnchorSettingsScroll(section, expanding) {
@@ -557,8 +676,8 @@ function setupSettingsSections() {
     });
     setSettingsSectionExpanded(section, state.settingsSections[section]);
   }
-  els.settingsPanel?.addEventListener('pointerdown', cancelSettingsScrollAnchor, { passive: true });
-  els.settingsPanel?.addEventListener('wheel', cancelSettingsScrollAnchor, { passive: true });
+  els.settingsPanel?.addEventListener('pointerdown', cancelSettingsScrollAnchorOnInteraction, { passive: true });
+  els.settingsPanel?.addEventListener('wheel', cancelSettingsScrollAnchorOnInteraction, { passive: true });
   els.settingsPanel?.addEventListener('keydown', cancelSettingsScrollAnchorOnKeydown);
 }
 
@@ -568,9 +687,20 @@ function refreshIntervalLabel(value) {
   return t('settings.summary.minutes', { minutes });
 }
 
+// Adaptive is a scheduling policy rather than a duration, so the summary names
+// it instead of printing the fixed interval the user would return to.
+function limitsRefreshSummaryLabel(settings) {
+  return settings.limitsRefreshMode === 'adaptive'
+    ? t('settings.limits.refreshAdaptive')
+    : refreshIntervalLabel(settings.limitsRefreshMs);
+}
+
 function viewsSummary() {
-  const hidden = hiddenViewSet();
-  const visible = VIEW_DISPLAY_OPTIONS.length - hidden.size;
+  const visible = viewDisplayPreferencesApi.visibleViewCount({
+    views: VIEW_DISPLAY_OPTIONS,
+    hiddenValue: state.settings?.hiddenViews,
+    disabledIds: disabledViewIds()
+  });
   return t('settings.summary.views', { visible, total: VIEW_DISPLAY_OPTIONS.length });
 }
 
@@ -582,36 +712,36 @@ function settingsSectionSummary(section) {
     return t('settings.sync.localOnly');
   }
   if (section === 'tools') {
+    const counts = clientHealthPresentationApi.clientHealthCountsForTracked(
+      localClientHealth(),
+      enabledClientSet()
+    );
+    if (counts) return t('settings.summary.toolsHealth', counts);
     return t('settings.summary.tools', {
       tracked: enabledClientSet().size,
       visible: KNOWN_CLIENTS.length - hiddenClientSet().size,
       pinned: pinnedClientSet().size
     });
   }
-  if (section === 'accounts') {
-    const cursorLinked = Boolean(state.cursorAccount.status?.loggedIn) && !state.cursorAccount.status?.expired;
-    const opencodeCount = state.opencodeProfileCount || 0;
-    const openrouterCount = state.openrouterProfileCount || 0;
-    const deepseekLinked = deepseekAccountLinked();
-    const minimaxLinked = minimaxAccountLinked();
-    const zaiLinked = externalProviderAccountLinked('zai');
-    const zaiteamLinked = externalProviderAccountLinked('zaiteam');
-    const volcengineLinked = externalProviderAccountLinked('volcengine');
-    const qoderLinked = externalProviderAccountLinked('qoder');
-    const kimiLinked = externalProviderAccountLinked('kimi');
-    const ollamaLinked = externalProviderAccountLinked('ollama');
-    const mimoLinked = mimoAccountLinked();
-    const copilotLinked = copilotAccountLinked();
-    const codexLinked = (state.settings?.codexManagedAccounts || []).length > 0;
-    return t('settings.summary.accounts', {
-      linked: (codexLinked ? 1 : 0) + (cursorLinked ? 1 : 0) + (opencodeCount > 0 ? 1 : 0) + (openrouterCount > 0 ? 1 : 0) + (deepseekLinked ? 1 : 0) + (minimaxLinked ? 1 : 0) + (zaiLinked ? 1 : 0) + (zaiteamLinked ? 1 : 0) + (volcengineLinked ? 1 : 0) + (qoderLinked ? 1 : 0) + (kimiLinked ? 1 : 0) + (ollamaLinked ? 1 : 0) + (mimoLinked ? 1 : 0) + (copilotLinked ? 1 : 0),
-      total: 14
-    });
-  }
   if (section === 'limits') {
     return t('settings.summary.limits', {
       enabled: enabledLimitProviderSet().size,
-      refresh: refreshIntervalLabel(state.settings.limitsRefreshMs)
+      refresh: limitsRefreshSummaryLabel(state.settings)
+    });
+  }
+  if (section === 'subscriptions') {
+    const list = subscriptionList();
+    if (list.length === 0) return t('settings.subscriptions.summaryEmpty');
+    // The monthly total in the collapsed summary is the whole reason this is a
+    // top-level section rather than a subgroup: the number people want is
+    // visible without opening anything.
+    //
+    // Counted over the same set the total sums, so the two halves never
+    // disagree — a lapsed plan costs nothing this month and is not one of them.
+    const active = subscriptionApi.activeSubscriptions(list);
+    return t('settings.subscriptions.summary', {
+      count: active.length,
+      total: formatCost(subscriptionApi.monthlyTotalUsd(active, currencyApi))
     });
   }
   if (section === 'main') {
@@ -643,32 +773,22 @@ function renderSettingsSummaries() {
 }
 
 function formatNumber(value) { return Math.round(Number(value || 0)).toLocaleString('en-US'); }
-function formatCompact(value) {
-  const num = Math.round(Number(value || 0));
-  const abs = Math.abs(num);
-  const units = [
-    { divisor: 1e3, suffix: 'K' },
-    { divisor: 1e6, suffix: 'M' },
-    { divisor: 1e9, suffix: 'B' }
-  ];
-  let unitIndex = abs >= 1e9 ? 2 : abs >= 1e6 ? 1 : abs >= 1e3 ? 0 : -1;
-  if (unitIndex < 0) return String(num);
-
-  let unit = units[unitIndex];
-  let display = (num / unit.divisor).toFixed(1);
-  if (Math.abs(Number(display)) >= 1000 && unitIndex < units.length - 1) {
-    unit = units[unitIndex + 1];
-    display = (num / unit.divisor).toFixed(1);
-  }
-  return `${display.replace(/\.0$/, '')}${unit.suffix}`;
+function formatCompact(value, unitSystem, locale) {
+  return compactTokenApi.formatCompactTokens(
+    value,
+    unitSystem === undefined ? effectiveCompactTokenUnits() : unitSystem,
+    locale === undefined ? currentLocale() : locale
+  );
 }
 function updateTotalCompact(value) {
   if (!els.totalTokensCompact) return;
   const num = Math.round(Number(value || 0));
-  if (state.settings?.showCompactTotalTokens !== true || Math.abs(num) < 1000) {
+  const unitSystem = effectiveCompactTokenUnits();
+  const threshold = compactTokenApi.compactTokenUnitThreshold(unitSystem, currentLocale());
+  if (state.settings?.showCompactTotalTokens !== true || Math.abs(num) < threshold) {
     hideTotalCompact();
   } else {
-    els.totalTokensCompact.textContent = `≈ ${formatCompact(num)}`;
+    els.totalTokensCompact.textContent = `≈ ${formatCompact(num, unitSystem, currentLocale())}`;
     els.totalTokensCompact.classList.remove('hidden');
   }
   fitTotalNumber();
@@ -677,6 +797,81 @@ function hideTotalCompact() {
   if (!els.totalTokensCompact) return;
   els.totalTokensCompact.textContent = '';
   els.totalTokensCompact.classList.add('hidden');
+}
+function currentTokenRateValue() {
+  const period = state.stats?.periods?.[state.period];
+  const burn = state.settings?.tokenRateMode === 'burn';
+  return {
+    burn,
+    mode: burn ? 'burn' : 'speed',
+    rate: burn ? tokenBurnPerMinute(period) : tokenRatePerSecond(period)
+  };
+}
+const tokenRateBoost = tokenRateApi.createTokenRateBoostController({
+  readValue: currentTokenRateValue,
+  canStart: () => els.shell?.classList.contains('title-icon-only') || els.shell?.classList.contains('title-collapsed'),
+  prefersReducedMotion,
+  onChange: () => renderTokenRate()
+});
+function tokenRateText(rate, burn) {
+  // formatCompact rounds, so a sub-0.5 rate would render as a bare "0". Treat that as no
+  // data and stay hidden rather than claim a zero pace.
+  return Math.round(rate) > 0
+    ? t(burn ? 'home.tokenRateBurn' : 'home.tokenRate', {
+      value: formatCompact(rate, effectiveCompactTokenUnits(), currentLocale())
+    })
+    : '';
+}
+function renderTokenRate() {
+  if (!els.tokenRateReveal) return;
+  tokenRateBoost.refresh();
+  const { burn, rate } = currentTokenRateValue();
+  const boost = tokenRateBoost.getSnapshot();
+  const displayRate = boost ? boost.displayRate : rate;
+  const text = tokenRateText(displayRate, boost ? boost.mode === 'burn' : burn);
+  els.tokenRateReveal.textContent = text;
+  els.tokenRateReveal.classList.toggle('has-value', Boolean(text));
+  els.tokenRateReveal.classList.toggle('boosting', boost?.phase === 'boosting');
+  els.tokenRateReveal.classList.toggle('settling', boost?.phase === 'settling');
+}
+function startTokenRateBoost(event) {
+  if (!tokenRateBoost.start(event)) return;
+  try { event.currentTarget?.setPointerCapture?.(event.pointerId); } catch (_) {}
+}
+function releaseTokenRateBoost(event) {
+  tokenRateBoost.release(event);
+}
+function cancelTokenRateBoost(event, options) {
+  tokenRateBoost.cancel(event, options);
+}
+function suppressTokenRateClickAfterHold(event) {
+  if (!tokenRateBoost.consumeClick()) return;
+  event.stopImmediatePropagation();
+}
+// The title mark is the only pixel of the reveal that can take a click: a drag region does
+// not deliver mouse events, so this control and its hover target are the same no-drag island.
+//
+// Deliberately pointer-only, and the mark stays a non-focusable aria-hidden span. A focusable
+// control here is worse than no keyboard path: the window assigns focus to a control when it
+// is shown, and Chromium then derives :focus-visible from that activation rather than from
+// any click, so the reveal reopens with a focus ring on a window the user just summoned with
+// the pointer nowhere near the title. Visibility cancellation keeps transient state from
+// surviving a hide/show, but it does not make this hover-only reading a useful keyboard control.
+// Short clicks still switch the reading; a sustained pointer hold is the transient boost affordance.
+function toggleTokenRateMode() {
+  // A mode switch during settling would relabel the old reading with the new unit. End the
+  // transient state first; the next render then starts from the selected framing's real rate.
+  tokenRateBoost.cancel(undefined, { suppressClick: false });
+  const next = state.settings?.tokenRateMode === 'burn' ? 'speed' : 'burn';
+  // Repaint before the settings round trip. saveSettings re-syncs the entire settings form,
+  // which is orders of magnitude heavier than this label and would make the switch lag.
+  if (state.settings) state.settings.tokenRateMode = next;
+  renderTokenRate();
+  // Repaint again if the write failed: saveSettings re-reads settings from the main process on
+  // rejection, so state has already reverted to the persisted framing while the label is still
+  // showing the one the click asked for. Without this the label stays wrong until some later
+  // tick silently flips it back.
+  saveSettings({ tokenRateMode: next }).catch(() => renderTokenRate());
 }
 // Scale the exact total to fit the width it is actually given instead of clipping
 // it to an ellipsis. The compact chip (when shown) is flex:0 0 auto and claims its
@@ -787,13 +982,6 @@ function formatUpdatedAge(value) {
 function versionText(value) {
   return value ? `v${value}` : 'unknown';
 }
-function appUpdateActionMode(s) {
-  if (!s) return '';
-  if (s.downloaded) return 'install';
-  if (!s.hasUpdate) return '';
-  if (s.installSupported) return 'download';
-  return s.latest?.htmlUrl ? 'release' : '';
-}
 function setAppUpdatePillDisclosure(available) {
   const action = els.appUpdatePillAction;
   if (available) {
@@ -810,7 +998,7 @@ function renderAppUpdatePill() {
   const s = state.appUpdate;
   const pill = els.appUpdatePill;
   if (!pill) return;
-  const mode = appUpdateActionMode(s);
+  const mode = appUpdatePresentationApi.appUpdateActionMode(s);
   const version = s?.latest?.version || s?.installVersion || '';
   if (!s || !mode || !version || !s.showUpdateNotice) {
     pill.classList.add('hidden');
@@ -856,12 +1044,7 @@ function renderAppUpdatePill() {
   }
 }
 function releaseNoteGroupsForCurrentLocale(latest) {
-  const notes = latest?.releaseNotes;
-  if (!notes || typeof notes !== 'object') return [];
-  const preferred = currentLocale().startsWith('zh') ? notes.zh : notes.en;
-  if (Array.isArray(preferred) && preferred.length > 0) return preferred;
-  if (Array.isArray(notes.en) && notes.en.length > 0) return notes.en;
-  return Array.isArray(notes.zh) ? notes.zh : [];
+  return appUpdatePresentationApi.releaseNoteGroupsForLocale(latest?.releaseNotes, currentLocale());
 }
 function buildAppUpdateNoteGroupNodes(groups) {
   return groups.map((group) => {
@@ -883,7 +1066,7 @@ function buildAppUpdateNoteGroupNodes(groups) {
 function renderAppUpdatePopover(s) {
   const version = s?.latest?.version || '';
   const groups = releaseNoteGroupsForCurrentLocale(s?.latest);
-  const mode = appUpdateActionMode(s);
+  const mode = appUpdatePresentationApi.appUpdateActionMode(s);
   if (!version || groups.length === 0 || !mode) {
     if (els.appUpdatePopover.matches(':popover-open')) els.appUpdatePopover.hidePopover();
     els.appUpdatePopoverTitle.textContent = '';
@@ -915,7 +1098,7 @@ function renderAppUpdateNotes(s) {
   const visible = Boolean(version && groups.length > 0);
   els.appUpdateNotes.classList.toggle('hidden', !visible);
   if (!visible) {
-    els.appUpdateNotes.open = false;
+    setSettingsAccordionExpanded(els.appUpdateNotes, els.appUpdateNotesToggle, els.appUpdateNotesDetails, false);
     els.appUpdateNotesTitle.textContent = '';
     els.appUpdateNotesBody.replaceChildren();
     return;
@@ -925,7 +1108,10 @@ function renderAppUpdateNotes(s) {
   els.appUpdateNotesBody.replaceChildren(...buildAppUpdateNoteGroupNodes(groups));
   els.appUpdateReleaseNotesButton.classList.toggle('hidden', !s.latest?.htmlUrl);
   if (s.hasUpdate && state.appUpdateNotesPresentedVersion !== version) {
-    els.appUpdateNotes.open = true;
+    // The disclosure may have just changed from display:none. Commit its
+    // collapsed grid once so the first automatic reveal can transition too.
+    els.appUpdateNotesDetails.getBoundingClientRect();
+    setSettingsAccordionExpanded(els.appUpdateNotes, els.appUpdateNotesToggle, els.appUpdateNotesDetails, true);
     state.appUpdateNotesPresentedVersion = version;
   }
 }
@@ -943,12 +1129,14 @@ function renderSettingsAppUpdateRow() {
     return;
   }
   els.appUpdateInstalled.textContent = `v${s.currentVersion}`;
-  const displayVersion = s.latest?.version || s.installVersion || '';
+  const presentation = appUpdatePresentationApi.appUpdateStatusPresentation(s);
+  const displayVersion = presentation.displayVersion;
   if (displayVersion) {
-    els.appUpdateLatest.textContent = !s.hasUpdate && semverLikeEqual(displayVersion, s.currentVersion)
-      ? t('settings.appUpdate.latestWithStatus', { version: displayVersion, status: t('settings.appUpdate.upToDateShort') })
+    const status = presentation.latestStatusKey ? t(presentation.latestStatusKey) : '';
+    els.appUpdateLatest.textContent = status
+      ? t('settings.appUpdate.latestWithStatus', { version: displayVersion, status })
       : `v${displayVersion}`;
-    const actionMode = appUpdateActionMode(s);
+    const actionMode = appUpdatePresentationApi.appUpdateActionMode(s);
     els.appUpdateViewReleaseButton.classList.toggle('hidden', !actionMode);
     els.appUpdateViewReleaseButton.disabled = Boolean(s.installBusy);
     els.appUpdateViewReleaseButton.textContent = actionMode === 'install'
@@ -957,26 +1145,39 @@ function renderSettingsAppUpdateRow() {
         ? t('settings.appUpdate.download')
         : t('settings.appUpdate.viewRelease');
   } else {
-    els.appUpdateLatest.textContent = s.lastCheckedAt ? t('settings.appUpdate.upToDate') : t('settings.common.notChecked');
+    els.appUpdateLatest.textContent = s.lastError
+      ? t('settings.appUpdate.unavailable')
+      : s.lastCheckedAt
+        ? t('settings.appUpdate.upToDate')
+        : t('settings.common.notChecked');
     els.appUpdateViewReleaseButton.classList.add('hidden');
   }
-  els.appUpdateCheckButton.disabled = Boolean(s.checking || s.installBusy);
+  // installRetryBlocked as well as busy: the main process stops running checks once
+  // an attempt is spent, so without this the button would sit live and do nothing.
+  // It is not folded into installBusy, which would disable View release along with
+  // it and take away the one path a spent attempt leaves working.
+  els.appUpdateCheckButton.disabled = Boolean(s.checking || s.installBusy || s.installRetryBlocked);
   els.appUpdateCheckButton.textContent = s.checking ? t('settings.appUpdate.checking') : t('settings.appUpdate.check');
   renderAppUpdateNotes(s);
   if (s.installPhase === 'downloading') {
     const percent = Number.isFinite(s.installProgress) ? Math.round(s.installProgress) : 0;
     els.appUpdateMessage.textContent = t('settings.appUpdate.downloading', { percent });
     els.appUpdateMessage.classList.remove('error');
+  } else if (s.installStarting) {
+    els.appUpdateMessage.textContent = t('settings.appUpdate.installStarting');
+    els.appUpdateMessage.classList.remove('error');
   } else if (s.downloaded) {
-    els.appUpdateMessage.textContent = state.appInfo?.platform === 'win32'
-      ? t('settings.appUpdate.readyWindowsUnsigned')
-      : t('settings.appUpdate.ready');
+    els.appUpdateMessage.textContent = t('settings.appUpdate.ready');
     els.appUpdateMessage.classList.remove('error');
   } else if (s.installError) {
-    els.appUpdateMessage.textContent = t('settings.appUpdate.installError');
+    els.appUpdateMessage.textContent = t(appUpdatePresentationApi.appUpdateInstallErrorMessageKey(s.installErrorKind));
     els.appUpdateMessage.classList.add('error');
   } else if (s.lastError) {
-    els.appUpdateMessage.textContent = t('settings.appUpdate.githubError');
+    const error = t(presentation.errorKey);
+    const age = compactAge(presentation.lastSuccessfulCheckAt);
+    els.appUpdateMessage.textContent = age
+      ? t('settings.appUpdate.errorWithLastSuccess', { error, age })
+      : error;
     els.appUpdateMessage.classList.add('error');
   } else {
     els.appUpdateMessage.textContent = '';
@@ -998,9 +1199,6 @@ function renderAutomaticAppUpdateControl() {
   }
 }
 
-function semverLikeEqual(a, b) {
-  return typeof a === 'string' && typeof b === 'string' && a === b;
-}
 function compactAge(value) {
   const date = value ? new Date(value) : null;
   if (!date || Number.isNaN(date.getTime())) return '';
@@ -1056,6 +1254,13 @@ function mergeTokscalePayload(payload) {
 function renderTokscaleStatus() {
   if (!els.tokscaleGroup) return;
   const status = state.tokscaleStatus;
+  const advancedSummaryKey = state.tokscaleCheck?.newer
+    ? 'settings.advanced.tokscaleUpdate'
+    : 'settings.advanced.summary';
+  if (els.advancedSettingsSummary) {
+    els.advancedSettingsSummary.dataset.i18n = advancedSummaryKey;
+    els.advancedSettingsSummary.textContent = t(advancedSummaryKey);
+  }
   if (status?.supported === false) {
     els.tokscaleGroup.classList.add('hidden');
     return;
@@ -1191,6 +1396,10 @@ function animateNumber(el, from, to, duration = 1000, onDone = null) {
   numberAnimHandle = requestAnimationFrame(frame);
 }
 
+function animateTotalNumber(el, from, to, duration) {
+  animateNumber(el, from, to, duration, () => updateTotalCompact(to));
+}
+
 const rowNumberAnimations = new Map();
 const rowBarAnimations = new Map();
 const rowRenderFingerprints = new WeakMap();
@@ -1226,6 +1435,7 @@ function prefersReducedMotion() {
 }
 
 function settleMotionAnimations() {
+  cancelTokenRateBoost(undefined, { suppressClick: false });
   cancelNumberAnimation();
   numberAnimValue = state.currentTotal;
   els.totalTokens.textContent = formatNumber(state.currentTotal);
@@ -1310,12 +1520,27 @@ function animateRowNumber(el, from, to, duration = 420) {
   rowNumberAnimations.set(el, motion);
 }
 
+function cancelRowNumberAnimation(el) {
+  if (!el) return;
+  const motion = rowNumberAnimations.get(el);
+  if (motion) cancelAnimationFrame(motion.handle);
+  rowNumberAnimations.delete(el);
+  delete el.dataset.motionTarget;
+}
+
 function animateBreakdownFrom(snapshot, { duration = 420 } = {}) {
   if (!snapshot) return;
   const rows = Array.from(els.breakdown?.querySelectorAll('.row[data-key]') || []);
   if (!shouldAnimateBreakdownRows(rows.length, { reducedMotion: prefersReducedMotion() })) return;
   let enteringIndex = 0;
   for (const row of rows) {
+    // An unavailable native session value must stay a semantic label. The
+    // ordinary row-number tween formats its zero placeholder as "0", which
+    // would turn unknown data into a false numeric reading after every render.
+    if (row.dataset.tokenDataUnavailable === 'true') {
+      cancelRowNumberAnimation(row.querySelector('.row-value'));
+      continue;
+    }
     const previous = snapshot.get(row.dataset.key);
     const value = Number(row.dataset.motionValue || 0);
     const fill = row.querySelector('.bar-fill');
@@ -1558,21 +1783,27 @@ function renderDeviceAccordion(accordionInner, deviceDetail) {
   accordionInner.dataset.signature = signature;
 }
 
-function updateRow(row, { name, subtitle, detail, value, cost, max, color, barBackground, accordionRows, deviceDetail, stale, platform, local, client, kind, cacheReadTokens, outputTokens }) {
+function updateRow(row, { name, subtitle, detail, value, cost, max, color, barBackground, accordionRows, deviceDetail, stale, platform, local, client, kind, cacheReadTokens, outputTokens, unclassifiedTokens, tokenDataUnavailable, sessionDetailAvailable }) {
   const width = rowWidth(value, max);
   const isExpanded = row.classList.contains('expanded');
   row.className = `row${kind ? ` ${kind}-row` : ''}${stale ? ' stale' : ''}${local ? ' local' : ''}`;
   row.title = local ? 'This device' : '';
   
-  if (cacheReadTokens !== undefined || outputTokens !== undefined) {
+  if (cacheReadTokens !== undefined || outputTokens !== undefined || unclassifiedTokens !== undefined) {
     row.dataset.cacheRead = cacheReadTokens || 0;
     row.dataset.outputTokens = outputTokens || 0;
+    row.dataset.unclassifiedTokens = unclassifiedTokens || 0;
     row.dataset.totalTokens = value || 0;
     row.dataset.name = name || '';
   }
   if (platform !== undefined) row.dataset.platform = platform || '';
   if (client !== undefined) row.dataset.client = client || '';
   if (kind !== undefined) row.dataset.kind = kind || '';
+  if (kind === 'session' && client === 'reasonix') {
+    row.dataset.detailUnavailable = sessionDetailAvailable === true ? 'false' : 'true';
+  } else if (row.hasAttribute('data-detail-unavailable')) {
+    row.removeAttribute('data-detail-unavailable');
+  }
   const mark = row.querySelector('.row-mark');
   const iconKind = iconKindFor({ key: row.dataset.key, platform: row.dataset.platform || '', client: row.dataset.client || '' }, state.breakdown);
   if (iconKind.kind === 'icon') {
@@ -1590,10 +1821,17 @@ function updateRow(row, { name, subtitle, detail, value, cost, max, color, barBa
   detailEl.textContent = detail || '';
   detailEl.classList.toggle('hidden', !detail);
   const valueEl = row.querySelector('.row-value');
-  valueEl.textContent = formatNumber(value);
+  if (tokenDataUnavailable === true) {
+    row.dataset.tokenDataUnavailable = 'true';
+    cancelRowNumberAnimation(valueEl);
+    valueEl.textContent = t('detailTokenUnavailable') || 'Unavailable';
+  } else {
+    delete row.dataset.tokenDataUnavailable;
+    valueEl.textContent = formatNumber(value);
+  }
   valueEl.dataset.motionValue = String(Number(value) || 0);
   row.dataset.motionValue = String(Number(value) || 0);
-  row.querySelector('.row-cost').textContent = formatCost(cost || 0);
+  row.querySelector('.row-cost').textContent = tokenDataUnavailable === true ? '' : formatCost(cost || 0);
   const fill = row.querySelector('.bar-fill');
   fill.style.background = barBackground || color;
   applyBarScale(fill, width / 100);
@@ -1633,14 +1871,20 @@ function updateRow(row, { name, subtitle, detail, value, cost, max, color, barBa
     }
     row.classList.add('has-accordion');
     if (isExpanded) row.classList.add('expanded');
-  } else if ((cacheReadTokens !== undefined || outputTokens !== undefined) && value > 0 && kind !== 'session') {
-    const cacheRead = cacheReadTokens || 0;
-    const output = outputTokens || 0;
-    const totalTokens = value || 0;
-    const cacheMiss = Math.max(0, totalTokens - cacheRead - output);
-    const inputTokens = cacheRead + cacheMiss;
-    const hitPct = inputTokens > 0 ? Math.round((cacheRead / inputTokens) * 100) : 0;
-    const missPct = inputTokens > 0 ? 100 - hitPct : 0;
+  } else if ((cacheReadTokens !== undefined || outputTokens !== undefined || unclassifiedTokens !== undefined) && value > 0 && kind !== 'session') {
+    const {
+      cacheRead,
+      cacheMiss,
+      output,
+      unclassified,
+      hitPct,
+      missPct
+    } = fixedPeriodRangesApi.tokenComponentBreakdown({
+      totalTokens: value,
+      cacheReadTokens,
+      outputTokens,
+      unclassifiedTokens
+    });
     
     delete accordionInner.dataset.signature;
     accordionInner.innerHTML = `
@@ -1657,6 +1901,11 @@ function updateRow(row, { name, subtitle, detail, value, cost, max, color, barBa
           <div class="accordion-label">${t('dashboard.tooltip.output')}</div>
           <div class="accordion-value">${formatNumber(output)}</div>
         </div>
+        ${unclassified > 0 ? `
+        <div class="accordion-row">
+          <div class="accordion-label">${t('dashboard.tooltip.unclassified')}</div>
+          <div class="accordion-value">${formatNumber(unclassified)}</div>
+        </div>` : ''}
       </div>
     `;
     row.classList.add('has-accordion');
@@ -1671,7 +1920,11 @@ function updateRow(row, { name, subtitle, detail, value, cost, max, color, barBa
     if (row.tabIndex !== 0) row.tabIndex = 0;
     setAttributeIfChanged(row, 'role', 'button');
     setAttributeIfChanged(row, 'aria-expanded', String(row.classList.contains('expanded')));
-    setAttributeIfChanged(row, 'aria-label', `${name}, ${t('dashboard.stat.totalTokens')}: ${formatNumber(value)}, ${t('dashboard.stat.totalCost')}: ${formatCost(cost || 0)}`);
+    const tokenLabel = tokenDataUnavailable === true
+      ? (t('detailTokenUnavailable') || 'Unavailable')
+      : formatNumber(value);
+    const costLabel = tokenDataUnavailable === true ? '' : `, ${t('dashboard.stat.totalCost')}: ${formatCost(cost || 0)}`;
+    setAttributeIfChanged(row, 'aria-label', `${name}, ${t('dashboard.stat.totalTokens')}: ${tokenLabel}${costLabel}`);
   } else {
     if (row.hasAttribute('tabindex')) row.removeAttribute('tabindex');
     if (row.hasAttribute('role')) row.removeAttribute('role');
@@ -1781,16 +2034,36 @@ function stableColor(value, colors) {
   return colors[Math.abs(hash) % colors.length];
 }
 
+function fixedPeriodDevices() {
+  if (!fixedPeriodRangesApi.isDerived(state.period)) return state.stats?.devices || [];
+  return fixedPeriodRangesApi.devicesForReadySnapshot(state.fixedPeriodSnapshot, state.period);
+}
+
+function fixedPeriodSources() {
+  return fixedPeriodRangesApi.joinDeviceHistorySources(
+    state.fixedPeriodHistory?.deviceHistories || [],
+    state.stats?.devices || []
+  );
+}
+
+function buildFixedPeriodSourcesSnapshot() {
+  const meta = state.fixedPeriodHistory?.fixedPeriods || {};
+  return fixedPeriodRangesApi.fixedPeriodSnapshotFromDevices(state.period, fixedPeriodSources(), {
+    historyEnabled: state.settings?.historyEnabled !== false,
+    historyAvailable: meta.historyTransportAvailable === true,
+    todayKey: fixedPeriodTodayKey(),
+    locale: currentCalendarLocale()
+  });
+}
+
 function deviceRowsForPeriod() {
   const localId = state.settings?.deviceId || '';
-  const devices = (state.stats?.devices || []).filter((device) => (
-    state.period !== 'custom' || device?.periods?.custom
-  ));
-  return devices.map((device) => {
+  return fixedPeriodDevices().map((device) => {
     const breakdown = deviceBreakdownApi.deviceBreakdownForPeriod(device, state.period, {
       clientLabels,
       clientColors,
-      fallbackColor: clientColors.default
+      fallbackColor: clientColors.default,
+      unattributedLabel: t('dashboard.tooltip.unclassified')
     });
     const period = device.periods?.[state.period] || {};
     const runtime = deviceRuntimeLabel(device.agentRuntime);
@@ -1814,8 +2087,29 @@ function deviceRowsForPeriod() {
   }).sort((a, b) => b.value - a.value);
 }
 
+function attributionComponent(period, field, key) {
+  const aggregateField = {
+    clientCacheReads: 'cacheReadTokens',
+    modelCacheReads: 'cacheReadTokens',
+    clientCacheWrites: 'cacheWriteTokens',
+    modelCacheWrites: 'cacheWriteTokens',
+    clientOutputs: 'outputTokens',
+    modelOutputs: 'outputTokens',
+    clientUnclassifiedTokens: 'unclassifiedTokens',
+    modelUnclassifiedTokens: 'unclassifiedTokens'
+  }[field];
+  return usageAttributionRowsApi.attributionValue(
+    period?.[field],
+    period?.[aggregateField],
+    key
+  );
+}
+
 function toolRowsForPeriod(period) {
-  const clientRows = Object.entries(period?.clients || {}).filter(([, value]) => Number(value) > 0).map(([client, value]) => ({ key: client, name: clientLabels[client] || client, value: Number(value), cost: Number(period?.clientCosts?.[client] || 0), color: clientColors[client] || clientColors.default, stale: false, cacheReadTokens: Number(period?.clientCacheReads?.[client] || 0), cacheWriteTokens: Number(period?.clientCacheWrites?.[client] || 0), outputTokens: Number(period?.clientOutputs?.[client] || 0) }));
+  const clientRows = usageAttributionRowsApi.attributionRows(period?.clients, period?.clientCosts, {
+    totalValue: period?.totalTokens,
+    totalCost: period?.costUsd
+  }).map(({ key: client, value, cost }) => ({ key: client, name: client === usageAttributionRowsApi.UNATTRIBUTED_KEY ? t('dashboard.tooltip.unclassified') : clientLabels[client] || client, value, cost, color: clientColors[client] || clientColors.default, stale: false, cacheReadTokens: attributionComponent(period, 'clientCacheReads', client), cacheWriteTokens: attributionComponent(period, 'clientCacheWrites', client), outputTokens: attributionComponent(period, 'clientOutputs', client), unclassifiedTokens: attributionComponent(period, 'clientUnclassifiedTokens', client) }));
   if (clientRows.length > 0) {
     const usageSortedRows = clientRows.sort((a, b) => b.value - a.value);
     return clientDisplayPreferencesApi.applyClientDisplayPreferences(usageSortedRows, state.settings?.clientDisplayOrder, state.settings?.hiddenClients, KNOWN_CLIENTS, state.settings?.pinnedClients);
@@ -1825,16 +2119,20 @@ function toolRowsForPeriod(period) {
 }
 
 function modelRowsForPeriod(period) {
-  const modelRows = Object.entries(period?.models || {}).filter(([, value]) => Number(value) > 0).map(([model, value]) => ({
+  const modelRows = usageAttributionRowsApi.attributionRows(period?.models, period?.modelCosts, {
+    totalValue: period?.totalTokens,
+    totalCost: period?.costUsd
+  }).map(({ key: model, value, cost }) => ({
     key: model,
-    name: model,
-    value: Number(value),
-    cost: Number(period?.modelCosts?.[model] || 0),
+    name: model === usageAttributionRowsApi.UNATTRIBUTED_KEY ? t('dashboard.tooltip.unclassified') : model,
+    value,
+    cost,
     color: modelColor(model),
     stale: false,
-    cacheReadTokens: Number(period?.modelCacheReads?.[model] || 0),
-    cacheWriteTokens: Number(period?.modelCacheWrites?.[model] || 0),
-    outputTokens: Number(period?.modelOutputs?.[model] || 0)
+    cacheReadTokens: attributionComponent(period, 'modelCacheReads', model),
+    cacheWriteTokens: attributionComponent(period, 'modelCacheWrites', model),
+    outputTokens: attributionComponent(period, 'modelOutputs', model),
+    unclassifiedTokens: attributionComponent(period, 'modelUnclassifiedTokens', model)
   }));
   if (modelRows.length > 0) return modelRows.sort((a, b) => b.value - a.value);
   if (Number(period?.totalTokens || 0) === 0) return [];
@@ -1848,7 +2146,8 @@ function sessionRowsForPeriod(period) {
     modelColor,
     stableColor,
     fallbackColors: fallbackModelColors,
-    archivedLabel: t('session.archived')
+    archivedLabel: t('session.archived'),
+    nativeSessions: state.stats?.nativeSessions?.[state.period] || {}
   });
   if (rows.length > 0) return rows.sort((a, b) => b.sortTime - a.sortTime || b.value - a.value || b.cost - a.cost || a.name.localeCompare(b.name));
   if (Number(period?.totalTokens || 0) === 0) return [];
@@ -1861,7 +2160,9 @@ function projectRowsForPeriod(period) {
     clientColors,
     stableColor,
     fallbackColors: fallbackModelColors,
-    unknownClientLabel: t('projects.unknownTool')
+    unknownClientLabel: t('projects.unknownTool'),
+    nativeProjects: state.stats?.nativeProjects?.[state.period] || {},
+    nativeSessions: state.stats?.nativeSessions?.[state.period] || {}
   });
 }
 
@@ -1968,6 +2269,1421 @@ function limitProviderPlan(provider) {
   return provider?.status && provider.status !== 'ok' ? limitStatusLabel(provider.status, false) : '';
 }
 
+// ---------------------------------------------------------------------------
+// Subscriptions
+//
+// What each account actually costs, entered by hand. Nothing here talks to a
+// provider — the numbers are the user's own. The value comes from pairing them
+// with usage this app already measures.
+// ---------------------------------------------------------------------------
+
+function subscriptionList() {
+  return subscriptionApi.normalizeSubscriptions(state.settings?.subscriptions, { currencyApi });
+}
+
+function subscriptionProviderLabel(providerId) {
+  const entry = LIMIT_PROVIDERS.find((provider) => provider.id === providerId);
+  return entry?.settingsLabel || entry?.label || providerId;
+}
+
+// Keyed off the same list the label comes from, because a `.row-icon-<id>` with
+// no mask rule behind it paints a solid square rather than nothing — so a record
+// still bound to a provider that has since left the list gets no icon at all.
+function subscriptionProviderIconClass(providerId) {
+  const known = LIMIT_PROVIDERS.some((provider) => provider.id === providerId);
+  return known ? `row-icon row-icon-${providerId}` : '';
+}
+
+function isCreditsProvider(provider) {
+  return subscriptionApi.isBalanceOnlyAccount(provider);
+}
+
+// Every account the limits page renders, which is the cross-device aggregate —
+// a shared list names accounts that may be signed in on another machine.
+// Preferring this device's own list hid those rows, and worse, left a single
+// local account as the only candidate: matchProviderAccount()'s sole-account
+// fallback would then bind a remote subscription to whatever is signed in here.
+// Local entries come first so this device wins a tie on identical accounts.
+function limitProvidersForSubscriptions() {
+  const seen = new Set();
+  const merged = [];
+  for (const provider of [...(localDeviceLimitsProviders() || []), ...(state.stats?.limits?.providers || [])]) {
+    const key = subscriptionAccountValue(provider);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    merged.push(provider);
+  }
+  return merged;
+}
+
+// Every configured account, balance ones included. They used to be hidden behind
+// a toggle because the form could only describe a subscription; now the record
+// kind says which shape is being recorded, so hiding the accounts only got in
+// the way of reaching them.
+function subscriptionAccountChoices() {
+  const visible = limitProvidersForSubscriptions()
+    .filter((provider) => provider?.provider && provider.status !== 'notConfigured');
+  return visible.map((provider, index) => ({
+    provider,
+    value: subscriptionAccountValue(provider),
+    label: accountIdentityApi.accountTitleLabel(provider, visible, {
+      maskEmail: state.settings?.maskLimitAccountEmails === true,
+      index
+    }) || subscriptionProviderLabel(provider.provider)
+  }));
+}
+
+function subscriptionAccountValue(provider) {
+  return [provider?.provider || '', provider?.accountKey || '', provider?.accountName || ''].join('\0');
+}
+
+// The plan the account already reports ("Pro", "Plus") is nearly always what the
+// user would type, so the picker seeds it. limitProviderPlan() doubles as the
+// status-label producer, so a provider that is down would otherwise seed the
+// field with "Offline" — only a live account may.
+function subscriptionSuggestedPlanName(provider) {
+  if (!provider) return '';
+  if (provider.status && provider.status !== 'ok' && !provider.stale) return '';
+  return limitProviderPlan(provider);
+}
+
+function subscriptionSelectedAccount() {
+  const value = String(els.subscriptionAccountInput?.value || '');
+  return subscriptionAccountChoices().find((choice) => choice.value === value)?.provider || null;
+}
+
+function subscriptionAmountText(subscription) {
+  const code = currencyApi.normalizeCurrency(subscription?.currency);
+  const symbol = currencyApi.CURRENCY_RATES[code]?.symbol || `${code} `;
+  return `${symbol}${subscriptionApi.amountUnits(subscription).toFixed(2)}`;
+}
+
+function subscriptionCadenceText(subscription) {
+  const count = Number(subscription?.intervalCount) || 1;
+  const unit = subscription?.interval === 'year'
+    ? t('settings.subscriptions.unitYear')
+    : t('settings.subscriptions.unitMonth');
+  return count === 1 ? unit : t('settings.subscriptions.everyN', { count, unit });
+}
+
+function subscriptionPriceText(subscription) {
+  return `${subscriptionAmountText(subscription)} / ${subscriptionCadenceText(subscription)}`;
+}
+
+// "0 days left" reads like a bug on the day itself, which is exactly the day the
+// user is most likely to be looking.
+function subscriptionDaysText(days) {
+  return days === 0
+    ? t('subscription.tooltip.today')
+    : t('subscription.tooltip.daysLeft', { days });
+}
+
+function subscriptionDateText(dateString) {
+  if (!dateString) return '';
+  // Construct in local time from the calendar parts so the rendered day always
+  // matches the stored one, whatever the timezone.
+  return subscriptionLocalDate(dateString)?.toLocaleDateString(currentLocale(), {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric'
+  }) || '';
+}
+
+// The settings rows are two dense lines inside a ~300px panel and the date is the
+// longest thing on the second one, so there it is the numeric short form the
+// locale itself defines. Everywhere with room to spell it out — the tooltip
+// above all — still uses subscriptionDateText().
+function subscriptionShortDateText(dateString) {
+  if (!dateString) return '';
+  return subscriptionLocalDate(dateString)?.toLocaleDateString(currentLocale(), { dateStyle: 'short' }) || '';
+}
+
+function subscriptionLocalDate(dateString) {
+  const [year, month, day] = String(dateString).split('-').map(Number);
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return null;
+  return new Date(year, month - 1, day);
+}
+
+// Usage cost is keyed by client, and every provider whose id names a tracked
+// client can be compared against it. Providers with no same-named client
+// (openrouter, deepseek, thirdparty, zai…) simply produce nothing, which is the
+// correct answer: their spend is either pay-as-you-go or spread across clients
+// with no way to attribute it.
+function subscriptionUsageCostUsd(providerId) {
+  if (!Object.prototype.hasOwnProperty.call(clientLabels, providerId)) return null;
+  const month = state.stats?.periods?.month;
+  const cost = Number(month?.clientCosts?.[providerId] || 0);
+  return cost > 0 ? cost : null;
+}
+
+// Matched against every account the provider has, never against a one-element
+// list of the row being rendered: matchProviderAccount() falls back to "the
+// provider has exactly one account, so there is no ambiguity", and a single-row
+// universe makes that fallback true for every sibling. That is what put one
+// Codex subscription's card on all three Codex accounts.
+function subscriptionForProvider(provider) {
+  const id = String(provider?.provider || '').toLowerCase();
+  const accounts = limitProvidersForSubscriptions();
+  const identity = subscriptionAccountValue(provider);
+  for (const subscription of subscriptionList()) {
+    if (subscription.provider !== id) continue;
+    const account = subscriptionApi.matchProviderAccount(subscription, accounts);
+    if (account && subscriptionAccountValue(account) === identity) return subscription;
+  }
+  return null;
+}
+
+// Every subscription recorded against a provider, paired with the account it
+// resolves to. Drives the group header, which stands for all of them at once.
+function subscriptionsForProviderGroup(providerId) {
+  const id = String(providerId || '').toLowerCase();
+  const accounts = limitProvidersForSubscriptions();
+  return subscriptionList()
+    .filter((subscription) => subscription.provider === id)
+    .map((subscription) => ({
+      subscription,
+      account: subscriptionApi.matchProviderAccount(subscription, accounts)
+    }));
+}
+
+// The record already held against an account, if any. One account holds one
+// record: a second one saved without complaint and then never appeared — the
+// card resolves the first match and stops — which read as the new entry having
+// replaced the old one.
+function subscriptionForAccountValue(list, providerId, accountValue, excludeId) {
+  const accounts = limitProvidersForSubscriptions();
+  return list.find((entry) => {
+    if (entry.id === excludeId || entry.provider !== providerId) return false;
+    const bound = subscriptionApi.matchProviderAccount(entry, accounts);
+    return Boolean(bound) && subscriptionAccountValue(bound) === accountValue;
+  }) || null;
+}
+
+// Rows are {label, value} pairs so the tooltip stays a table and the caller does
+// not have to know which shape it is looking at.
+// Keyed off what the user recorded, never off the account's balance marker: the
+// marker only seeds the choice, and reading it here would show subscription rows
+// for a ledger the moment a provider started reporting a balance.
+function subscriptionTooltipRows(subscription, provider, includeRollup) {
+  const today = subscriptionApi.todayString();
+  return subscriptionApi.isTopUp(subscription)
+    ? topUpTooltipRows(subscription, provider, today, includeRollup)
+    : subscriptionPlanTooltipRows(subscription, provider, today, includeRollup);
+}
+
+// How long the user has been paying, plus what that adds up to. Months is the
+// unit people quote a subscription in, but it rounds a three-week-old plan down
+// to "0 months" — which reads as a bug beside a non-zero total, and does so for
+// most of the first month of every subscription anyone records. Below a month
+// the honest unit is days. A start date that has not arrived yet has no elapsed
+// time and nothing paid, so it says so instead of reporting zero of both.
+//
+// Once coverage has lapsed the clock stops there: a plan bought for one month
+// and never renewed stays "1 month", it does not keep ageing after it ended.
+function subscriptionElapsedText(subscription, today) {
+  const stop = subscriptionApi.coverageStopDate(subscription);
+  const asOf = stop && stop < today ? stop : today;
+  const daysSinceStart = subscriptionApi.daysBetween(subscription.startDate, asOf);
+  if (daysSinceStart !== null && daysSinceStart < 0) return t('subscription.tooltip.notStarted');
+
+  const months = subscriptionApi.subscribedMonths(subscription, asOf);
+  const elapsed = months >= 1
+    ? t('subscription.tooltip.months', { months })
+    : t('subscription.tooltip.daysCount', { days: Math.max(0, daysSinceStart || 0) });
+  const code = currencyApi.normalizeCurrency(subscription.currency);
+  const symbol = currencyApi.CURRENCY_RATES[code]?.symbol || `${code} `;
+  const paid = subscriptionApi.paidToDateMinor(subscription, today) / 100;
+  return `${elapsed} · ${t('subscription.tooltip.paidTotal', { total: `${symbol}${paid.toFixed(2)}` })}`;
+}
+
+function subscriptionPlanTooltipRows(subscription, provider, today, includeRollup) {
+  const rows = [];
+  rows.push({ label: t('subscription.tooltip.price'), value: subscriptionPriceText(subscription) });
+
+  const endDate = subscriptionApi.coverageEndDate(subscription, today);
+  const daysLeft = subscriptionApi.daysUntilRenewal(subscription, today);
+  const whenLabel = subscription.autoRenew
+    ? t('subscription.tooltip.nextCharge')
+    : t('subscription.tooltip.validUntil');
+  // A lapsed plan has no days left to count down. Saying so beats a negative
+  // number, and beats the silent roll-forward that used to keep a cancelled
+  // plan permanently four days from renewing.
+  const whenSuffix = daysLeft === null
+    ? ''
+    : ` · ${daysLeft < 0 ? t('subscription.tooltip.expired') : subscriptionDaysText(daysLeft)}`;
+  rows.push({ label: whenLabel, value: `${subscriptionDateText(endDate)}${whenSuffix}` });
+  if (!subscription.autoRenew) {
+    rows.push({ label: t('subscription.tooltip.autoRenew'), value: t('subscription.tooltip.autoRenewOff') });
+  }
+
+  rows.push({
+    label: t('subscription.tooltip.subscribed'),
+    value: subscriptionElapsedText(subscription, today)
+  });
+
+  // The rollup covers every account of the provider at once, so it belongs on
+  // whichever row stands for the provider as a whole. When a group header is
+  // rendered that is the header, and repeating the same three lines under each
+  // member is the noise the header exists to avoid.
+  if (!includeRollup) return rows;
+
+  // tokscale records which client produced the tokens, never which signed-in
+  // account did, so three logins share one usage figure. Charging that figure
+  // against a single account would claim it three times over; the rollup is the
+  // only honest denominator.
+  const usageCostUsd = subscriptionUsageCostUsd(subscription.provider);
+  if (usageCostUsd === null) return rows;
+  const rollup = subscriptionApi.providerRollup(subscriptionList(), subscription.provider, currencyApi, today);
+  const multiple = subscriptionApi.valueMultiple(rollup.monthlyUsd, usageCostUsd);
+  if (multiple === null) return rows;
+
+  rows.push({ separator: true });
+  if (rollup.count > 1) {
+    rows.push({
+      label: t('subscription.tooltip.providerTotal', { provider: subscriptionProviderLabel(subscription.provider) }),
+      value: t('subscription.tooltip.providerTotalValue', {
+        count: rollup.count,
+        total: formatCost(rollup.monthlyUsd)
+      })
+    });
+  }
+  rows.push({
+    label: t('subscription.tooltip.monthUsage'),
+    // Prefixed with "≈" and titled below: this is tokscale's equivalent API
+    // pricing, not money owed. Under a subscription nothing is billed per token.
+    value: `≈ ${formatCost(usageCostUsd)}${rollup.count > 1 ? ` · ${t('subscription.tooltip.allAccounts')}` : ''}`,
+    title: t('subscription.tooltip.monthUsageNote')
+  });
+  rows.push({
+    label: t('subscription.tooltip.valueMultiple'),
+    value: `${multiple.toFixed(1)}×`
+  });
+  return rows;
+}
+
+// The group header stands for every account at once, so it summarises rather
+// than picking one of them. Usage and the value multiple are already provider
+// level on the per-account card; here the price is too.
+function subscriptionGroupTooltipRows(providerId, today) {
+  const rollup = subscriptionApi.providerRollup(subscriptionList(), providerId, currencyApi, today);
+  const rows = [{
+    label: t('subscription.tooltip.providerTotal', { provider: subscriptionProviderLabel(providerId) }),
+    value: t('subscription.tooltip.providerTotalValue', {
+      count: rollup.count,
+      total: formatCost(rollup.monthlyUsd)
+    })
+  }];
+
+  const usageCostUsd = subscriptionUsageCostUsd(providerId);
+  if (usageCostUsd === null) return rows;
+  rows.push({ separator: true });
+  rows.push({
+    label: t('subscription.tooltip.monthUsage'),
+    value: `≈ ${formatCost(usageCostUsd)} · ${t('subscription.tooltip.allAccounts')}`,
+    title: t('subscription.tooltip.monthUsageNote')
+  });
+  const multiple = subscriptionApi.valueMultiple(rollup.monthlyUsd, usageCostUsd);
+  if (multiple !== null) {
+    rows.push({ label: t('subscription.tooltip.valueMultiple'), value: `${multiple.toFixed(1)}×` });
+  }
+  return rows;
+}
+
+function topUpMinorText(subscription, amountMinor) {
+  const code = currencyApi.normalizeCurrency(subscription?.currency);
+  const symbol = currencyApi.CURRENCY_RATES[code]?.symbol || `${code} `;
+  return `${symbol}${(amountMinor / 100).toFixed(2)}`;
+}
+
+function topUpTooltipRows(subscription, provider, today, includeRollup) {
+  const rows = [];
+  const last = subscriptionApi.lastTopUp(subscription);
+  if (last) {
+    rows.push({
+      label: t('subscription.tooltip.lastTopUp'),
+      value: `${subscriptionDateText(last.date)} · ${topUpMinorText(subscription, last.amountMinor)}`
+    });
+  }
+  const monthMinor = subscriptionApi.topUpMonthMinor(subscription, today);
+  if (monthMinor > 0) {
+    rows.push({
+      label: t('subscription.tooltip.topUpMonth'),
+      value: topUpMinorText(subscription, monthMinor)
+    });
+  }
+  const entries = subscriptionApi.topUpEntries(subscription);
+  if (entries.length > 1) {
+    rows.push({
+      label: t('subscription.tooltip.topUpTotal'),
+      value: `${topUpMinorText(subscription, subscriptionApi.topUpTotalMinor(subscription))} · ${t('subscription.tooltip.topUpCount', { count: entries.length })}`
+    });
+  }
+
+  const creditsWindow = (provider?.windows || []).find(isCreditsWindow) || null;
+  const balance = creditsAmount(provider, creditsWindow);
+  if (balance === null) return topUpRollupRows(rows, subscription, today, includeRollup);
+  const balanceCurrency = String(creditsWindow?.currency || provider?.balance?.currency || subscription.currency);
+  rows.push({ label: t('subscription.tooltip.balance'), value: formatMoney(balance, balanceCurrency) });
+
+  const projection = subscriptionApi.topUpProjection(subscription, balance, today, {
+    currencyApi,
+    balanceCurrency
+  });
+  if (!projection || projection.dailyBurn <= 0) return topUpRollupRows(rows, subscription, today, includeRollup);
+  rows.push({
+    label: t('subscription.tooltip.burnRate'),
+    value: t('subscription.tooltip.perDay', { amount: formatMoney(projection.dailyBurn, balanceCurrency) })
+  });
+  if (projection.exhaustDate) {
+    rows.push({
+      label: t('subscription.tooltip.exhausts'),
+      value: `${subscriptionDateText(projection.exhaustDate)} · ${subscriptionDaysText(projection.daysRemaining)}`
+    });
+  }
+  return topUpRollupRows(rows, subscription, today, includeRollup);
+}
+
+// A ledger earns the same provider-level comparison a plan gets: what went in
+// this month against what the month's tokens would have cost.
+function topUpRollupRows(rows, subscription, today, includeRollup) {
+  if (!includeRollup) return rows;
+  const usageCostUsd = subscriptionUsageCostUsd(subscription.provider);
+  if (usageCostUsd === null) return rows;
+  const rollup = subscriptionApi.providerRollup(subscriptionList(), subscription.provider, currencyApi, today);
+  const multiple = subscriptionApi.valueMultiple(rollup.monthlyUsd, usageCostUsd);
+  if (multiple === null) return rows;
+  rows.push({ separator: true });
+  rows.push({
+    label: t('subscription.tooltip.monthUsage'),
+    value: `≈ ${formatCost(usageCostUsd)}`,
+    title: t('subscription.tooltip.monthUsageNote')
+  });
+  rows.push({ label: t('subscription.tooltip.valueMultiple'), value: `${multiple.toFixed(1)}×` });
+  return rows;
+}
+
+// No heading. The card is already reached by hovering a plan label, and every
+// row names itself — a "Subscription" line above them only repeats what the
+// gesture said, and the other tooltips in this panel carry no title either.
+function subscriptionCardNode(rows) {
+  if (rows.length === 0) return null;
+  const card = document.createElement('span');
+  card.className = 'limit-detail-tooltip subscription-tooltip';
+  for (const row of rows) {
+    if (row.separator) {
+      const rule = document.createElement('span');
+      rule.className = 'subscription-tooltip-rule';
+      card.append(rule);
+      continue;
+    }
+    // display:contents on the row lets label and value land directly in the
+    // card's two-column grid, so the existing tooltip cell styling applies.
+    const line = document.createElement('span');
+    line.className = 'limit-detail-tooltip-row';
+    const label = document.createElement('span');
+    label.textContent = row.label;
+    const value = document.createElement('span');
+    if (row.warn) value.className = 'subscription-tooltip-warn';
+    value.textContent = row.value;
+    if (row.title) {
+      label.title = row.title;
+      value.title = row.title;
+    }
+    line.append(label, value);
+    card.append(line);
+  }
+  return card;
+}
+
+// A group header is rendered whenever a provider has more than one account, and
+// it is the row that stands for the provider as a whole — which is what decides
+// where the provider-wide rollup goes.
+//
+// Counted from the list renderLimits() groups on, deliberately not from
+// limitProvidersForSubscriptions(): that one narrows to this device so a
+// subscription binds to an account you actually hold, while the question here is
+// only what the panel drew. In sync mode the two lists differ, and answering
+// from the wrong one puts the rollup on every member row of a group.
+function subscriptionProviderHasGroupHeader(providerId) {
+  const id = String(providerId || '').toLowerCase();
+  return (state.stats?.limits?.providers || [])
+    .filter((account) => String(account?.provider || '').toLowerCase() === id).length > 1;
+}
+
+// An account row shows its own subscription and nothing else. A group header
+// stands for all of them, so it summarises — except when only one account is
+// recorded, where the summary would just restate that one card with less in it.
+function subscriptionCardForRow(provider) {
+  if (provider?.accountGroup === true) {
+    const entries = subscriptionsForProviderGroup(provider.provider);
+    if (entries.length === 0) return null;
+    if (entries.length === 1) {
+      return subscriptionCardNode(
+        subscriptionTooltipRows(entries[0].subscription, entries[0].account || provider, true)
+      );
+    }
+    return subscriptionCardNode(
+      subscriptionGroupTooltipRows(provider.provider, subscriptionApi.todayString())
+    );
+  }
+  const subscription = subscriptionForProvider(provider);
+  if (!subscription) return null;
+  return subscriptionCardNode(
+    subscriptionTooltipRows(subscription, provider, !subscriptionProviderHasGroupHeader(provider.provider))
+  );
+}
+
+// The card opens upward, but the limits list scrolls inside a clipping panel, so
+// on the topmost row every pixel of it landed outside that panel and vanished.
+// Measured on open rather than on render: the row's offset within the panel
+// changes as the user scrolls. Kept to a class flip so the card's own placement
+// stays declarative.
+function positionSubscriptionTooltip(wrap, card) {
+  const clip = wrap.closest('.limits-panel');
+  if (!clip) return;
+  const roomAbove = wrap.getBoundingClientRect().top - clip.getBoundingClientRect().top;
+  card.classList.toggle('is-below', roomAbove < card.offsetHeight + 5);
+}
+
+// Wraps the plan label so hovering it reveals the subscription card. Reuses the
+// limit-detail tooltip plumbing, which already holds off the six-second list
+// re-render while the pointer is inside (limitDetailTooltipShouldHoldRender).
+//
+// Deliberately not behind a preference: an account with no record decorates
+// nothing, so having recorded one IS the switch. A separate toggle only made it
+// possible to enter the data and see nothing happen.
+function decoratePlanWithSubscription(plan, provider) {
+  const card = subscriptionCardForRow(provider);
+  if (!card) return plan;
+
+  const wrap = document.createElement('div');
+  wrap.className = 'limit-plan limit-detail-tooltip-wrap subscription-plan-wrap';
+  wrap.classList.toggle('has-opened', state.limitDetailTooltipHasOpened);
+  wrap.tabIndex = 0;
+  const trigger = document.createElement('span');
+  trigger.className = 'subscription-plan-trigger';
+  trigger.textContent = plan.textContent;
+  wrap.append(trigger, card);
+
+  const markOpened = () => {
+    state.limitDetailTooltipHasOpened = true;
+    state.limitDetailTooltipActive = true;
+    wrap.classList.add('has-opened');
+    positionSubscriptionTooltip(wrap, card);
+  };
+  const release = () => {
+    state.limitDetailTooltipActive = false;
+    flushPendingLimitDetailTooltipRender();
+  };
+  wrap.addEventListener('pointerenter', markOpened);
+  wrap.addEventListener('focusin', markOpened);
+  wrap.addEventListener('pointerleave', release);
+  wrap.addEventListener('focusout', release);
+  return wrap;
+}
+
+// The title's job is to say WHICH record this is, so it names the account. The
+// plan name is not an identity — three Codex rows all reading "Codex · Plus"
+// name nothing — so it moved to the meta line, where it always shows.
+//
+// When the live account list cannot resolve the row, the fallback is the record's
+// own stored binding rather than the plan name: the binding is what the user
+// picked, it survives the provider being signed out or still loading, and it
+// keeps sibling rows distinct in exactly the moment the plan name could not.
+function subscriptionRowTitle(subscription, account) {
+  const providerLabel = subscriptionProviderLabel(subscription.provider);
+  return [providerLabel, subscriptionRowAccountLabel(subscription, account) || subscription.planName]
+    .filter(Boolean)
+    .join(' · ');
+}
+
+function subscriptionRowAccountLabel(subscription, account) {
+  const identity = account || {
+    provider: subscription.provider,
+    accountName: subscription.binding?.profileName,
+    accountEmail: subscription.binding?.accountEmail
+  };
+  return accountIdentityApi.accountTitleLabel(identity, [identity], {
+    maskEmail: state.settings?.maskLimitAccountEmails === true
+  });
+}
+
+function subscriptionRowMeta(subscription, account) {
+  const today = subscriptionApi.todayString();
+  // The plan name only earns a slot here when the title did not already fall back
+  // to it. An account with no label of its own would otherwise spend both lines
+  // saying "Go" twice, and the second line is the one that runs out of room.
+  const parts = subscriptionRowAccountLabel(subscription, account) && subscription.planName
+    ? [subscription.planName]
+    : [];
+  if (subscriptionApi.isTopUp(subscription)) {
+    const monthMinor = subscriptionApi.topUpMonthMinor(subscription, today);
+    parts.push(t('settings.subscriptions.topUpMonthMeta', {
+      total: topUpMinorText(subscription, monthMinor)
+    }));
+    const last = subscriptionApi.lastTopUp(subscription);
+    if (last) {
+      parts.push(t('settings.subscriptions.topUpLastMeta', { date: subscriptionShortDateText(last.date) }));
+    }
+    return parts.join(' · ');
+  }
+  parts.push(subscriptionPriceText(subscription));
+  const endDate = subscriptionApi.coverageEndDate(subscription, today);
+  if (endDate) {
+    const date = subscriptionShortDateText(endDate);
+    parts.push(t(subscription.autoRenew ? 'settings.subscriptions.renewsOn' : 'settings.subscriptions.endsOn', { date }));
+  }
+  return parts.join(' · ');
+}
+
+function syncSubscriptionAddControl() {
+  const toggle = els.subscriptionAddToggle;
+  const form = els.subscriptionAddForm;
+  const details = els.subscriptionAddDetails;
+  if (!toggle || !form) return;
+
+  // While editing, this button is a mode switch, not the disclosure control for
+  // the editor that is currently parked beneath another row. Keeping the add
+  // action's disclosure state separate prevents a plus from turning into an x
+  // and avoids two controls claiming the same expanded region.
+  if (state.subscriptionEditingId) {
+    toggle.removeAttribute('aria-expanded');
+    toggle.removeAttribute('aria-controls');
+    form.classList.remove('expanded');
+    return;
+  }
+
+  const open = Boolean(details && !details.classList.contains('hidden'));
+  toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+  toggle.setAttribute('aria-controls', 'subscriptionAddDetails');
+  form.classList.toggle('expanded', open);
+}
+
+// Rebuild only the list-owned rows. The editor is a live child of this list
+// while editing, and removing it from the DOM would drop focus from whichever
+// field the user is typing in before positionSubscriptionEditor() can put it
+// back.
+function clearSubscriptionListChildren(listEl, preservedNode) {
+  for (const child of [...listEl.children]) {
+    if (child !== preservedNode) child.remove();
+  }
+}
+
+function positionSubscriptionEditor() {
+  const listEl = els.subscriptionList;
+  const form = els.subscriptionAddForm;
+  const details = els.subscriptionAddDetails;
+  if (!listEl || !form || !details) return;
+
+  const editingId = String(state.subscriptionEditingId || '');
+  const editingRow = editingId
+    ? [...listEl.children].find((child) => child.dataset?.subscriptionId === editingId)
+    : null;
+  if (editingRow) editingRow.after(details);
+  else form.append(details);
+
+  for (const row of listEl.querySelectorAll('[data-subscription-id]')) {
+    row.classList.toggle('is-editing', row.dataset.subscriptionId === editingId);
+  }
+  syncSubscriptionAddControl();
+  syncSubscriptionEditControls();
+}
+
+function syncSubscriptionEditControls() {
+  const listEl = els.subscriptionList;
+  const details = els.subscriptionAddDetails;
+  if (!listEl) return;
+  const editingId = String(state.subscriptionEditingId || '');
+  const editorOpen = Boolean(details && !details.classList.contains('hidden'));
+  for (const row of listEl.querySelectorAll('[data-subscription-id]')) {
+    const edit = row.querySelector('.subscription-row-edit');
+    if (!edit) continue;
+    const editOpen = editorOpen && row.dataset.subscriptionId === editingId;
+    const editLabel = editOpen ? t('settings.subscriptions.cancelEdit') : t('settings.subscriptions.edit');
+    edit.textContent = editOpen ? '×' : '✎';
+    edit.title = editLabel;
+    edit.setAttribute('aria-label', editLabel);
+    edit.setAttribute('aria-expanded', editOpen ? 'true' : 'false');
+  }
+}
+
+function renderSubscriptionRows() {
+  const listEl = els.subscriptionList;
+  if (!listEl) return;
+  const editor = els.subscriptionAddDetails?.parentElement === listEl
+    ? els.subscriptionAddDetails
+    : null;
+  clearSubscriptionListChildren(listEl, editor);
+  const list = subscriptionList();
+  if (list.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'opencode-empty';
+    empty.textContent = t('settings.subscriptions.emptyList');
+    listEl.append(empty);
+    positionSubscriptionEditor();
+    return;
+  }
+
+  const providers = limitProvidersForSubscriptions();
+  for (const subscription of list) {
+    const account = subscriptionApi.matchProviderAccount(subscription, providers);
+    const row = document.createElement('div');
+    row.className = `subscription-row${state.subscriptionEditingId === subscription.id ? ' is-editing' : ''}`;
+    row.dataset.subscriptionId = subscription.id;
+
+    // The provider name is in the title too, but these rows are a dense stack of
+    // near-identical text — four Codex accounts read as one block until the mark
+    // in front of them differs. Gated on the same preference as every other tool
+    // icon in the app, so turning icons off turns them off here as well.
+    const iconClass = toolIconsEnabled(state.settings?.showToolIcons)
+      ? subscriptionProviderIconClass(subscription.provider)
+      : '';
+    if (iconClass) {
+      const icon = document.createElement('span');
+      icon.className = `subscription-row-icon ${iconClass}`;
+      row.append(icon);
+    }
+
+    const main = document.createElement('div');
+    main.className = 'subscription-row-main';
+    const title = document.createElement('span');
+    title.className = 'subscription-row-title';
+    title.textContent = subscriptionRowTitle(subscription, account);
+    const meta = document.createElement('span');
+    meta.className = 'subscription-row-meta';
+    meta.textContent = subscriptionRowMeta(subscription, account);
+    main.append(title, meta);
+
+    // Only a real ambiguity is surfaced. A provider that is simply not signed in
+    // right now keeps its subscription quietly; the data is never dropped.
+    if (subscriptionApi.needsRebinding(subscription, providers)) {
+      const warn = document.createElement('span');
+      warn.className = 'subscription-row-warn';
+      warn.textContent = t('settings.subscriptions.needsRebind');
+      main.append(warn);
+    }
+
+    // Keep the edit control as a disclosure toggle: the active row gets an
+    // explicit cancel state, and the accessible state follows the editor.
+    const actions = document.createElement('div');
+    actions.className = 'subscription-row-actions';
+    const edit = document.createElement('button');
+    edit.type = 'button';
+    edit.className = 'subscription-row-edit';
+    const editing = state.subscriptionEditingId === subscription.id;
+    const editOpen = editing && Boolean(els.subscriptionAddDetails && !els.subscriptionAddDetails.classList.contains('hidden'));
+    const editLabel = editOpen ? t('settings.subscriptions.cancelEdit') : t('settings.subscriptions.edit');
+    edit.textContent = editOpen ? '×' : '✎';
+    edit.title = editLabel;
+    edit.setAttribute('aria-label', editLabel);
+    edit.setAttribute('aria-expanded', editOpen ? 'true' : 'false');
+    edit.setAttribute('aria-controls', 'subscriptionAddDetails');
+    edit.addEventListener('click', () => {
+      if (state.subscriptionEditingId === subscription.id && els.subscriptionAddDetails && !els.subscriptionAddDetails.classList.contains('hidden')) {
+        closeSubscriptionEditor();
+        return;
+      }
+      beginSubscriptionEdit(subscription.id);
+    });
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'subscription-row-delete';
+    remove.textContent = '✕';
+    remove.title = t('settings.subscriptions.delete');
+    let armed = false;
+    remove.addEventListener('click', async () => {
+      if (!armed) {
+        armed = true;
+        remove.textContent = '✓';
+        remove.title = t('settings.subscriptions.deleteConfirm');
+        remove.classList.add('is-armed');
+        setTimeout(() => {
+          armed = false;
+          remove.textContent = '✕';
+          remove.title = t('settings.subscriptions.delete');
+          remove.classList.remove('is-armed');
+        }, 4000);
+        return;
+      }
+      // Read now rather than reused from the render this row was drawn in, so the
+      // list and the version sent with it come from the same moment.
+      const current = subscriptionList();
+      if (!await saveSubscriptions(
+        current.filter((entry) => entry.id !== subscription.id),
+        subscriptionSettingsVersion(),
+        { render: false }
+      )) return;
+      if (state.subscriptionEditingId === subscription.id) resetSubscriptionForm();
+      preserveSettingsPanelScroll(renderSubscriptionSettings);
+    });
+    actions.append(edit, remove);
+    row.append(main, actions);
+    listEl.append(row);
+  }
+  positionSubscriptionEditor();
+}
+
+function renderSubscriptionPickers() {
+  const providerSelect = els.subscriptionProviderInput;
+  const accountSelect = els.subscriptionAccountInput;
+  if (!providerSelect || !accountSelect) return;
+
+  const choices = subscriptionAccountChoices();
+  const providerIds = [...new Set(choices.map((choice) => choice.provider.provider))];
+  const previousProvider = providerSelect.value;
+  providerSelect.replaceChildren();
+  for (const id of providerIds) {
+    const option = document.createElement('option');
+    option.value = id;
+    option.textContent = subscriptionProviderLabel(id);
+    providerSelect.append(option);
+  }
+  if (providerIds.includes(previousProvider)) providerSelect.value = previousProvider;
+
+  const activeProvider = providerSelect.value;
+  const previousAccount = accountSelect.value;
+  accountSelect.replaceChildren();
+  for (const choice of choices.filter((entry) => entry.provider.provider === activeProvider)) {
+    const option = document.createElement('option');
+    option.value = choice.value;
+    option.textContent = choice.label;
+    accountSelect.append(option);
+  }
+  if ([...accountSelect.options].some((option) => option.value === previousAccount)) {
+    accountSelect.value = previousAccount;
+  }
+
+  const currencySelect = els.subscriptionCurrencyInput;
+  if (currencySelect && currencySelect.options.length === 0) {
+    for (const code of currencyApi.CURRENCY_CODES) {
+      const option = document.createElement('option');
+      option.value = code;
+      option.textContent = code;
+      currencySelect.append(option);
+    }
+    currencySelect.value = currencyApi.normalizeCurrency(state.settings?.currency);
+  }
+}
+
+function renderSubscriptionTotal() {
+  const totalEl = els.subscriptionTotalRow;
+  if (!totalEl) return;
+  const list = subscriptionList();
+  totalEl.classList.toggle('hidden', list.length === 0);
+  if (list.length === 0) return;
+  totalEl.textContent = t('settings.subscriptions.total', {
+    total: formatCost(subscriptionApi.monthlyTotalUsd(list, currencyApi))
+  });
+}
+
+function renderSubscriptionSettings() {
+  renderSubscriptionNote();
+  renderSubscriptionOrphanNotice();
+  renderSubscriptionSyncError();
+  renderSubscriptionRows();
+  renderSubscriptionPickers();
+  renderSubscriptionTotal();
+  renderSettingsSummaries();
+}
+
+// The list may live on a hub shared with other devices, so writing it is a
+// network round trip that can be refused. Whatever happens, what is on screen
+// afterwards is what is actually stored: on failure the optimistic list is
+// thrown away and main.js's copy is re-read and re-rendered.
+// The version of the shared list on screen and the hub that issued it, which are
+// only worth anything together: a hub nobody has written to reports no version,
+// and so does the next one, so a version alone cannot say which list it describes.
+function subscriptionSettingsVersion() {
+  return {
+    hub: state.settings?.subscriptionsHub || '',
+    updatedAt: state.settings?.subscriptionsUpdatedAt || ''
+  };
+}
+
+// Every settings snapshot that arrives because THIS device acted — a save, an
+// adopt, a discard, or the re-read after one of them was refused. An open form
+// re-anchors on the version in it: the user made the change, or has just been
+// shown it, so it is not one they need to be stopped over. Which is also the
+// rule stated in one place rather than at each write, because the paths that
+// move the shared list on have outnumbered the ones that remember to say so.
+// A version arriving from another device does not come through here, and that is
+// the only reason the form holds one at all.
+function applySubscriptionSettings(settings) {
+  state.settings = settings;
+  if (state.subscriptionFormBase === null) return;
+  const current = subscriptionSettingsVersion();
+  // Unless the hub itself changed under it. Then the form is holding an edit made
+  // for a hub the user has left, and re-anchoring would let that edit be saved
+  // into the one they moved to — there is nothing here it could belong to, so it
+  // stops being a form rather than becoming a form for the wrong list.
+  if (state.subscriptionFormBase.hub !== current.hub) {
+    if (typeof closeSubscriptionEditor === 'function') {
+      closeSubscriptionEditor();
+    } else {
+      setSubscriptionFormOpen(false);
+      resetSubscriptionForm();
+    }
+    return;
+  }
+  state.subscriptionFormBase = current;
+}
+
+// base is what the list being saved was built from — the open form's snapshot, or
+// what is on screen for a row action. Passed in rather than read here, because
+// those two stop being the same the moment a push lands.
+async function saveSubscriptions(list, base, { render = true } = {}) {
+  try {
+    applySubscriptionSettings(await window.tokenMonitor.saveSubscriptions(list, base));
+    state.subscriptionSyncError = '';
+    if (render) renderSubscriptionSettings();
+    return true;
+  } catch (error) {
+    // Four different problems with four different answers: look at what changed,
+    // fix the secret, retry later, or free some disk. One message for all of
+    // them would send the user looking in the wrong place.
+    state.subscriptionSyncError = subscriptionWriteErrorKey(error);
+    // Refused, so the list on screen is now the current one and the form still
+    // holds what was typed. Re-anchoring lets the user look at what changed and
+    // save again; keeping the version they opened on would refuse the second
+    // attempt too, and every one after it.
+    try { applySubscriptionSettings(await window.tokenMonitor.getSettings()); } catch (_) {}
+    renderSubscriptionSettings();
+    return false;
+  }
+}
+
+function subscriptionWriteErrorKey(error) {
+  const message = error?.message || '';
+  if (/stale_write/.test(message)) return 'settings.subscriptions.errorStaleWrite';
+  if (/hub_rejected/.test(message)) return 'settings.subscriptions.errorHubRejected';
+  if (/write_failed/.test(message)) return 'settings.subscriptions.errorWriteFailed';
+  if (/hub_changed/.test(message)) return 'settings.subscriptions.errorHubChanged';
+  return 'settings.subscriptions.errorHubWrite';
+}
+
+// This device joined a hub that already had a list, so its own records are not
+// in it. Neither dropping them nor merging them is safe to decide here: the same
+// plan recorded on two machines has two ids and would become two charges.
+function renderSubscriptionOrphanNotice() {
+  const notice = els.subscriptionOrphanNotice;
+  if (!notice) return;
+  const orphans = state.settings?.subscriptionsOrphaned || [];
+  notice.classList.toggle('hidden', orphans.length === 0);
+  if (orphans.length === 0) return;
+  if (els.subscriptionOrphanText) {
+    els.subscriptionOrphanText.textContent = t('settings.subscriptions.orphanNotice', { count: orphans.length });
+  }
+}
+
+function renderSubscriptionSyncError() {
+  const el = els.subscriptionSyncError;
+  if (!el) return;
+  const key = state.subscriptionSyncError;
+  el.textContent = key ? t(key) : '';
+  el.classList.toggle('hidden', !key);
+}
+
+// The note promises the data never leaves this device, which stops being true
+// the moment a hub is configured. Retargeting data-i18n as well as the text
+// keeps a later language switch on whichever key currently applies.
+function renderSubscriptionNote() {
+  const el = els.subscriptionNote;
+  if (!el) return;
+  const key = state.settings?.subscriptionsShared
+    ? 'settings.subscriptions.noteShared'
+    : 'settings.subscriptions.note';
+  el.dataset.i18n = key;
+  el.textContent = t(key);
+}
+
+function setSubscriptionError(message) {
+  const errorEl = els.subscriptionErrorMessage;
+  if (!errorEl) return;
+  errorEl.textContent = message || '';
+  errorEl.classList.toggle('hidden', !message);
+}
+
+function setSubscriptionFormOpen(open, formBase = null) {
+  els.subscriptionAddDetails?.classList.toggle('hidden', !open);
+  syncSubscriptionAddControl();
+  if (typeof syncSubscriptionEditControls === 'function') syncSubscriptionEditControls();
+  // What the form was filled from, held for as long as it stays open. A push
+  // landing mid-edit replaces state.settings, and reading the version at save
+  // time would claim to have seen a change the form was never shown — the save is
+  // then accepted, taking another device's edit to the same record with it. Null
+  // while closed, so the paths that save without a form say so.
+  state.subscriptionFormBase = open
+    ? (formBase || subscriptionSettingsVersion())
+    : null;
+}
+
+const SUBSCRIPTION_EDITOR_TRANSITION_MS = 250;
+let subscriptionEditorCloseCleanup = null;
+let subscriptionEditorCloseOnCanceled = null;
+
+function cancelSubscriptionEditorClose() {
+  const onCanceled = subscriptionEditorCloseOnCanceled;
+  subscriptionEditorCloseOnCanceled = null;
+  subscriptionEditorCloseCleanup?.();
+  subscriptionEditorCloseCleanup = null;
+  // A successful write defers the full render until the collapse has settled so
+  // the transition can paint. If a new mode cancels that collapse, settle the
+  // deferred render here instead of silently dropping it with the old timer.
+  onCanceled?.();
+}
+
+// The class change has to happen in a later frame than the initial collapsed
+// layout. Otherwise Chromium batches both states into one paint and there is no
+// transition for the grid track to animate between.
+function openSubscriptionEditor() {
+  const details = els.subscriptionAddDetails;
+  if (!details) return;
+  // Capture the concurrency context before the visual transition yields to the
+  // browser. A settings push can arrive before the next frame, but it must not
+  // make fields loaded from the previous list look like a newer edit.
+  const formBase = subscriptionSettingsVersion();
+  cancelSubscriptionEditorClose();
+  const transitionId = (state.subscriptionEditorTransitionId || 0) + 1;
+  state.subscriptionEditorTransitionId = transitionId;
+  details.classList.add('hidden');
+  details.getBoundingClientRect();
+  const schedule = typeof requestAnimationFrame === 'function'
+    ? requestAnimationFrame
+    : (callback) => setTimeout(callback, 0);
+  schedule(() => {
+    if (transitionId !== state.subscriptionEditorTransitionId) return;
+    setSubscriptionFormOpen(true, formBase);
+  });
+}
+
+// Keep the editor in place until its collapse has finished. Moving it back to
+// the add form in the same task as hiding it cancels the transition entirely.
+function closeSubscriptionEditor({ onClosed, onCanceled } = {}) {
+  cancelSubscriptionEditorClose();
+  const details = els.subscriptionAddDetails;
+  const editingId = String(state.subscriptionEditingId || '');
+  const activeElement = typeof document !== 'undefined' ? document.activeElement : null;
+  const editingRow = editingId && els.subscriptionList
+    ? [...els.subscriptionList.querySelectorAll('[data-subscription-id]')]
+      .find((row) => row.dataset?.subscriptionId === editingId)
+    : null;
+  const editingButton = editingRow?.querySelector('.subscription-row-edit');
+  const returnFocusTarget = editingId ? editingButton : els.subscriptionAddToggle;
+  // Keep the focus contract of a disclosure: when the editor closes, keyboard
+  // users return to the control that opened it. Do not steal focus from a user
+  // who moved elsewhere while the close animation ran.
+  const shouldRestoreFocus = Boolean(
+    activeElement && (
+      activeElement === returnFocusTarget
+      || activeElement === details
+      || details?.contains?.(activeElement)
+    )
+  );
+  const restoreFocus = () => {
+    if (!shouldRestoreFocus) return;
+    const current = typeof document !== 'undefined' ? document.activeElement : null;
+    const body = typeof document !== 'undefined' ? document.body : null;
+    const stillInClosingContext = current === activeElement
+      || current === body
+      || current === returnFocusTarget
+      || current === details
+      || details?.contains?.(current);
+    if (!stillInClosingContext) return;
+    if (editingId) {
+      const row = [...(els.subscriptionList?.querySelectorAll?.('[data-subscription-id]') || [])]
+        .find((candidate) => candidate.dataset?.subscriptionId === editingId);
+      row?.querySelector('.subscription-row-edit')?.focus();
+      return;
+    }
+    returnFocusTarget?.focus();
+  };
+  const transitionId = (state.subscriptionEditorTransitionId || 0) + 1;
+  state.subscriptionEditorTransitionId = transitionId;
+
+  if (!details || details.classList.contains('hidden')) {
+    setSubscriptionFormOpen(false);
+    resetSubscriptionForm();
+    if (typeof renderSubscriptionRows === 'function') renderSubscriptionRows();
+    onClosed?.();
+    restoreFocus();
+    return;
+  }
+
+  setSubscriptionFormOpen(false);
+  subscriptionEditorCloseOnCanceled = onCanceled;
+  let finished = false;
+  let timer = null;
+  const onTransitionEnd = (event) => {
+    if (event.target === details && event.propertyName === 'grid-template-rows') finish();
+  };
+  const cleanup = () => {
+    details.removeEventListener('transitionend', onTransitionEnd);
+    if (timer !== null) clearTimeout(timer);
+    if (subscriptionEditorCloseCleanup === cleanup) {
+      subscriptionEditorCloseCleanup = null;
+      subscriptionEditorCloseOnCanceled = null;
+    }
+  };
+  const finish = () => {
+    if (finished) return;
+    finished = true;
+    cleanup();
+    if (transitionId !== state.subscriptionEditorTransitionId) return;
+    resetSubscriptionForm();
+    if (typeof renderSubscriptionRows === 'function') renderSubscriptionRows();
+    onClosed?.();
+    restoreFocus();
+  };
+  details.addEventListener('transitionend', onTransitionEnd);
+  subscriptionEditorCloseCleanup = cleanup;
+  timer = setTimeout(finish, SUBSCRIPTION_EDITOR_TRANSITION_MS + 50);
+}
+
+// Seeded on explicit picker changes and on opening the form — never from a
+// render, which runs again on every settings save and would wipe whatever the
+// user is halfway through typing. Editing is not exempt: switching the account
+// mid-edit is exactly as deliberate as switching it while adding, and leaving
+// the previous account's plan name behind is the surprising outcome.
+// beginSubscriptionEdit assigns the selects programmatically, which fires no
+// change event, so the saved plan name still survives opening an edit.
+function seedSubscriptionPlanName() {
+  const input = els.subscriptionPlanNameInput;
+  if (!input) return;
+  input.value = subscriptionSuggestedPlanName(subscriptionSelectedAccount());
+}
+
+// A top-up is not a subscription with different words on it — it is a ledger of
+// irregular payments — so the form swaps whole field groups rather than
+// relabelling one set. Both groups live in the markup with their own data-i18n,
+// which is what keeps them correct across a language change.
+function setSubscriptionFormMode() {
+  const topUp = subscriptionFormIsTopUp();
+  els.subscriptionPlanFields?.classList.toggle('hidden', topUp);
+  els.subscriptionTopUpFields?.classList.toggle('hidden', !topUp);
+  // One record, one currency — so the select is moved to sit beside whichever
+  // money field is on screen rather than taking a labelled row of its own. It is
+  // a static element that nothing re-renders, so relocating it is safe.
+  const slot = topUp ? els.subscriptionTopUpHeadingRow : els.subscriptionAmountRow;
+  if (slot && els.subscriptionCurrencyInput && els.subscriptionCurrencyInput.parentElement !== slot) {
+    slot.append(els.subscriptionCurrencyInput);
+  }
+  renderSubscriptionTopUpEntries();
+  setSubscriptionRenewalFieldMode();
+}
+
+// Auto-renew off means there is no next charge, so the date field stops asking
+// for one and asks when the plan runs out instead — the one thing that cannot be
+// derived once a plan has been cancelled after several renewals. Retargeting
+// data-i18n as well as the text keeps a later language switch on the right key.
+function setSubscriptionRenewalFieldMode() {
+  const renewing = els.subscriptionAutoRenewInput?.checked !== false;
+  const labelKey = renewing ? 'settings.subscriptions.nextRenewal' : 'settings.subscriptions.coverageEnd';
+  const noteKey = renewing ? 'settings.subscriptions.nextRenewalNote' : 'settings.subscriptions.coverageEndNote';
+  if (els.subscriptionNextRenewalLabel) {
+    els.subscriptionNextRenewalLabel.dataset.i18n = labelKey;
+    els.subscriptionNextRenewalLabel.textContent = t(labelKey);
+  }
+  if (els.subscriptionNextRenewalNote) {
+    els.subscriptionNextRenewalNote.dataset.i18n = noteKey;
+    els.subscriptionNextRenewalNote.textContent = t(noteKey);
+  }
+}
+
+function subscriptionFormIsTopUp() {
+  return (els.subscriptionKindInputs || []).some((input) => input.checked && input.value === 'topup');
+}
+
+function setSubscriptionFormKind(kind) {
+  for (const input of els.subscriptionKindInputs || []) input.checked = input.value === kind;
+}
+
+// The account's balance marker picks the kind, but only as a starting point —
+// the same rule the plan name follows. Both are seeded on an explicit picker
+// change, never from a render, so neither can overwrite a deliberate choice
+// made after that.
+function applySubscriptionAccountSelection() {
+  seedSubscriptionPlanName();
+  setSubscriptionFormKind(isCreditsProvider(subscriptionSelectedAccount()) ? 'topup' : 'subscription');
+  setSubscriptionFormMode();
+}
+
+// The ledger being edited, held in form state until the record is saved so that
+// adding a row is not itself a settings write.
+function subscriptionFormTopUps() {
+  return subscriptionApi.normalizeTopUps(state.subscriptionTopUps);
+}
+
+function renderSubscriptionTopUpEntries() {
+  const listEl = els.subscriptionTopUpList;
+  if (!listEl) return;
+  listEl.replaceChildren();
+  const entries = subscriptionFormTopUps();
+  if (entries.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'opencode-empty';
+    empty.textContent = t('settings.subscriptions.topUpEmpty');
+    listEl.append(empty);
+    return;
+  }
+  const code = currencyApi.normalizeCurrency(els.subscriptionCurrencyInput?.value);
+  const symbol = currencyApi.CURRENCY_RATES[code]?.symbol || `${code} `;
+  for (const entry of entries) {
+    const row = document.createElement('div');
+    row.className = 'subscription-topup-row';
+    const date = document.createElement('span');
+    date.className = 'subscription-topup-date';
+    date.textContent = subscriptionDateText(entry.date);
+    const amount = document.createElement('span');
+    amount.className = 'subscription-topup-amount';
+    amount.textContent = `${symbol}${(entry.amountMinor / 100).toFixed(2)}`;
+    // Armed the same way as the record rows above: a mis-click here silently
+    // rewrites the month total the ledger exists to report, and the entry cannot
+    // be recovered from anywhere else.
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'subscription-topup-remove';
+    remove.textContent = '✕';
+    remove.title = t('settings.subscriptions.topUpRemove');
+    let armed = false;
+    remove.addEventListener('click', () => {
+      if (!armed) {
+        armed = true;
+        remove.textContent = '✓';
+        remove.title = t('settings.subscriptions.topUpRemoveConfirm');
+        remove.classList.add('is-armed');
+        setTimeout(() => {
+          armed = false;
+          remove.textContent = '✕';
+          remove.title = t('settings.subscriptions.topUpRemove');
+          remove.classList.remove('is-armed');
+        }, 4000);
+        return;
+      }
+      state.subscriptionTopUps = subscriptionFormTopUps().filter((other) => other.id !== entry.id);
+      renderSubscriptionTopUpEntries();
+      setSubscriptionError('');
+    });
+    row.append(date, amount, remove);
+    listEl.append(row);
+  }
+}
+
+function addSubscriptionTopUpEntry() {
+  const date = String(els.subscriptionTopUpDateInput?.value || '').trim();
+  const amount = Number(els.subscriptionTopUpAmountInput?.value);
+  if (!date) {
+    setSubscriptionError(t('settings.subscriptions.errorTopUpDate'));
+    return;
+  }
+  if (date > subscriptionApi.todayString()) {
+    setSubscriptionError(t('settings.subscriptions.errorFutureDate'));
+    return;
+  }
+  if (!Number.isFinite(amount) || amount <= 0) {
+    setSubscriptionError(t('settings.subscriptions.errorAmount'));
+    return;
+  }
+  // Normalized on the way in, not on the way out: normalizeTopUps() mints an id
+  // for any entry lacking one, so leaving raw entries in state re-minted every
+  // id on every render and the delete button never matched the row it was on.
+  //
+  // Two top-ups on one day is a real thing, so entries are never merged by date.
+  state.subscriptionTopUps = subscriptionApi.normalizeTopUps([
+    ...subscriptionFormTopUps(),
+    { date, amountMinor: Math.round(amount * 100) }
+  ]);
+  if (els.subscriptionTopUpDateInput) els.subscriptionTopUpDateInput.value = '';
+  if (els.subscriptionTopUpAmountInput) els.subscriptionTopUpAmountInput.value = '';
+  renderSubscriptionTopUpEntries();
+  setSubscriptionError('');
+}
+
+// Writing min/max on a date input rebuilds its internal editor, which throws
+// away the segment the user is halfway through typing. This runs on the input's
+// own change event — which fires the moment the year reaches one digit — so an
+// unconditional write restarted the year field mid-entry, and the next keystroke
+// produced year 0000 and blanked the whole value. Only write a bound that
+// actually changed.
+function setSubscriptionDateBound(input, attribute, value) {
+  if (!input || input.getAttribute(attribute) === value) return;
+  input.setAttribute(attribute, value);
+}
+
+// A first charge cannot be in the future, and a next-charge override only means
+// anything at or after it. Bounding the native picker is most of what makes it
+// usable: its "today" button then lands on a date the form will accept.
+function syncSubscriptionDateBounds() {
+  const today = subscriptionApi.todayString();
+  setSubscriptionDateBound(els.subscriptionStartDateInput, 'max', today);
+  setSubscriptionDateBound(
+    els.subscriptionNextRenewalInput,
+    'min',
+    String(els.subscriptionStartDateInput?.value || '') || today
+  );
+}
+
+function resetSubscriptionForm() {
+  state.subscriptionEditingId = '';
+  state.subscriptionTopUps = [];
+  if (els.subscriptionTopUpDateInput) els.subscriptionTopUpDateInput.value = '';
+  if (els.subscriptionTopUpAmountInput) els.subscriptionTopUpAmountInput.value = '';
+  if (els.subscriptionPlanNameInput) els.subscriptionPlanNameInput.value = '';
+  if (els.subscriptionAmountInput) els.subscriptionAmountInput.value = '';
+  if (els.subscriptionIntervalCountInput) els.subscriptionIntervalCountInput.value = '1';
+  if (els.subscriptionIntervalInput) els.subscriptionIntervalInput.value = 'month';
+  if (els.subscriptionStartDateInput) els.subscriptionStartDateInput.value = '';
+  if (els.subscriptionNextRenewalInput) els.subscriptionNextRenewalInput.value = '';
+  if (els.subscriptionAutoRenewInput) els.subscriptionAutoRenewInput.checked = true;
+  if (els.subscriptionSubmit) els.subscriptionSubmit.textContent = t('settings.subscriptions.save');
+  els.subscriptionCancelEdit?.classList.add('hidden');
+  setSubscriptionFormMode();
+  syncSubscriptionDateBounds();
+  positionSubscriptionEditor();
+  setSubscriptionError('');
+}
+
+function openSubscriptionAddEditor() {
+  renderSubscriptionPickers();
+  applySubscriptionAccountSelection();
+  openSubscriptionEditor();
+}
+
+function beginSubscriptionAdd() {
+  resetSubscriptionForm();
+  renderSubscriptionRows();
+  openSubscriptionAddEditor();
+}
+
+function beginSubscriptionEdit(id) {
+  const subscription = subscriptionList().find((entry) => entry.id === id);
+  if (!subscription) return;
+  if (state.subscriptionEditingId === id && els.subscriptionAddDetails && !els.subscriptionAddDetails.classList.contains('hidden')) {
+    closeSubscriptionEditor();
+    return;
+  }
+  state.subscriptionEditingId = id;
+
+  const account = subscriptionApi.matchProviderAccount(subscription, limitProvidersForSubscriptions());
+  if (els.subscriptionProviderInput) els.subscriptionProviderInput.value = subscription.provider;
+  renderSubscriptionPickers();
+  if (account && els.subscriptionAccountInput) {
+    els.subscriptionAccountInput.value = subscriptionAccountValue(account);
+  }
+  setSubscriptionFormKind(subscription.kind);
+  state.subscriptionTopUps = subscription.topUps;
+  if (els.subscriptionPlanNameInput) els.subscriptionPlanNameInput.value = subscription.planName;
+  if (els.subscriptionAmountInput) els.subscriptionAmountInput.value = String(subscriptionApi.amountUnits(subscription));
+  if (els.subscriptionCurrencyInput) els.subscriptionCurrencyInput.value = subscription.currency;
+  if (els.subscriptionIntervalCountInput) els.subscriptionIntervalCountInput.value = String(subscription.intervalCount);
+  if (els.subscriptionIntervalInput) els.subscriptionIntervalInput.value = subscription.interval;
+  if (els.subscriptionStartDateInput) els.subscriptionStartDateInput.value = subscription.startDate;
+  // One field, whichever date the record actually carries.
+  if (els.subscriptionNextRenewalInput) {
+    els.subscriptionNextRenewalInput.value =
+      (subscription.autoRenew ? subscription.nextRenewalOverride : subscription.endDate) || '';
+  }
+  if (els.subscriptionAutoRenewInput) els.subscriptionAutoRenewInput.checked = subscription.autoRenew;
+  if (els.subscriptionSubmit) els.subscriptionSubmit.textContent = t('settings.subscriptions.update');
+  els.subscriptionCancelEdit?.classList.remove('hidden');
+  setSubscriptionFormMode();
+  syncSubscriptionDateBounds();
+  positionSubscriptionEditor();
+  openSubscriptionEditor();
+  setSubscriptionError('');
+}
+
+async function submitSubscription() {
+  const providerId = String(els.subscriptionProviderInput?.value || '').trim();
+  const accountValue = String(els.subscriptionAccountInput?.value || '').trim();
+  const amount = Number(els.subscriptionAmountInput?.value);
+  const startDate = String(els.subscriptionStartDateInput?.value || '').trim();
+  const autoRenew = els.subscriptionAutoRenewInput?.checked !== false;
+  const renewalDate = String(els.subscriptionNextRenewalInput?.value || '').trim();
+
+  if (!providerId || !accountValue) {
+    setSubscriptionError(t('settings.subscriptions.errorAccount'));
+    return;
+  }
+  const topUps = subscriptionFormTopUps();
+  const kind = subscriptionFormIsTopUp() ? 'topup' : 'subscription';
+  if (kind === 'topup') {
+    if (topUps.length === 0) {
+      setSubscriptionError(t('settings.subscriptions.errorTopUpEntries'));
+      return;
+    }
+  } else {
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setSubscriptionError(t('settings.subscriptions.errorAmount'));
+      return;
+    }
+    if (!startDate) {
+      setSubscriptionError(t('settings.subscriptions.errorStartDate'));
+      return;
+    }
+    // The input's `max` only styles an out-of-range value as invalid; it never
+    // blocks one from being typed. A first charge is an event that has already
+    // happened, and a future one makes every figure derived from it meaningless.
+    if (startDate > subscriptionApi.todayString()) {
+      setSubscriptionError(t('settings.subscriptions.errorFutureDate'));
+      return;
+    }
+    // Whichever meaning the field currently carries, a date at or before the
+    // first charge describes coverage that ends before it begins.
+    if (renewalDate && renewalDate <= startDate) {
+      setSubscriptionError(t('settings.subscriptions.errorRenewalDate'));
+      return;
+    }
+  }
+
+  const account = subscriptionAccountChoices().find((choice) => choice.value === accountValue)?.provider;
+  const list = subscriptionList();
+  const editing = state.subscriptionEditingId
+    ? list.find((entry) => entry.id === state.subscriptionEditingId)
+    : null;
+
+  if (subscriptionForAccountValue(list, providerId, accountValue, editing?.id)) {
+    setSubscriptionError(t('settings.subscriptions.errorDuplicate'));
+    return;
+  }
+
+  const next = subscriptionApi.normalizeSubscription({
+    ...(editing || {}),
+    id: editing?.id,
+    provider: providerId,
+    kind,
+    binding: account ? subscriptionApi.bindingFromAccount(account) : editing?.binding,
+    planName: String(els.subscriptionPlanNameInput?.value || '').trim(),
+    amountMinor: Number.isFinite(amount) && amount > 0 ? Math.round(amount * 100) : 0,
+    currency: String(els.subscriptionCurrencyInput?.value || 'USD'),
+    interval: String(els.subscriptionIntervalInput?.value || 'month'),
+    intervalCount: Number(els.subscriptionIntervalCountInput?.value) || 1,
+    // Each kind keeps only its own anchor, so switching kind on an existing
+    // record cannot leave the other one's stale dates behind it.
+    startDate: kind === 'topup' ? null : startDate,
+    topUps: kind === 'topup' ? topUps : [],
+    autoRenew,
+    // The one date field feeds whichever of the two dates it currently means,
+    // and always clears the other — a stale override left behind by a toggle
+    // would silently keep scheduling charges on a cancelled plan.
+    nextRenewalOverride: kind === 'topup' || !autoRenew ? null : renewalDate || null,
+    endDate: kind === 'topup' || autoRenew ? null : renewalDate || null,
+    updatedAt: new Date().toISOString()
+  }, { currencyApi });
+  if (!next) {
+    setSubscriptionError(t(kind === 'topup' ? 'settings.subscriptions.errorTopUpEntries' : 'settings.subscriptions.errorStartDate'));
+    return;
+  }
+
+  const updated = editing
+    ? list.map((entry) => (entry.id === editing.id ? next : entry))
+    : [...list, next];
+  if (!await saveSubscriptions(updated, state.subscriptionFormBase, { render: false })) return;
+  closeSubscriptionEditor({
+    onClosed: renderSubscriptionSettings,
+    onCanceled: renderSubscriptionSettings
+  });
+}
+
 function configuredLimitProviderOrder() {
   const enabled = enabledLimitProviderSet();
   return limitProviderOrderApi
@@ -2046,6 +3762,18 @@ function formatLimitCount(window, showUsed = false) {
   return `${trim(showUsed ? used : limit - used)}/${trim(limit)}`;
 }
 
+// Command Code credits are USD, so the count under the bar is money rather than
+// the raw units formatLimitCount prints: "$8.78 / $10.00", or nothing at all for
+// a pool with no allowance (the headline already carries its amount).
+function formatCommandcodeCreditsDetail(window) {
+  const remaining = Number(window?.remaining);
+  const limit = Number(window?.limit);
+  if (!Number.isFinite(remaining) || !Number.isFinite(limit) || limit <= 0) return '';
+  const showUsed = Boolean(state.settings?.showLimitUsed);
+  const value = showUsed ? Math.max(0, limit - remaining) : remaining;
+  return `${formatMoney(value, window?.currency)} / ${formatMoney(limit, window?.currency)}`;
+}
+
 // One-line Overage value: "12.5 credits · $3.20" (credits used, then est. cost).
 // Either piece may be absent; the row only renders when at least one is present.
 function formatKiroOverageValue(window) {
@@ -2086,8 +3814,14 @@ function codexResetCreditExpiryDetailLabel(date) {
   return diffMs <= 0 ? 'Expires now' : `Expires in ${formatDuration(diffMs)}`;
 }
 
-function codexResetCreditExpiryDateLabel(date) {
-  return new Intl.DateTimeFormat(currentLocale(), { month: 'numeric', day: 'numeric' }).format(date);
+// Shared by Codex reset credits and Claude prepaid grants.
+function expiryDateLabel(date) {
+  return new Intl.DateTimeFormat(currentLocale(), {
+    month: 'numeric',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit'
+  }).format(date);
 }
 
 function limitDetailTooltipShouldHoldRender() {
@@ -2148,46 +3882,16 @@ function codexResetCreditsNode(resetCredits) {
       timeline.append(time);
     });
     expiryGroup.append(timeline);
-    if (expirationDates.length > 1) {
-      const infoWrap = document.createElement('span');
-      infoWrap.className = 'limit-detail-tooltip-wrap';
-      infoWrap.classList.toggle('has-opened', state.limitDetailTooltipHasOpened);
-      const info = document.createElement('span');
-      info.className = 'limit-detail-tooltip-trigger';
-      info.textContent = 'i';
-      info.tabIndex = 0;
-      info.setAttribute('aria-label', expirationDates.map((date, index) => `Reset ${index + 1}: ${codexResetCreditExpiryDetailLabel(date)}`).join(', '));
-      const tooltip = document.createElement('span');
-      tooltip.className = 'limit-detail-tooltip';
-      tooltip.setAttribute('role', 'tooltip');
-      expirationDates.forEach((date) => {
-        const row = document.createElement('span');
-        row.className = 'limit-detail-tooltip-row';
-        const label = document.createElement('span');
-        label.textContent = codexResetCreditExpiryDateLabel(date);
-        const tooltipExpiry = document.createElement('span');
-        tooltipExpiry.textContent = codexResetCreditExpiryLabel(date);
-        row.append(label, tooltipExpiry);
-        tooltip.append(row);
-      });
-      const markResetCreditsTooltipOpened = () => {
-        state.limitDetailTooltipHasOpened = true;
-        state.limitDetailTooltipActive = true;
-        infoWrap.classList.add('has-opened');
-      };
-      const releaseResetCreditsTooltip = () => {
-        requestAnimationFrame(() => {
-          if (limitDetailTooltipShouldHoldRender()) return;
-          state.limitDetailTooltipActive = false;
-          flushPendingLimitDetailTooltipRender();
-        });
-      };
-      infoWrap.addEventListener('pointerenter', markResetCreditsTooltipOpened);
-      infoWrap.addEventListener('focusin', markResetCreditsTooltipOpened);
-      infoWrap.addEventListener('pointerleave', releaseResetCreditsTooltip);
-      infoWrap.addEventListener('focusout', releaseResetCreditsTooltip);
-      infoWrap.append(info, tooltip);
-      expiryGroup.append(infoWrap);
+    if (expirationDates.length > 0) {
+      // A date paired with a bare duration doesn't read as `<name>: <value>`, so
+      // the spoken label is supplied rather than derived from the cells. Keep
+      // this detail available for a single reset as well as multiple resets.
+      const infoNode = limitDetailInfoNode(
+        expirationDates.map((date) => [expiryDateLabel(date), codexResetCreditExpiryLabel(date)]),
+        '',
+        expirationDates.map((date, index) => `Reset ${index + 1}: ${codexResetCreditExpiryDetailLabel(date)}`).join(', ')
+      );
+      if (infoNode) expiryGroup.append(infoNode);
     }
     line.append(expiryGroup);
   }
@@ -2196,7 +3900,7 @@ function codexResetCreditsNode(resetCredits) {
   return item;
 }
 
-function openrouterSpendEntries(balance) {
+function providerSpendEntries(balance) {
   return [
     ['Today', optionalFiniteNumber(balance?.todaySpend)],
     ['Week', optionalFiniteNumber(balance?.weekSpend)],
@@ -2205,91 +3909,187 @@ function openrouterSpendEntries(balance) {
   ].filter(([, value]) => value !== null);
 }
 
-function openrouterSpendNode(balance) {
-  const entries = openrouterSpendEntries(balance);
-  if (entries.length === 0) return null;
-  const currency = balance?.currency || 'USD';
-  const preferredSummary = entries.filter(([label]) => label === 'Today' || label === 'Month');
-  const summaryEntries = preferredSummary.length > 0 ? preferredSummary : entries.slice(0, 2);
-  const summaryText = summaryEntries
-    .map(([label, value]) => `${label} ${formatMoney(value, currency)}`)
-    .join(' · ');
-
+// The meter-less note row every balance/spend provider draws: a label on the
+// left, then an optional summary and an optional ⓘ tooltip on the right. The
+// wording stays with the callers — each provider says something different about
+// the same layout — so the spoken label is `label` plus whatever parts they pass.
+function limitNoteRowNode({ label, summary = '', detailEntries = null, ariaParts = [] }) {
   const item = document.createElement('div');
   item.className = 'limit-window limit-window-wide limit-window-note limit-spend';
   const line = document.createElement('div');
   line.className = 'limit-window-text limit-spend-line';
-  const label = document.createElement('span');
-  label.textContent = 'Spend';
+  const labelNode = document.createElement('span');
+  labelNode.textContent = label;
   const right = document.createElement('span');
   right.className = 'limit-spend-right';
-  const summary = document.createElement('span');
-  summary.className = 'limit-spend-summary';
-  summary.textContent = summaryText;
-  right.append(summary);
-
-  if (entries.length > summaryEntries.length) {
-    const infoWrap = document.createElement('span');
-    infoWrap.className = 'limit-detail-tooltip-wrap limit-spend-info-wrap';
-    infoWrap.classList.toggle('has-opened', state.limitDetailTooltipHasOpened);
-    const info = document.createElement('span');
-    info.className = 'limit-detail-tooltip-trigger';
-    info.textContent = 'i';
-    info.tabIndex = 0;
-    info.setAttribute(
-      'aria-label',
-      entries.map(([entryLabel, value]) => `${entryLabel}: ${formatMoney(value, currency)}`).join(', ')
-    );
-    const tooltip = document.createElement('span');
-    tooltip.className = 'limit-detail-tooltip';
-    tooltip.setAttribute('role', 'tooltip');
-    entries.forEach(([entryLabel, value]) => {
-      const row = document.createElement('span');
-      row.className = 'limit-detail-tooltip-row';
-      const tooltipLabel = document.createElement('span');
-      tooltipLabel.textContent = entryLabel;
-      const tooltipValue = document.createElement('span');
-      tooltipValue.textContent = formatMoney(value, currency);
-      row.append(tooltipLabel, tooltipValue);
-      tooltip.append(row);
-    });
-    const markSpendTooltipOpened = () => {
-      state.limitDetailTooltipHasOpened = true;
-      state.limitDetailTooltipActive = true;
-      infoWrap.classList.add('has-opened');
-    };
-    const releaseSpendTooltip = () => {
-      requestAnimationFrame(() => {
-        if (limitDetailTooltipShouldHoldRender()) return;
-        state.limitDetailTooltipActive = false;
-        flushPendingLimitDetailTooltipRender();
-      });
-    };
-    infoWrap.addEventListener('pointerenter', markSpendTooltipOpened);
-    infoWrap.addEventListener('focusin', markSpendTooltipOpened);
-    infoWrap.addEventListener('pointerleave', releaseSpendTooltip);
-    infoWrap.addEventListener('focusout', releaseSpendTooltip);
-    infoWrap.append(info, tooltip);
-    right.append(infoWrap);
+  if (summary) {
+    const summaryNode = document.createElement('span');
+    summaryNode.className = 'limit-spend-summary';
+    summaryNode.textContent = summary;
+    right.append(summaryNode);
   }
-
-  line.append(label, right);
+  const infoNode = detailEntries ? limitDetailInfoNode(detailEntries, 'limit-spend-info-wrap') : null;
+  if (infoNode) right.append(infoNode);
+  line.append(labelNode, right);
   item.append(line);
-  item.setAttribute(
-    'aria-label',
-    ['Spend', ...entries.map(([entryLabel, value]) => `${entryLabel} ${formatMoney(value, currency)}`)].join(', ')
-  );
+  item.setAttribute('aria-label', [label, ...ariaParts].join(', '));
   return item;
 }
 
-const CURRENCY_SYMBOLS = { CNY: '¥', USD: '$' };
-
-function formatMoney(value, currency) {
-  const number = Number(value);
-  if (!Number.isFinite(number)) return '';
-  const symbol = CURRENCY_SYMBOLS[String(currency || '').toUpperCase()] || '$';
-  return `${symbol}${number.toFixed(2)}`;
+// Entries are rows of cells: `[label, value]`, or `[label, middle, value]` when
+// a row carries an extra field. Rows are grid cells (`display: contents`), so a
+// short row would slide into the next row's columns — pad every row to the
+// widest one and widen the grid to match. `ariaLabel` overrides the spoken label
+// for callers whose cells don't read as `<name>: <value>` on their own.
+function limitDetailInfoNode(entries, extraClass = '', ariaLabel = '') {
+  if (!Array.isArray(entries) || entries.length === 0) return null;
+  const columns = entries.reduce((widest, entry) => Math.max(widest, entry.length), 0);
+  const infoWrap = document.createElement('span');
+  infoWrap.className = ['limit-detail-tooltip-wrap', extraClass].filter(Boolean).join(' ');
+  infoWrap.classList.toggle('has-opened', state.limitDetailTooltipHasOpened);
+  const info = document.createElement('span');
+  info.className = 'limit-detail-tooltip-trigger';
+  info.textContent = 'i';
+  info.tabIndex = 0;
+  info.setAttribute(
+    'aria-label',
+    ariaLabel || entries.map(([entryLabel, ...rest]) => `${entryLabel}: ${rest.filter(Boolean).join(' ')}`).join(', ')
+  );
+  const tooltip = document.createElement('span');
+  tooltip.className = ['limit-detail-tooltip', columns > 2 ? 'limit-detail-tooltip-triple' : '']
+    .filter(Boolean).join(' ');
+  tooltip.setAttribute('role', 'tooltip');
+  entries.forEach((entry) => {
+    const row = document.createElement('span');
+    row.className = 'limit-detail-tooltip-row';
+    for (let column = 0; column < columns; column += 1) {
+      const cell = document.createElement('span');
+      cell.textContent = entry[column] ?? '';
+      row.append(cell);
+    }
+    tooltip.append(row);
+  });
+  const markOpened = () => {
+    state.limitDetailTooltipHasOpened = true;
+    state.limitDetailTooltipActive = true;
+    infoWrap.classList.add('has-opened');
+  };
+  const release = () => {
+    requestAnimationFrame(() => {
+      if (limitDetailTooltipShouldHoldRender()) return;
+      state.limitDetailTooltipActive = false;
+      flushPendingLimitDetailTooltipRender();
+    });
+  };
+  infoWrap.addEventListener('pointerenter', markOpened);
+  infoWrap.addEventListener('focusin', markOpened);
+  infoWrap.addEventListener('pointerleave', release);
+  infoWrap.addEventListener('focusout', release);
+  infoWrap.append(info, tooltip);
+  return infoWrap;
 }
+
+function providerSpendNode(balance) {
+  const entries = providerSpendEntries(balance);
+  if (entries.length === 0) return null;
+  const currency = balance?.currency || 'USD';
+  const preferredSummary = entries.filter(([label]) => label === 'Today' || label === 'Month');
+  const summaryEntries = preferredSummary.length > 0 ? preferredSummary : entries.slice(0, 2);
+  const formatted = entries.map(([entryLabel, value]) => [entryLabel, formatMoney(value, currency)]);
+  return limitNoteRowNode({
+    label: 'Spend',
+    summary: summaryEntries
+      .map(([label, value]) => `${label} ${formatMoney(value, currency)}`)
+      .join(' · '),
+    // Only worth a tooltip when it would say more than the summary already does.
+    detailEntries: entries.length > summaryEntries.length ? formatted : null,
+    ariaParts: formatted.map(([entryLabel, value]) => `${entryLabel} ${value}`)
+  });
+}
+
+function thirdPartySpendNode(provider, quotaWindow) {
+  const balance = provider?.balance || null;
+  const currency = balance?.currency || 'USD';
+  const allTimeSpend = optionalFiniteNumber(balance?.allTimeSpend);
+  const entries = [];
+  const total = optionalFiniteNumber(quotaWindow?.limit);
+  const requestCount = optionalFiniteNumber(balance?.requestCount);
+  const quotaGroup = String(balance?.quotaGroup || '').trim();
+  const expiresAt = balance?.expiresAt ? new Date(balance.expiresAt) : null;
+  if (total !== null) entries.push([t('settings.thirdparty.totalQuota'), formatMoney(total, currency)]);
+  if (requestCount !== null) {
+    entries.push([t('settings.thirdparty.requests'), Math.max(0, Math.trunc(requestCount)).toLocaleString()]);
+  }
+  if (quotaGroup) entries.push([t('settings.thirdparty.group'), quotaGroup]);
+  if (expiresAt && !Number.isNaN(expiresAt.getTime())) {
+    entries.push([t('settings.thirdparty.expires'), expiresAt.toLocaleDateString()]);
+  }
+  if (allTimeSpend === null && entries.length === 0) return null;
+  // Without a spend figure the row has nothing to summarize, so it retitles
+  // itself and leans entirely on the tooltip.
+  const summary = allTimeSpend === null ? '' : `All time ${formatMoney(allTimeSpend, currency)}`;
+  return limitNoteRowNode({
+    label: allTimeSpend === null ? 'Details' : 'Spend',
+    summary,
+    detailEntries: entries,
+    ariaParts: [
+      ...(summary ? [summary] : []),
+      ...entries.map(([entryLabel, value]) => `${entryLabel} ${value}`)
+    ]
+  });
+}
+
+// One tooltip row per prepaid grant: amount, expiry date, time left, the same
+// shape Codex's reset credits use. `aria` spells the expiry out, since the
+// terse columns no longer say what the date and duration mean.
+function claudePrepaidGrantRows(tranches, currency) {
+  return tranches
+    .filter((tranche) => optionalFiniteNumber(tranche?.amount) !== null)
+    .map((tranche) => {
+      const money = formatMoney(tranche.amount, tranche.currency || currency);
+      const expiresAt = tranche.expiresAt ? new Date(tranche.expiresAt) : null;
+      if (!expiresAt || Number.isNaN(expiresAt.getTime())) {
+        return { cells: [money, '', 'No expiry'], aria: `${money} no expiry` };
+      }
+      const diffMs = expiresAt.getTime() - Date.now();
+      const remaining = diffMs <= 0 ? 'Expired' : formatDuration(diffMs);
+      return {
+        cells: [money, expiryDateLabel(expiresAt), remaining],
+        aria: diffMs <= 0 ? `${money} expired` : `${money} expires in ${remaining}`
+      };
+    });
+}
+
+// Claude's prepaid credits. Deliberately meter-less: the headline is a sum of
+// grants whose expiries belong to its parts, so a bar would need a denominator
+// this pool doesn't report. Expiries live in the tooltip instead.
+function claudeBalanceNode(provider) {
+  // Also checked here, not just in the collector: a record collected before the
+  // setting was switched off is still in state, and the row should disappear on
+  // the toggle rather than on the next refresh.
+  if (state.settings?.claudePrepaidBalanceEnabled === false) return null;
+  const balance = provider?.balance || null;
+  const amount = optionalFiniteNumber(balance?.amount);
+  if (amount === null) return null;
+  const currency = balance?.currency || 'USD';
+  const tranches = Array.isArray(balance.tranches) ? balance.tranches : [];
+  const grants = claudePrepaidGrantRows(tranches, currency);
+  return limitNoteRowNode({
+    label: 'Balance',
+    summary: formatMoney(amount, currency),
+    detailEntries: grants.map((grant) => grant.cells),
+    ariaParts: [formatMoney(amount, currency), ...grants.map((grant) => grant.aria)]
+  });
+}
+
+const {
+  creditsAmount,
+  creditsMeterPercent,
+  formatCompactMoney,
+  formatMoney,
+  isCreditsWindow,
+  spendWindow
+} = window.TokenMonitorLimitBalanceDisplay;
 
 function optionalFiniteNumber(value) {
   if (value === null || value === undefined || value === '') return null;
@@ -2306,6 +4106,11 @@ function openrouterCreditsWindow(provider) {
     || null;
 }
 
+function thirdPartyQuotaWindow(provider) {
+  const windows = Array.isArray(provider?.windows) ? provider.windows : [];
+  return windows.find((window) => window?.metric === 'credits') || null;
+}
+
 function formatLimitWindowValue(window, fillPercent, hasPercent, showUsed) {
   if (hasPercent) return `${formatPercent(fillPercent)} ${limitModeSuffix(showUsed)}`;
   if (!window) return '--';
@@ -2320,19 +4125,18 @@ function formatLimitWindowValue(window, fillPercent, hasPercent, showUsed) {
 
 function formatHomeLimitWindowValue(window, showUsed) {
   if (window?.planStatus === 'expired') return t('limits.mimo.planExpired');
-  if (window?.kind === 'balance') {
-    return `${formatMoney(window.amount, window.currency)} left`;
+  // A credits window's headline value is money. Its percentage denominator is
+  // lifetime spend, which reads as a quota but isn't one.
+  if (window?.metric === 'credits') {
+    if (window.remaining == null) {
+      return String(window.detail || '').toLowerCase() === 'unlimited'
+        ? t('settings.thirdparty.unlimited')
+        : (window.detail || '--');
+    }
+    return formatCompactMoney(window.remaining, window.currency);
   }
   const percent = limitFillPercent(window?.remainingPercent, window?.usedPercent, showUsed);
   return `${formatPercent(percent)} ${limitModeSuffix(showUsed)}`;
-}
-
-function balanceRemainingWindow(balance) {
-  const amount = Math.max(0, Number(balance?.amount || 0));
-  const spend = Math.max(0, Number(balance?.monthSpend || 0));
-  const total = amount + spend;
-  const remainingPercent = total > 0 ? (amount / total) * 100 : 100;
-  return { remainingPercent };
 }
 
 function mimoTokenPlanWindowFromBalance(balance) {
@@ -2730,7 +4534,7 @@ function renderLimitProviderHead(id, label, provider, color, options = {}) {
   const plan = document.createElement('div');
   plan.className = 'limit-plan';
   plan.textContent = options.planText ?? limitProviderPlan(provider);
-  head.append(titleBlock, plan);
+  head.append(titleBlock, decoratePlanWithSubscription(plan, provider));
   return head;
 }
 
@@ -2740,15 +4544,21 @@ function renderProviderWindows(provider, color) {
   if (provider.provider === 'codex') {
     const session = windowForKind(provider, 'session');
     const weekly = windowForKind(provider, 'weekly');
+    const monthly = windowForKind(provider, 'billing');
     if (session) {
       const sessionNode = limitWindowNode(session.label || 'Session', session, color, 0.95);
-      if (!weekly) sessionNode.classList.add('limit-window-wide');
+      if (!weekly && !monthly) sessionNode.classList.add('limit-window-wide');
       windows.append(sessionNode);
     }
     if (weekly) {
       const weeklyNode = limitWindowNode(weekly.label || 'Weekly', weekly, color, 0.68);
-      if (!session) weeklyNode.classList.add('limit-window-wide');
+      if (!session && !monthly) weeklyNode.classList.add('limit-window-wide');
       windows.append(weeklyNode);
+    }
+    if (monthly) {
+      const monthlyNode = limitWindowNode(monthly.label || 'Monthly', monthly, color, 0.68);
+      monthlyNode.classList.add('limit-window-wide');
+      windows.append(monthlyNode);
     }
     const resetNode = codexResetCreditsNode(provider.resetCredits);
     if (resetNode) windows.append(resetNode);
@@ -2838,7 +4648,7 @@ function renderProviderWindows(provider, color) {
         { ...balanceWindow, label: 'Balance' },
         color,
         0.95,
-        `${formatMoney(balanceAmount, currency)} left`
+        formatMoney(balanceAmount, currency)
       );
       balanceNode.classList.add('limit-window-wide', 'limit-window-no-reset');
       windows.append(balanceNode);
@@ -2863,7 +4673,41 @@ function renderProviderWindows(provider, color) {
       if (!hasMeter) node.classList.add('limit-window-no-reset');
       windows.append(node);
     }
-    const spendNode = openrouterSpendNode(balance);
+    const spendNode = providerSpendNode(balance);
+    if (spendNode) windows.append(spendNode);
+  } else if (provider.provider === 'thirdparty') {
+    windows.classList.add('limit-windows-thirdparty');
+    const balance = provider.balance || null;
+    const currency = balance?.currency || 'USD';
+    const balanceAmount = optionalFiniteNumber(balance?.amount);
+    const quotaWindow = thirdPartyQuotaWindow(provider);
+    const balanceLabel = quotaWindow?.label || 'Balance';
+    if (balanceAmount !== null) {
+      const balanceValue = formatMoney(balanceAmount, currency);
+      const balanceNode = limitWindowNode(
+        balanceLabel,
+        { ...(quotaWindow || { showMeter: false }), label: balanceLabel },
+        color,
+        0.95,
+        balanceValue
+      );
+      balanceNode.classList.add('limit-window-wide', 'limit-window-no-reset');
+      windows.append(balanceNode);
+    } else if (quotaWindow?.showMeter === false && quotaWindow.detail) {
+      const value = String(quotaWindow.detail).toLowerCase() === 'unlimited'
+        ? t('settings.thirdparty.unlimited')
+        : quotaWindow.detail;
+      const balanceNode = limitWindowNode(
+        balanceLabel,
+        { ...quotaWindow, label: balanceLabel },
+        color,
+        0.95,
+        value
+      );
+      balanceNode.classList.add('limit-window-wide', 'limit-window-no-reset');
+      windows.append(balanceNode);
+    }
+    const spendNode = thirdPartySpendNode(provider, quotaWindow);
     if (spendNode) windows.append(spendNode);
   } else if (provider.provider === 'deepseek') {
     // DeepSeek does not expose a fixed quota denominator. This intentionally
@@ -2873,21 +4717,18 @@ function renderProviderWindows(provider, color) {
     const balance = provider.balance || null;
     if (balance) {
       const currency = balance.currency;
-      const balanceNode = limitWindowNode('Balance', balanceRemainingWindow(balance), color, 0.95,
-        `${formatMoney(balance.amount, currency)} left`);
+      const balanceNode = limitWindowNode(
+        'Balance',
+        { remainingPercent: creditsMeterPercent(provider, null) },
+        color,
+        0.95,
+        formatMoney(balance.amount, currency)
+      );
       balanceNode.classList.add('limit-window-wide', 'limit-window-no-reset');
       windows.append(balanceNode);
 
-      const parts = [];
-      if (Number.isFinite(Number(balance.todaySpend))) parts.push(`Today ${formatMoney(balance.todaySpend, currency)}`);
-      if (Number.isFinite(Number(balance.monthSpend))) {
-        parts.push(`Month ${formatMoney(balance.monthSpend, currency)}`);
-      }
-      if (parts.length) {
-        const spendNode = limitWindowNode('Spend', { showMeter: false }, color, 0.6, parts.join(' · '));
-        spendNode.classList.add('limit-window-wide', 'limit-window-note');
-        windows.append(spendNode);
-      }
+      const spendNode = providerSpendNode(balance);
+      if (spendNode) windows.append(spendNode);
     }
   } else if (provider.provider === 'mimo') {
     windows.classList.add('limit-windows-mimo');
@@ -3010,6 +4851,37 @@ function renderProviderWindows(provider, color) {
       node.classList.add('limit-window-wide');
       windows.append(node);
     }
+  } else if (provider.provider === 'commandcode') {
+    // 5-hour and weekly are rate-limit windows (percent); the monthly grant and
+    // any rollover top-up are money, so they get the amount on the right of the
+    // reset line and span the row like Kimi's Monthly.
+    const fiveHour = windowForKind(provider, 'session');
+    const weekly = windowForKind(provider, 'weekly');
+    if (fiveHour) {
+      const node = limitWindowNode('5-hour', fiveHour, color, 0.95);
+      if (!weekly) node.classList.add('limit-window-wide');
+      windows.append(node);
+    }
+    if (weekly) {
+      const node = limitWindowNode('Weekly', weekly, color, 0.68);
+      if (!fiveHour) node.classList.add('limit-window-wide');
+      windows.append(node);
+    }
+    for (const credits of windowsForKind(provider, 'billing')) {
+      const node = limitWindowNode(
+        credits.label || 'Monthly',
+        credits,
+        color,
+        0.5,
+        null,
+        formatCommandcodeCreditsDetail(credits)
+      );
+      node.classList.add('limit-window-wide');
+      // A grant with no known plan allowance has no meter, so there is no bar
+      // for a reset line to sit under either.
+      if (credits.showMeter === false) node.classList.add('limit-window-no-reset');
+      windows.append(node);
+    }
   } else if (provider.provider === 'kimi') {
     const fiveHour = windowForKind(provider, 'session');
     const weekly = windowForKind(provider, 'weekly');
@@ -3060,6 +4932,19 @@ function renderProviderWindows(provider, color) {
       if (weekly.label) node.classList.add('limit-window-wide');
       windows.append(node);
     }
+    // Usage credits: "$2.35 / $20.00" with a meter when a monthly spend limit is
+    // set, "$2.35 spent" without one. Absent entirely when credits are off.
+    const usageCredits = spendWindow(provider);
+    if (usageCredits) {
+      const value = usageCredits.limit === null
+        ? `${formatMoney(usageCredits.used, usageCredits.currency)} spent`
+        : `${formatMoney(usageCredits.used, usageCredits.currency)} / ${formatMoney(usageCredits.limit, usageCredits.currency)}`;
+      const node = limitWindowNode('Usage credits', usageCredits, color, 0.5, value);
+      node.classList.add('limit-window-wide', 'limit-window-no-reset');
+      windows.append(node);
+    }
+    const balanceNode = claudeBalanceNode(provider);
+    if (balanceNode) windows.append(balanceNode);
   } else {
     // Default: render only the windows the provider actually has. Providers
     // that only expose a single window shouldn't leave a half-empty bar next to
@@ -3086,9 +4971,42 @@ function renderLimitProviderRow(id, label, provider, color, options = {}) {
   return row;
 }
 
+// Every limits surface (the limits panel and the Home cards) resolves account
+// titles here. One table keeps a provider from masking its email on one surface
+// while leaking it on the other, and from rendering two different titles for the
+// same account. Providers identified by email need no entry — the default below
+// already masks them.
+const LIMIT_ACCOUNT_TITLES = {
+  codex: codexAccountTitle,
+  opencode: opencodeAccountTitle,
+  openrouter: (provider, index) => namedApiAccountTitle(provider, index, 'openrouter'),
+  thirdparty: (provider, index) => namedApiAccountTitle(provider, index, 'thirdparty')
+};
+
+function limitAccountTitle(id, provider, index, providerEntries = [provider]) {
+  const resolve = LIMIT_ACCOUNT_TITLES[String(id || '').trim().toLowerCase()];
+  return resolve
+    ? resolve(provider, index, providerEntries)
+    : limitAccountDefaultTitle(provider, index, providerEntries);
+}
+
+// maskLimitAccountEmails is display-only: it hides the address on the limits
+// surfaces without changing what is collected, synced, or stored.
+function limitAccountEmailsMasked() {
+  return state.settings?.maskLimitAccountEmails === true;
+}
+
+function limitAccountDefaultTitle(provider, index, providerEntries = [provider]) {
+  return accountIdentityApi.accountTitleLabel(provider, providerEntries, {
+    maskEmail: limitAccountEmailsMasked(),
+    index
+  }) || `Account ${index + 1}`;
+}
+
 function codexAccountTitle(provider, index, providers = [provider]) {
   const label = accountIdentityApi.codexAccountDisplayLabel(provider, providers, {
-    maskEmail: state.settings?.maskLimitAccountEmails,
+    maskEmail: limitAccountEmailsMasked(),
+    index,
     // Limits presents raw account data such as email and Plus/Pro labels, so
     // keep the provider's canonical English workspace name on this surface.
     personalWorkspaceLabel: 'Personal'
@@ -3102,15 +5020,15 @@ function codexAccountTitle(provider, index, providers = [provider]) {
 function renderCodexAccountGroup(label, providers, color) {
   const row = document.createElement('div');
   row.className = `limit-row limit-row-group${providers.some((provider) => provider.stale) ? ' stale' : ''}`;
-  const groupProvider = { provider: 'codex', status: 'ok', windows: [] };
+  const groupProvider = { provider: 'codex', status: 'ok', windows: [], accountGroup: true };
   const head = renderLimitProviderHead('codex', label, groupProvider, color, {
-    planText: `${providers.length} accounts`,
+    planText: t('settings.codex.nAccounts', { count: providers.length }),
     hideMeta: true
   });
   const accountList = document.createElement('div');
   accountList.className = 'limit-account-list';
   providers.forEach((provider, index) => {
-    accountList.append(renderLimitProviderRow('codex', codexAccountTitle(provider, index, providers), provider, color, {
+    accountList.append(renderLimitProviderRow('codex', limitAccountTitle('codex', provider, index, providers), provider, color, {
       accountRow: true,
       accountTitle: true,
       allowSystemSwitch: true,
@@ -3122,10 +5040,25 @@ function renderCodexAccountGroup(label, providers, color) {
   return row;
 }
 
-function mimoAccountTitle(provider, index) {
-  const email = String(provider?.accountEmail || '').trim();
-  if (email) return state.settings?.maskLimitAccountEmails ? accountIdentityApi.maskEmailAddress(email) : email;
-  return `Account ${index + 1}`;
+function renderClaudeAccountGroup(label, providers, color) {
+  const row = document.createElement('div');
+  row.className = `limit-row limit-row-group${providers.some((provider) => provider.stale) ? ' stale' : ''}`;
+  const groupProvider = { provider: 'claude', status: 'ok', windows: [], accountGroup: true };
+  const head = renderLimitProviderHead('claude', label, groupProvider, color, {
+    planText: t('settings.claude.nAccounts', { count: providers.length }),
+    hideMeta: true
+  });
+  const accountList = document.createElement('div');
+  accountList.className = 'limit-account-list';
+  providers.forEach((provider, index) => {
+    accountList.append(renderLimitProviderRow('claude', limitAccountTitle('claude', provider, index, providers), provider, color, {
+      accountRow: true,
+      accountTitle: true,
+      showIcon: false
+    }));
+  });
+  row.append(head, accountList);
+  return row;
 }
 
 function mimoSettingsAccountTitle(account, index) {
@@ -3135,15 +5068,15 @@ function mimoSettingsAccountTitle(account, index) {
 function renderMimoAccountGroup(label, providers, color) {
   const row = document.createElement('div');
   row.className = `limit-row limit-row-group${providers.some((provider) => provider.stale) ? ' stale' : ''}`;
-  const groupProvider = { provider: 'mimo', status: 'ok', windows: [] };
+  const groupProvider = { provider: 'mimo', status: 'ok', windows: [], accountGroup: true };
   const head = renderLimitProviderHead('mimo', label, groupProvider, color, {
-    planText: `${providers.length} accounts`,
+    planText: t('settings.mimo.nAccounts', { count: providers.length }),
     hideMeta: true
   });
   const accountList = document.createElement('div');
   accountList.className = 'limit-account-list';
   providers.forEach((provider, index) => {
-    accountList.append(renderLimitProviderRow('mimo', mimoAccountTitle(provider, index), provider, color, {
+    accountList.append(renderLimitProviderRow('mimo', limitAccountTitle('mimo', provider, index, providers), provider, color, {
       accountRow: true,
       accountTitle: true,
       showIcon: false
@@ -3155,6 +5088,10 @@ function renderMimoAccountGroup(label, providers, color) {
 
 function opencodeAccountTitle(provider, index) {
   const name = String(provider?.accountName || '').trim();
+  // The collector's canonical name is shown as-is. This column holds account
+  // names, which are user strings and almost never translated, so a localized
+  // phrase reads as a stray UI label among them — and the plan and source
+  // columns beside it are English for the same reason.
   if (name) return name;
   // Older synced clients put the user-defined profile name in accountLabel.
   // Keep those rows identifiable while new clients carry profile and plan in
@@ -3168,7 +5105,7 @@ function opencodeAccountTitle(provider, index) {
 function renderOpenCodeAccountGroup(label, providers, color) {
   const row = document.createElement('div');
   row.className = 'limit-row limit-row-group';
-  const groupProvider = { provider: 'opencode', status: 'ok', windows: [] };
+  const groupProvider = { provider: 'opencode', status: 'ok', windows: [], accountGroup: true };
   const head = renderLimitProviderHead('opencode', label, groupProvider, color, {
     planText: t('settings.opencode.nAccounts', { count: providers.length }),
     hideMeta: true
@@ -3180,7 +5117,7 @@ function renderOpenCodeAccountGroup(label, providers, color) {
       && provider?.accountLabel
       && provider.accountLabel !== 'Go'
       && provider.accountLabel !== 'Zen';
-    accountList.append(renderLimitProviderRow('opencode', opencodeAccountTitle(provider, index), provider, color, {
+    accountList.append(renderLimitProviderRow('opencode', limitAccountTitle('opencode', provider, index, providers), provider, color, {
       accountRow: true,
       showIcon: false,
       ...(legacyProfileLabel ? { planText: '' } : {})
@@ -3190,30 +5127,61 @@ function renderOpenCodeAccountGroup(label, providers, color) {
   return row;
 }
 
-function openrouterAccountTitle(provider, index) {
+function namedApiAccountTitle(provider, index, providerId) {
   const accountName = String(provider?.accountName || provider?.accountLabel || '').trim();
-  if (accountName.toLowerCase() === 'environment') return t('settings.openrouter.environment');
+  if (accountName.toLowerCase() === 'environment') return t(`settings.${providerId}.environment`);
   return accountName || `Account ${index + 1}`;
 }
 
-function renderOpenRouterAccountGroup(label, providers, color) {
+function thirdPartyPlanText(provider) {
+  if (provider?.status !== 'ok') return undefined;
+  const planLabel = String(provider?.planLabel || '').toLowerCase();
+  if (planLabel === 'account') return 'Account';
+  if (planLabel === 'api key') return 'API key';
+  if (planLabel === 'custom') return 'Custom';
+  return undefined;
+}
+
+function renderNamedApiAccountGroup(providerId, label, providers, color, options = {}) {
   const row = document.createElement('div');
   row.className = `limit-row limit-row-group${providers.some((provider) => provider.stale) ? ' stale' : ''}`;
-  const groupProvider = { provider: 'openrouter', status: 'ok', windows: [] };
-  const head = renderLimitProviderHead('openrouter', label, groupProvider, color, {
-    planText: t('settings.openrouter.nAccounts', { count: providers.length }),
+  const groupProvider = { provider: providerId, status: 'ok', windows: [], accountGroup: true };
+  const head = renderLimitProviderHead(providerId, label, groupProvider, color, {
+    planText: options.groupPlanText,
     hideMeta: true
   });
   const accountList = document.createElement('div');
   accountList.className = 'limit-account-list';
   providers.forEach((provider, index) => {
-    accountList.append(renderLimitProviderRow('openrouter', openrouterAccountTitle(provider, index), provider, color, {
-      accountRow: true,
-      showIcon: false
-    }));
+    accountList.append(renderLimitProviderRow(
+      providerId,
+      limitAccountTitle(providerId, provider, index, providers),
+      provider,
+      color,
+      {
+        accountRow: true,
+        showIcon: false,
+        ...(options.planTextForProvider
+          ? { planText: options.planTextForProvider(provider) }
+          : {})
+      }
+    ));
   });
   row.append(head, accountList);
   return row;
+}
+
+function renderOpenRouterAccountGroup(label, providers, color) {
+  return renderNamedApiAccountGroup('openrouter', label, providers, color, {
+    groupPlanText: t('settings.openrouter.nAccounts', { count: providers.length })
+  });
+}
+
+function renderThirdPartyAccountGroup(label, providers, color) {
+  return renderNamedApiAccountGroup('thirdparty', label, providers, color, {
+    groupPlanText: t('settings.thirdparty.nAccounts', { count: providers.length }),
+    planTextForProvider: thirdPartyPlanText
+  });
 }
 
 function renderLimits() {
@@ -3230,23 +5198,59 @@ function renderLimits() {
   const limitsEnabled = state.settings?.limitsEnabled !== false;
   const enabled = enabledLimitProviderSet();
   const providers = providersByLimitProviderId(state.stats?.limits?.providers || []);
-  const nodes = [];
-  const rows = limitProviderOrderApi
+  const orderedProviders = limitProviderOrderApi
     .orderedLimitProviders(LIMIT_PROVIDERS, state.settings?.limitProviderOrder)
     .filter(({ id }) => limitsEnabled && enabled.has(id));
+  const visibleProviderEntries = new Map(orderedProviders.map(({ id }) => {
+    const providerEntries = limitsEnabled && enabled.has(id)
+      ? (providers.get(id) || [{ provider: id, status: state.stats ? missingLimitProviderStatus() : 'unavailable', windows: [] }])
+      : [{ provider: id, status: 'disabled', windows: [] }];
+    return [id, providerEntries];
+  }));
+  const renderSignature = JSON.stringify({
+    locale: currentLocale(),
+    minute: Math.floor(Date.now() / 60000),
+    mode: state.mode,
+    hubUrl: state.settings?.hubUrl || '',
+    deviceId: state.settings?.deviceId || '',
+    settings: [
+      state.settings?.showLimitSource === true,
+      state.settings?.maskLimitAccountEmails === true,
+      state.settings?.showLimitUsed === true,
+      state.settings?.showToolIcons !== false,
+      state.settings?.claudePrepaidBalanceEnabled !== false,
+      state.settings?.currency || '',
+      state.settings?.currencyRatesEffective || null,
+      state.settings?.subscriptions || [],
+      state.settings?.codexManagedAccounts || [],
+      state.codexActiveAccount || null,
+      state.codexSystemSwitchingAccountId || '',
+      state.codexSystemSwitchErrorAccountId || '',
+      state.codexSystemSwitchError || ''
+    ],
+    providerOrder: orderedProviders.map(({ id }) => id),
+    providers: [...visibleProviderEntries.entries()]
+  });
+  if (
+    state.limitPanelRenderSignature === renderSignature
+    && els.limitsPanel.children.length === orderedProviders.length
+  ) {
+    return;
+  }
+  state.limitPanelRenderSignature = renderSignature;
+  const nodes = [];
+  const rows = orderedProviders;
   if (rows.length === 0) {
     els.limitsPanel.replaceChildren();
     return;
   }
   for (const { id, label } of rows) {
-    const providerEnabled = limitsEnabled && enabled.has(id);
-    const providerEntries = providerEnabled
-      ? (providers.get(id) || [{ provider: id, status: state.stats ? missingLimitProviderStatus() : 'unavailable', windows: [] }])
-      : [{ provider: id, status: 'disabled', windows: [] }];
-    const visibleProviders = providerEntries.length > 0
-      ? providerEntries
-      : { provider: id, status: 'disabled', windows: [] };
+    const visibleProviders = visibleProviderEntries.get(id) || [{ provider: id, status: 'disabled', windows: [] }];
     const color = id === 'mimo' ? clientColors.xiaomi : (clientColors[id] || clientColors.default);
+    if (id === 'claude' && Array.isArray(visibleProviders) && visibleProviders.length > 1) {
+      nodes.push(renderClaudeAccountGroup(label, visibleProviders, color));
+      continue;
+    }
     if (id === 'codex' && Array.isArray(visibleProviders) && visibleProviders.length > 1) {
       nodes.push(renderCodexAccountGroup(label, visibleProviders, color));
       continue;
@@ -3259,15 +5263,21 @@ function renderLimits() {
       nodes.push(renderOpenRouterAccountGroup(label, visibleProviders, color));
       continue;
     }
+    if (id === 'thirdparty' && Array.isArray(visibleProviders) && visibleProviders.length > 1) {
+      nodes.push(renderThirdPartyAccountGroup(label, visibleProviders, color));
+      continue;
+    }
     if (id === 'mimo' && Array.isArray(visibleProviders) && visibleProviders.length > 1) {
       nodes.push(renderMimoAccountGroup(label, visibleProviders, color));
       continue;
     }
     const provider = Array.isArray(visibleProviders) ? visibleProviders[0] : visibleProviders;
-    nodes.push(renderLimitProviderRow(id, label, provider, color, id === 'codex' ? {
-      accountTitle: true,
-      allowSystemSwitch: true
-    } : undefined));
+    const rowOptions = id === 'codex'
+      ? { accountTitle: true, allowSystemSwitch: true }
+      : id === 'thirdparty'
+        ? { planText: thirdPartyPlanText(provider) }
+        : undefined;
+    nodes.push(renderLimitProviderRow(id, label, provider, color, rowOptions));
   }
   els.limitsPanel.replaceChildren(...nodes);
 }
@@ -3464,16 +5474,17 @@ function stopServiceStatusTicker() {
 }
 
 async function openSessionDetail({ client, sessionId, sessionCost, title }) {
-  state.openSession = { client, sessionId, sessionCost, title, detail: null };
+  const request = { client, sessionId, sessionCost, title, period: state.period, detail: null };
+  state.openSession = request;
   renderSessionDetail({ loading: true });
   try {
-    const detail = await window.tokenMonitor.getSessionDetail({ client, sessionId, period: state.period, sessionCost });
-    if (state.openSession && state.openSession.sessionId === sessionId) {
-      state.openSession.detail = detail;
+    const detail = await window.tokenMonitor.getSessionDetail({ client, sessionId, period: request.period, sessionCost });
+    if (state.openSession === request) {
+      request.detail = detail;
       renderSessionDetail({ detail });
     }
   } catch (_) {
-    if (state.openSession && state.openSession.sessionId === sessionId) renderSessionDetail({ error: true });
+    if (state.openSession === request) renderSessionDetail({ error: true });
   }
 }
 
@@ -3511,6 +5522,9 @@ function renderSessionDetail({ detail, loading, error } = {}) {
 
   const rows = sessionDetailApi.exchangeRows(detail, { now: new Date(), sortBy: state.detailSort });
   if (rows.length === 0) { container.append(detailNote(t('detailEmpty') || 'No activity in this period.')); return; }
+  if (detail?.tokenDataUnavailable === true) {
+    container.append(detailNote(t('detailTokenDataUnavailable') || 'Token data is unavailable for this session.'));
+  }
 
   const sort = document.createElement('button');
   sort.className = 'detail-sort';
@@ -3549,8 +5563,11 @@ function exchangeNode(row, max) {
   }
   exTitle.append(document.createTextNode(row.title));
   wrap.querySelector('.detail-ex-sub').textContent = row.subtitle;
-  wrap.querySelector('.detail-ex-value').textContent = formatNumber(row.value);
-  wrap.querySelector('.detail-ex-cost').textContent = formatCost(row.cost);
+  const tokensAvailable = row.tokensAvailable !== false;
+  wrap.querySelector('.detail-ex-value').textContent = tokensAvailable
+    ? formatNumber(row.value)
+    : (t('detailTokenUnavailable') || 'Unavailable');
+  wrap.querySelector('.detail-ex-cost').textContent = tokensAvailable ? formatCost(row.cost) : '';
   applyBarScale(wrap.querySelector('.bar-fill'), rowWidth(row.value, max) / 100);
 
   const turnsEl = wrap.querySelector('.detail-turns');
@@ -3576,10 +5593,15 @@ function turnNode(turn) {
   el.innerHTML = '<div class="detail-turn-label"><span class="detail-turn-title"></span><span class="detail-turn-split"></span><span class="detail-turn-tools"></span></div>'
     + '<div class="detail-turn-metrics"><span class="detail-turn-value"></span><span class="detail-turn-cost"></span></div>';
   el.querySelector('.detail-turn-title').textContent = `AI ${turn.label}`;
-  el.querySelector('.detail-turn-split').textContent = split;
+  const tokensAvailable = turn.tokensAvailable !== false;
+  el.querySelector('.detail-turn-split').textContent = tokensAvailable
+    ? split
+    : (t('detailTokenUnavailable') || 'Unavailable');
   el.querySelector('.detail-turn-tools').textContent = turn.tools ? `⊢ ${turn.tools}` : '';
-  el.querySelector('.detail-turn-value').textContent = formatNumber(turn.value);
-  el.querySelector('.detail-turn-cost').textContent = formatCost(turn.cost);
+  el.querySelector('.detail-turn-value').textContent = tokensAvailable
+    ? formatNumber(turn.value)
+    : (t('detailTokenUnavailable') || 'Unavailable');
+  el.querySelector('.detail-turn-cost').textContent = tokensAvailable ? formatCost(turn.cost) : '';
   return el;
 }
 
@@ -3590,7 +5612,12 @@ function renderTrends() {
   const previousBars = captureTrendBarMotion();
   const preview = state.stats?.historyPreview || { daily: [], monthly: [], summary: {} };
   const todayTotal = Number(state.stats?.periods?.today?.totalTokens || 0);
-  const { points, metric, labelKey } = charts.selectPreviewSeries(preview, state.period);
+  const fixed = fixedPeriodRangesApi.isDerived(state.period) ? state.fixedPeriodSnapshot : null;
+  // Fixed headline ranges do not collapse the Trends context down to a handful
+  // of bars. Keep the established long-range monthly view; the range-specific
+  // active-time and peak cards below still describe the selected fixed period.
+  const selected = charts.selectPreviewSeries(preview, fixed?.status === 'ready' ? 'allTime' : state.period);
+  const { points, metric, labelKey } = selected;
   const finalPoints = state.period === 'today' ? charts.patchTodayBar(points, todayTotal) : points;
 
   if (finalPoints.length === 0) {
@@ -3600,10 +5627,17 @@ function renderTrends() {
 
   const model = charts.sparklinePreview(finalPoints, { width: 300, height: 120, gap: 0.3, metric });
   const titles = finalPoints.map((p) => `${trendShortLabel(p[labelKey], labelKey)} · ${formatCompact(p[metric])}`);
-  const svg = charts.sparklineSvg(model, { titles });
+  const svg = charts.sparklineSvg(model, { titles, showZeroMarkers: state.period === 'today' });
 
-  const summary = preview.summary || {};
-  const rangeLabel = state.period === 'allTime' ? t('trends.range.year')
+  const summary = homeOverviewApi.activityStatsForPeriod({
+    period: state.period,
+    fixedSnapshot: fixed,
+    daily: preview.daily,
+    historySummary: preview.summary,
+    todayKey: charts.localDayKey()
+  });
+  const rangeLabel = fixed?.status === 'ready' || state.period === 'allTime'
+    ? t('trends.range.year')
     : state.period === 'month' ? t('trends.range.month') : t('trends.range.week');
   const first = trendShortLabel(finalPoints[0][labelKey], labelKey);
   const last = trendShortLabel(finalPoints[finalPoints.length - 1][labelKey], labelKey);
@@ -3683,6 +5717,8 @@ function openViewFromTray(viewId) {
 
 const HOME_HISTORY_MAX_RETRIES = 3;
 const HOME_HISTORY_RETRY_MS = 4000;
+const FIXED_PERIOD_HISTORY_MAX_RETRIES = 3;
+const FIXED_PERIOD_HISTORY_RETRY_MS = 4000;
 
 async function loadHomeHistory() {
   if (state.homeHistoryBusy || !window.tokenMonitor.getDashboardHistory) return;
@@ -3751,6 +5787,228 @@ async function loadHomeHistory() {
       }, HOME_HISTORY_RETRY_MS);
     }
     if (state.breakdown === 'home') render();
+  }
+}
+
+function fixedPeriodTodayKey() {
+  return fixedPeriodRangesApi.localDayKey();
+}
+
+function fixedPeriodHistorySignature() {
+  const inventory = fixedPeriodRangesApi.deviceInventorySignature(state.stats?.devices || []);
+  const revision = state.stats?.deviceHistoryRevision || state.stats?.historyRevision || '';
+  return `${String(revision)}:${fixedPeriodTodayKey()}:${inventory}`;
+}
+
+function fixedPeriodHistoryInventoriesMatch(history) {
+  return fixedPeriodRangesApi.deviceInventorySignature(history?.deviceHistories || [])
+    === fixedPeriodRangesApi.deviceInventorySignature(state.stats?.devices || []);
+}
+
+function buildFixedPeriodSnapshot() {
+  if (!fixedPeriodRangesApi.isDerived(state.period)) return { status: 'native', period: null };
+  if (state.settings?.historyEnabled === false) {
+    return { status: 'unavailable', reason: 'historyDisabled', period: null };
+  }
+  if (!state.fixedPeriodHistoryRequested) {
+    return { status: 'loading', reason: 'loading', period: null };
+  }
+  if (state.fixedPeriodHistoryBusy) {
+    const ready = fixedPeriodRangesApi.readySnapshotForSelection(
+      state.fixedPeriodSnapshot,
+      state.period
+    );
+    return ready
+      ? ready
+      : { status: 'loading', reason: 'loading', period: null };
+  }
+  if (state.fixedPeriodHistoryFailed) {
+    return { status: 'unavailable', reason: 'historyUnavailable', period: null };
+  }
+  return buildFixedPeriodSourcesSnapshot();
+}
+
+async function performFixedPeriodHistoryLoad({ force = false, signature = fixedPeriodHistorySignature() } = {}) {
+  if (!window.tokenMonitor.getDashboardHistory) return false;
+  if (!force && state.fixedPeriodHistoryRequested && state.fixedPeriodHistorySignature === signature) return false;
+  if (state.fixedPeriodHistoryRetrySignature !== signature) {
+    clearTimeout(state.fixedPeriodHistoryRetryTimer);
+    state.fixedPeriodHistoryRetryTimer = null;
+    state.fixedPeriodHistoryRetrySignature = signature;
+    state.fixedPeriodHistoryRetries = 0;
+  }
+  state.fixedPeriodHistoryRequested = true;
+  state.fixedPeriodHistoryBusy = true;
+  state.fixedPeriodHistoryFailed = false;
+  state.fixedPeriodHistorySignature = signature;
+  if (state.fixedPeriodSnapshot?.status !== 'ready') {
+    state.fixedPeriodSnapshot = { status: 'loading', reason: 'loading', period: null };
+  }
+  let fetchedHistory = null;
+  let failed = false;
+  try {
+    fetchedHistory = await window.tokenMonitor.getDashboardHistory({ includeDevices: true });
+  } catch (error) {
+    console.log(`[period] history failed: ${error.message}`);
+    failed = true;
+  } finally {
+    state.fixedPeriodHistoryBusy = false;
+    const requestIsCurrent = fixedPeriodHistorySignature() === signature;
+    if (requestIsCurrent) {
+      state.fixedPeriodHistoryFailed = failed;
+      state.fixedPeriodHistory = failed ? null : fetchedHistory;
+      const inventoryMatches = !failed && fixedPeriodHistoryInventoriesMatch(fetchedHistory);
+      if (inventoryMatches) {
+        state.fixedPeriodHistoryRetries = 0;
+        state.fixedPeriodHistoryRetrySignature = '';
+        clearTimeout(state.fixedPeriodHistoryRetryTimer);
+        state.fixedPeriodHistoryRetryTimer = null;
+      } else if (fixedPeriodRangesApi.shouldRetryFixedPeriodHistory({
+        signature,
+        currentSignature: fixedPeriodHistorySignature(),
+        retries: state.fixedPeriodHistoryRetries,
+        maxRetries: FIXED_PERIOD_HISTORY_MAX_RETRIES,
+        failed,
+        inventoryMatches
+      })) {
+        state.fixedPeriodHistoryRetries += 1;
+        clearTimeout(state.fixedPeriodHistoryRetryTimer);
+        state.fixedPeriodHistoryRetryTimer = setTimeout(() => {
+          state.fixedPeriodHistoryRetryTimer = null;
+          if (fixedPeriodHistorySignature() !== signature) return;
+          if (!state.fixedPeriodHistoryFailed
+            && fixedPeriodHistoryInventoriesMatch(state.fixedPeriodHistory)) return;
+          void loadFixedPeriodHistory({ force: true });
+        }, FIXED_PERIOD_HISTORY_RETRY_MS);
+      }
+      state.fixedPeriodSnapshot = buildFixedPeriodSnapshot();
+      if (state.fixedPeriodSnapshot.status === 'ready' && state.stats?.periods) {
+        state.stats.periods[state.period] = state.fixedPeriodSnapshot.period;
+      }
+    }
+  }
+  return true;
+}
+
+function fixedPeriodHistoryCoordinator() {
+  if (!state.fixedPeriodHistoryCoordinator) {
+    state.fixedPeriodHistoryCoordinator = fixedPeriodRangesApi.createLatestRequestCoordinator({
+      signature: fixedPeriodHistorySignature,
+      load: performFixedPeriodHistoryLoad,
+      onSettled: ({ render: shouldRender }) => {
+        if (shouldRender && fixedPeriodRangesApi.isDerived(state.period)) {
+          statsRenderScheduler.request();
+        }
+      }
+    });
+  }
+  return state.fixedPeriodHistoryCoordinator;
+}
+
+function loadFixedPeriodHistory(options = {}) {
+  const promise = fixedPeriodHistoryCoordinator().request(options);
+  state.fixedPeriodHistoryPromise = promise;
+  const clearPromise = () => {
+    if (state.fixedPeriodHistoryPromise === promise) state.fixedPeriodHistoryPromise = null;
+  };
+  void promise.then(clearPromise, clearPromise);
+  return promise;
+}
+
+function resetFixedPeriodHistoryRetryBudget() {
+  clearTimeout(state.fixedPeriodHistoryRetryTimer);
+  state.fixedPeriodHistoryRetryTimer = null;
+  state.fixedPeriodHistoryRetrySignature = '';
+  state.fixedPeriodHistoryRetries = 0;
+}
+
+function fixedPeriodHistoryNeedsWarmup(options = {}) {
+  return fixedPeriodRangesApi.shouldWarmFixedPeriodHistory({
+    hasStats: Boolean(state.stats),
+    historyEnabled: state.settings?.historyEnabled !== false,
+    apiAvailable: Boolean(window.tokenMonitor.getDashboardHistory),
+    active: fixedPeriodHistoryCoordinator().active(),
+    force: options.force === true,
+    retryFailed: options.retryFailed === true,
+    failed: state.fixedPeriodHistoryFailed,
+    requested: state.fixedPeriodHistoryRequested,
+    loadedSignature: state.fixedPeriodHistorySignature,
+    currentSignature: fixedPeriodHistorySignature()
+  });
+}
+
+async function warmFixedPeriodHistory(options = {}) {
+  if (!fixedPeriodHistoryNeedsWarmup(options)) return false;
+  const explicitRecovery = options.force === true
+    || (options.retryFailed === true && state.fixedPeriodHistoryFailed);
+  if (explicitRecovery) resetFixedPeriodHistoryRetryBudget();
+  await loadFixedPeriodHistory({
+    force: explicitRecovery,
+    renderOnComplete: options.renderOnComplete === true
+  });
+  return true;
+}
+
+function fixedPeriodMessage(snapshot, breakdown = '') {
+  if (snapshot?.status === 'loading') return t('periodRange.loading');
+  if (breakdown === 'session') return t('periodRange.sessionUnavailable');
+  if (breakdown === 'project') return t('periodRange.projectUnavailable');
+  if (snapshot?.reason === 'historyDisabled') return t('periodRange.historyDisabled');
+  if (snapshot?.reason === 'historyUnavailable') return t('periodRange.historyUnavailable');
+  return t('periodRange.historyUnavailable');
+}
+
+function hidePeriodContentForMessage(message) {
+  els.fixedPeriodMessage.textContent = message;
+  els.fixedPeriodMessage.classList.remove('hidden');
+  els.homePanel.classList.add('hidden');
+  els.breakdown.classList.add('hidden');
+  els.serviceStatusPanel?.classList.add('hidden');
+  els.limitsPanel.classList.add('hidden');
+  els.trendsPanel.classList.add('hidden');
+  els.sessionDetail.classList.add('hidden');
+  els.sessionDetailHead.classList.add('hidden');
+}
+
+function periodMenuButtons() {
+  return Array.from(els.monthPeriodMenu?.querySelectorAll('[data-fixed-period]') || []);
+}
+
+function focusPeriodMenuButton(index) {
+  const buttons = periodMenuButtons();
+  if (!buttons.length) return;
+  const target = buttons[Math.max(0, Math.min(buttons.length - 1, Number(index) || 0))];
+  for (const button of buttons) button.tabIndex = button === target ? 0 : -1;
+  target?.focus();
+}
+
+function setPeriodMenuOpen(open, { restoreFocus = false, focus = '' } = {}) {
+  state.periodMenuOpen = Boolean(open);
+  els.monthPeriodMenu?.closest('.titlebar')?.classList.toggle('period-menu-open', state.periodMenuOpen);
+  els.monthPeriodMenu?.classList.toggle('hidden', !state.periodMenuOpen);
+  els.monthPeriodTab?.setAttribute('aria-expanded', String(state.periodMenuOpen));
+  for (const button of periodMenuButtons()) {
+    button.tabIndex = state.periodMenuOpen && button.classList.contains('is-current') ? 0 : -1;
+  }
+  if (state.periodMenuOpen && focus) {
+    const buttons = periodMenuButtons();
+    const current = Math.max(0, buttons.findIndex((button) => button.classList.contains('is-current')));
+    focusPeriodMenuButton(focus === 'first' ? 0 : focus === 'last' ? buttons.length - 1 : current);
+  }
+  if (!state.periodMenuOpen && restoreFocus) els.monthPeriodTab?.focus();
+}
+
+function syncPeriodMenu() {
+  const mode = fixedPeriodRangesApi.slotForSelection(state.period) === 'month'
+    ? fixedPeriodRangesApi.normalizeMonthMode(state.period)
+    : fixedPeriodRangesApi.normalizeMonthMode(state.settings?.periodMonthMode);
+  for (const button of periodMenuButtons()) {
+    const active = button.dataset.fixedPeriod === mode;
+    button.classList.toggle('is-current', active);
+    button.setAttribute('aria-checked', String(active));
+    if (active) button.setAttribute('aria-current', 'true');
+    else button.removeAttribute('aria-current');
+    button.tabIndex = state.periodMenuOpen && active ? 0 : -1;
   }
 }
 
@@ -3983,13 +6241,6 @@ function homeModuleShell(kind, title, viewId, meta = '') {
   return { module, body };
 }
 
-function homeLimitAccountTitle(id, provider, index, providerEntries = [provider]) {
-  if (id === 'codex') return codexAccountTitle(provider, index, providerEntries);
-  if (id === 'mimo') return mimoAccountTitle(provider, index);
-  if (id === 'opencode') return opencodeAccountTitle(provider, index);
-  return String(provider?.accountEmail || provider?.accountName || '').trim() || `Account ${index + 1}`;
-}
-
 function homeLimitRows() {
   const enabled = enabledLimitProviderSet();
   const providerOrder = state.settings?.homeLimitProviderOrder || state.settings?.limitProviderOrder;
@@ -4011,7 +6262,7 @@ function homeLimitRows() {
       const option = providerOptions.find((entry) => entry.id === id);
       const providerTitle = option?.label || id;
       if (providerEntries.length > 1) {
-        const accountTitle = homeLimitAccountTitle(id, provider, index, providerEntries);
+        const accountTitle = limitAccountTitle(id, provider, index, providerEntries);
         return state.settings?.showHomeLimitProviderNames === true || state.settings?.showToolIcons === false
           ? `${providerTitle} · ${accountTitle}`
           : accountTitle;
@@ -4035,7 +6286,6 @@ function homeLimitWindowLabel(window, providerId = '', visibleWindows = []) {
     monthly: 'home.limit.monthly'
   }[window.kind];
   if (key) return t(key);
-  if (window?.kind === 'balance') return 'Balance';
   return window.label;
 }
 
@@ -4086,16 +6336,18 @@ function renderHomeLimitModule() {
       line.append(label, value);
       metric.append(line);
       const resetAt = formatReset(window.resetsAt);
-      const resetText = document.createElement('span');
-      resetText.className = 'home-limit-reset';
       const resetLabel = window.resetsAt
-        ? resetAt || '\u00a0'
+        ? resetAt || ''
         : window.resetDescription
         ? t('home.reset', { value: window.resetDescription })
-        : '\u00a0';
-      const periodLabel = limitProviderPresentationApi.limitProviderCompactWindowPeriodLabel(row.providerId, window, row.windows);
-      resetText.textContent = periodLabel && resetLabel !== '\u00a0' ? `${periodLabel} · ${resetLabel}` : resetLabel;
-      metric.append(resetText);
+        : '';
+      if (resetLabel) {
+        const resetText = document.createElement('span');
+        resetText.className = 'home-limit-reset';
+        const periodLabel = limitProviderPresentationApi.limitProviderCompactWindowPeriodLabel(row.providerId, window, row.windows);
+        resetText.textContent = periodLabel ? `${periodLabel} · ${resetLabel}` : resetLabel;
+        metric.append(resetText);
+      }
       windows.append(metric);
     }
     item.append(account, windows);
@@ -4135,9 +6387,12 @@ function renderHomeModelModule(period) {
 }
 
 function homeToolSourceRows(period) {
-  return Object.entries(period?.clients || {}).map(([client, value]) => ({
+  return usageAttributionRowsApi.attributionRows(period?.clients, period?.clientCosts, {
+    totalValue: period?.totalTokens,
+    totalCost: period?.costUsd
+  }).map(({ key: client, value }) => ({
     key: client,
-    name: clientLabels[client] || client,
+    name: client === usageAttributionRowsApi.UNATTRIBUTED_KEY ? t('dashboard.tooltip.unclassified') : clientLabels[client] || client,
     value: Number(value || 0),
     color: clientColors[client] || clientColors.default
   }));
@@ -4175,7 +6430,7 @@ function renderHomeToolModule(period) {
 
 function renderHomeDeviceModule() {
   const { module, body } = homeModuleShell('device', t('home.devices'), 'device');
-  const rows = homeOverviewApi.homeDeviceRows(state.stats?.devices || [], {
+  const rows = homeOverviewApi.homeDeviceRows(fixedPeriodDevices(), {
     localDeviceId: state.settings?.deviceId || '',
     period: state.period,
     limit: 4
@@ -4221,6 +6476,8 @@ function dailyWithHeatIntensity(daily) {
   return window.TokenMonitorUsageCharts.computeHeatmapIntensities(daily);
 }
 
+const homeActivityProgrammaticScrollers = new WeakSet();
+
 function applyHomeActivityScroll(scroller) {
   const target = homeOverviewApi.homeActivityScrollTarget({
     scrollWidth: scroller.scrollWidth,
@@ -4228,7 +6485,10 @@ function applyHomeActivityScroll(scroller) {
     followEnd: state.homeActivityFollowEnd,
     savedLeft: state.homeActivityScrollLeft
   });
-  if (Math.abs(scroller.scrollLeft - target) > 0.5) scroller.scrollLeft = target;
+  if (Math.abs(scroller.scrollLeft - target) > 0.5) {
+    homeActivityProgrammaticScrollers.add(scroller);
+    scroller.scrollLeft = target;
+  }
   scroller.classList.toggle('is-scrolled', target > 2);
 }
 
@@ -4380,10 +6640,16 @@ function setupHomeActivityHover(scroller) {
     scheduleSpotlight();
   };
 
-  const hide = () => {
-    tooltip.dataset.visible = 'false';
-    tooltip.setAttribute('aria-hidden', 'true');
-    tooltip.style.transform = 'translate(-9999px, -9999px)';
+  const hide = ({ clearHover = true, concealTooltip = true } = {}) => {
+    if (clearHover) {
+      state.homeActivityHoverPoint = null;
+      state.homeActivityHoverDate = '';
+    }
+    if (concealTooltip) {
+      tooltip.dataset.visible = 'false';
+      tooltip.setAttribute('aria-hidden', 'true');
+      tooltip.style.transform = 'translate(-9999px, -9999px)';
+    }
     if (spotlightFrame) cancelAnimationFrame(spotlightFrame);
     spotlightFrame = 0;
     spotlightVisible = false;
@@ -4396,23 +6662,25 @@ function setupHomeActivityHover(scroller) {
     activeCell = null;
   };
 
-  scroller.addEventListener('pointermove', (event) => {
+  const showAtPoint = (clientX, clientY, target) => {
     if (!svg || scroller.classList.contains('is-dragging')) {
       hide();
       return;
     }
     const rect = svg.getBoundingClientRect();
     const view = svg.viewBox.baseVal;
-    const x = view.x + (event.clientX - rect.left) * view.width / Math.max(1, rect.width);
-    const y = view.y + (event.clientY - rect.top) * view.height / Math.max(1, rect.height);
+    const x = view.x + (clientX - rect.left) * view.width / Math.max(1, rect.width);
+    const y = view.y + (clientY - rect.top) * view.height / Math.max(1, rect.height);
     moveSpotlight(x, y);
 
-    const target = event.target instanceof Element ? event.target.closest('.heat[data-d]') : null;
-    const cell = target && canvas.contains(target) ? target : null;
+    const targetCell = target instanceof Element ? target.closest('.heat[data-d]') : null;
+    const cell = targetCell && canvas.contains(targetCell) ? targetCell : null;
     if (!cell) {
       hide();
       return;
     }
+    state.homeActivityHoverPoint = { x: clientX, y: clientY };
+    state.homeActivityHoverDate = cell.dataset.d || '';
     if (activeCell !== cell) {
       activeCell?.removeAttribute('data-active');
       activeCell = cell;
@@ -4424,23 +6692,73 @@ function setupHomeActivityHover(scroller) {
     tooltip.dataset.visible = 'true';
     tooltip.setAttribute('aria-hidden', 'false');
     moveHomeActivityTooltip(tooltip, cell);
+  };
+
+  scroller.addEventListener('pointermove', (event) => {
+    showAtPoint(event.clientX, event.clientY, event.target);
   });
-  scroller.addEventListener('pointerleave', hide);
-  scroller.addEventListener('scroll', hide);
+  scroller.addEventListener('pointerleave', () => hide());
+  scroller.addEventListener('scroll', () => {
+    // Restoring the saved/right-edge position emits a delayed scroll event. It is not
+    // user intent and must not clear the hover that renderHome just reconnected.
+    if (homeActivityProgrammaticScrollers.delete(scroller)) {
+      state.homeActivityHoverRestore?.();
+      return;
+    }
+    hide();
+  });
   // The tooltip lives on document.body and is only dismissed by handlers on this
-  // scroller, which renderHome() throws away on every rebuild. Expose the latest
-  // hide() so renderHome/render can clear it — DOM removal fires no pointerleave.
-  state.homeActivityHoverTeardown = hide;
+  // scroller, which renderHome() throws away on every rebuild. Preserve the visible
+  // tooltip plus its semantic cell identity across that replacement, so live stats
+  // refreshes do not fade or jump it before the new cell is ready.
+  state.homeActivityHoverTeardown = ({ preserveHover = false } = {}) => hide({
+    clearHover: !preserveHover,
+    concealTooltip: !preserveHover
+  });
+  state.homeActivityHoverRestore = () => {
+    const point = state.homeActivityHoverPoint;
+    const date = state.homeActivityHoverDate;
+    if (!point || !date) return;
+    const cell = Array.from(canvas?.querySelectorAll('.heat[data-d]') || [])
+      .find((candidate) => candidate.dataset.d === date);
+    if (!cell) {
+      hide();
+      return;
+    }
+    const rect = cell.getBoundingClientRect();
+    const hitSlop = 2;
+    const stillHovered = point.x >= rect.left - hitSlop
+      && point.x <= rect.right + hitSlop
+      && point.y >= rect.top - hitSlop
+      && point.y <= rect.bottom + hitSlop;
+    if (!stillHovered) {
+      hide();
+      return;
+    }
+    showAtPoint(point.x, point.y, cell);
+  };
 }
 
 // Dismiss the body-level activity tooltip + spotlight from outside the scroller's own
-// pointer handlers (Home rerender, or switching away from Home while a cell is hovered).
-// Clearing the ref after teardown drops the last hold on the old hide() closure, so a
-// discarded scroller + its SVG can be collected when the trends module goes away and no
-// fresh setupHomeActivityHover reassigns it. setup always re-registers before any hover.
-function hideHomeActivityTooltip() {
-  state.homeActivityHoverTeardown?.();
+// pointer handlers. A Home rerender may preserve the active hover for the replacement
+// scroller; leaving Home clears it. Dropping both closures lets the old SVG be collected.
+function hideHomeActivityTooltip({ preserveHover = false } = {}) {
+  const teardown = state.homeActivityHoverTeardown;
+  teardown?.({ preserveHover });
   state.homeActivityHoverTeardown = null;
+  state.homeActivityHoverRestore = null;
+  if (!preserveHover) {
+    state.homeActivityHoverPoint = null;
+    state.homeActivityHoverDate = '';
+    if (!teardown) {
+      const tooltip = document.querySelector('.home-activity-tooltip');
+      if (tooltip) {
+        tooltip.dataset.visible = 'false';
+        tooltip.setAttribute('aria-hidden', 'true');
+        tooltip.style.transform = 'translate(-9999px, -9999px)';
+      }
+    }
+  }
 }
 
 function renderHomeTrendsModule() {
@@ -4477,7 +6795,12 @@ function renderHomeTrendsModule() {
   // The key must be the LOCAL day: the period being patched in is local-day scoped.
   const today = charts.localDayKey();
   const todayPeriod = state.stats?.periods?.today;
-  const points = homeOverviewApi.patchDailyToday(rawDaily, today, Number(todayPeriod?.totalTokens || 0), Number(todayPeriod?.costUsd || 0));
+  const points = homeOverviewApi.patchDailyToday(
+    rawDaily,
+    today,
+    Number(todayPeriod?.totalTokens || 0),
+    Number(todayPeriod?.costUsd || 0)
+  );
   const activityLayout = homeOverviewApi.homeActivityHeatmapLayout();
   const heatMetric = state.settings?.heatmapMetric || 'cost';
   const intensityField = heatMetric === 'cost' ? 'costIntensity' : 'tokenIntensity';
@@ -4503,6 +6826,11 @@ function renderHomeTrendsModule() {
   const { module, body } = homeModuleShell('trends', t('home.activity'), 'trends', activeDaysLabel);
   const activityScroll = document.createElement('div');
   activityScroll.className = 'home-activity-scroll';
+  if (state.homeActivityHoverPoint && state.homeActivityHoverDate) {
+    // This replacement is being inserted directly under a stationary pointer. Keep
+    // the already-visible spotlight from replaying its hover fade on the new SVG.
+    activityScroll.classList.add('is-restoring-hover');
+  }
   activityScroll.tabIndex = 0;
   activityScroll.setAttribute('role', 'region');
   activityScroll.setAttribute('aria-label', t('home.activityScroll'));
@@ -4517,14 +6845,18 @@ function renderHomeTrendsModule() {
   });
   activityScroll.append(activityCanvas);
   const linePoints = charts.clampDaily(points, 45);
-  const summary = homeOverviewApi.homeTrendSummary(linePoints);
+  const trendSummary = homeOverviewApi.homeTrendSummary(linePoints);
+  const longRangePeak = homeOverviewApi.longRangePeakDayTokens({
+    historySummary: history.summary,
+    daily: points
+  });
   const trendHead = document.createElement('div');
   trendHead.className = 'home-trend-head';
   const trendTitle = document.createElement('span');
   trendTitle.textContent = t('home.trend');
   const trendMeta = document.createElement('span');
   trendMeta.className = 'home-module-meta';
-  trendMeta.textContent = t('home.peakTokens', { value: formatCompact(summary.peak) });
+  trendMeta.textContent = t('home.peakTokens', { value: formatCompact(longRangePeak) });
   trendHead.append(trendTitle, trendMeta);
   const model = charts.areaLineChart(linePoints, { width: 300, height: 70, padTop: 4, padRight: 3, padBottom: 4, padLeft: 3, metric: 'tokens', curve: true });
   const plot = document.createElement('div');
@@ -4535,14 +6867,20 @@ function renderHomeTrendsModule() {
   plot.append(chart);
   const dates = document.createElement('div');
   dates.className = 'home-trend-dates';
-  for (const date of summary.dates) {
+  for (const date of trendSummary.dates) {
     const label = document.createElement('span');
     label.className = 'home-trend-date';
     label.textContent = trendShortLabel(date, 'date');
     dates.append(label);
   }
   body.append(activityScroll, trendHead, plot, dates);
-  setupHomeActivityScroller(activityScroll, () => animateHomeHistoryVisuals(activityScroll, activityCanvas, chart));
+  setupHomeActivityScroller(activityScroll, () => {
+    // The scroller is now laid out and has its saved/right-edge position. Reconnect
+    // an active hover only after that geometry is stable; otherwise the replacement
+    // briefly resolves against the oldest (left) edge and then drops the tooltip.
+    state.homeActivityHoverRestore?.();
+    animateHomeHistoryVisuals(activityScroll, activityCanvas, chart);
+  });
   setupHomeActivityHover(activityScroll);
   return module;
 }
@@ -4550,9 +6888,9 @@ function renderHomeTrendsModule() {
 function renderHome() {
   if (!els.homePanel) return;
   // The previous scroller (and its ResizeObserver) is about to be replaced; drop the
-  // observer so at most one is live and it is gone if the trends module disappears,
-  // and hide any open activity tooltip before its owning scroller is discarded.
-  hideHomeActivityTooltip();
+  // observer so at most one is live. Keep the active tooltip visible while the
+  // replacement heatmap reconnects it to the same date cell.
+  hideHomeActivityTooltip({ preserveHover: true });
   state.homeActivityResizeObserver?.disconnect();
   state.homeActivityResizeObserver = null;
   const period = state.stats.periods?.[state.period] || { totalTokens: 0, costUsd: 0, clients: {} };
@@ -4574,6 +6912,7 @@ function renderHome() {
     action.addEventListener('click', openHomeSettings);
     empty.append(title, body, action);
     els.homePanel.replaceChildren(empty);
+    hideHomeActivityTooltip();
     return;
   }
   const nodes = moduleIds.map((id) => {
@@ -4584,8 +6923,17 @@ function renderHome() {
     return renderHomeTrendsModule();
   });
   els.homePanel.replaceChildren(...nodes);
-  // setupHomeActivityScroller wires a ResizeObserver that applies the scroll position
-  // post-layout, so no requestAnimationFrame guess is needed here.
+  // setupHomeActivityScroller first runs while its module is detached, where
+  // scrollWidth can equal clientWidth. Apply again synchronously now that the DOM is
+  // attached, before the browser paints or hover restoration measures the new cell.
+  const activityScroller = els.homePanel.querySelector('.home-activity-scroll');
+  if (activityScroller) applyHomeActivityScroll(activityScroller);
+  if (state.homeActivityHoverRestore) state.homeActivityHoverRestore();
+  else hideHomeActivityTooltip();
+  if (activityScroller?.classList.contains('is-restoring-hover')) {
+    requestAnimationFrame(() => activityScroller.classList.remove('is-restoring-hover'));
+  }
+  // ResizeObserver repeats the scroll + hover restoration once layout fully settles.
 }
 
 function render() {
@@ -4593,9 +6941,46 @@ function render() {
   renderSessionUsageArchiveStatus();
   ensureBreakdownVisible();
   renderViewSwitcher();
+  const derivedPeriod = fixedPeriodRangesApi.isDerived(state.period);
+  if (derivedPeriod) {
+    const signature = fixedPeriodHistorySignature();
+    if (!state.fixedPeriodHistoryRequested
+      || state.fixedPeriodHistorySignature !== signature
+      || state.fixedPeriodHistoryBusy) {
+      // Joining an existing background preload upgrades its completion into a
+      // visible repaint, so switching to a fixed range cannot remain on loading.
+      void loadFixedPeriodHistory();
+    }
+    state.fixedPeriodSnapshot = buildFixedPeriodSnapshot();
+    if (state.fixedPeriodSnapshot.status === 'ready') {
+      state.stats.periods[state.period] = state.fixedPeriodSnapshot.period;
+    }
+  } else {
+    state.fixedPeriodSnapshot = null;
+  }
   if (state.openSession && state.breakdown !== 'session') { state.openSession = null; els.sessionDetail.classList.add('hidden'); els.sessionDetail.replaceChildren(); els.sessionDetailHead.classList.add('hidden'); els.sessionDetailHead.replaceChildren(); }
   if (state.openSession) { els.sessionDetail.classList.remove('hidden'); els.sessionDetailHead.classList.remove('hidden'); } else { els.sessionDetail.classList.add('hidden'); els.sessionDetailHead.classList.add('hidden'); }
   const period = state.stats.periods?.[state.period] || { totalTokens: 0, costUsd: 0, clients: {} };
+  const fixedUnavailable = derivedPeriod && state.fixedPeriodSnapshot?.status !== 'ready';
+  const detailUnavailable = derivedPeriod
+    && !fixedPeriodRangesApi.supportsBreakdown(state.period, state.breakdown, {
+      deviceHistoriesAvailable: Array.isArray(state.fixedPeriodHistory?.deviceHistories)
+    });
+  if (fixedUnavailable || detailUnavailable) {
+    cancelNumberAnimation();
+    els.totalTokens.textContent = fixedUnavailable ? '—' : formatNumber(Number(period.totalTokens || 0));
+    updateTotalCompact(fixedUnavailable ? 0 : Number(period.totalTokens || 0));
+    els.cost.textContent = fixedUnavailable ? '' : formatCost(period.costUsd || 0);
+    state.currentTotal = fixedUnavailable ? 0 : Number(period.totalTokens || 0);
+    hidePeriodContentForMessage(fixedPeriodMessage(state.fixedPeriodSnapshot, detailUnavailable ? state.breakdown : ''));
+    renderFloatingBubbleContent();
+    if (!contentReadySignaled) {
+      contentReadySignaled = true;
+      window.tokenMonitor.signalContentReady?.();
+    }
+    return;
+  }
+  els.fixedPeriodMessage.classList.add('hidden');
   const nextTotal = Number(period.totalTokens || 0);
   const totalChanged = nextTotal !== state.currentTotal;
   if (state.suppressInitialNumberAnimation) {
@@ -4613,7 +6998,7 @@ function render() {
     const widest = formatNumber(nextTotal).length >= formatNumber(animationFrom).length ? nextTotal : animationFrom;
     els.totalTokens.textContent = formatNumber(widest);
     updateTotalCompact(nextTotal);
-    animateNumber(els.totalTokens, animationFrom, nextTotal, state.periodMotionActive ? 800 : 1000, fitTotalNumber);
+    animateTotalNumber(els.totalTokens, animationFrom, nextTotal, state.periodMotionActive ? 800 : 1000);
     pulseLiveDot();
   } else if (!headlineNumberIsAnimatingTo(nextTotal)) {
     cancelNumberAnimation();
@@ -4623,6 +7008,7 @@ function render() {
   }
   state.currentTotal = nextTotal;
   els.cost.textContent = formatCost(period.costUsd || 0);
+  renderTokenRate();
   if (!state.refreshBusy && !state.refreshFeedbackTimer) setRefreshButtonState('idle');
   els.shell.classList.toggle('session-mode', state.breakdown === 'session');
   els.shell.classList.toggle('home-mode', state.breakdown === 'home');
@@ -4800,20 +7186,13 @@ function settleRefreshButtonState(status) {
 // period export. Overlay it onto periods.allTime here, on the renderer's own copy, so
 // every session-view reader (list, archived count, detail lookup) sees it. See
 // injectLocalDeviceStatus in main.js.
-function preserveCustomPeriod(stats) {
-  if (!stats || state.period !== 'custom' || !state.stats?.periods?.custom) return stats;
-  return {
-    ...stats,
-    periods: {
-      ...(stats.periods || {}),
-      custom: state.stats.periods.custom
-    }
-  };
-}
-
 function overlayAllTimeSessions(stats) {
   if (stats && stats.allTimeSessionsView && stats.periods?.allTime) {
-    stats.periods.allTime.sessions = stats.allTimeSessionsView;
+    const sessions = reasonixSessionGuard?.filterReasonixSyntheticSessions
+      ? reasonixSessionGuard.filterReasonixSyntheticSessions(stats.allTimeSessionsView)
+      : stats.allTimeSessionsView;
+    stats.allTimeSessionsView = sessions;
+    stats.periods.allTime.sessions = sessions;
   }
   return stats;
 }
@@ -4827,10 +7206,7 @@ async function refreshStats(options = {}) {
     setRefreshButtonState('refreshing');
   }
   try {
-    state.stats = preserveCustomPeriod(overlayAllTimeSessions(await window.tokenMonitor.getStats(options)));
-    if (state.period === 'custom' && state.customRange && (options.force || options.feedback)) {
-      try { await applyCustomRange(state.customRange); } catch (_) {}
-    }
+    state.stats = overlayAllTimeSessions(await window.tokenMonitor.getStats(options));
     if (options.forceHistory === true) {
       // A manual history rescan is an explicit retry boundary. Let Home request the
       // corresponding full payload even when its revision is unchanged, and restore
@@ -4844,21 +7220,22 @@ async function refreshStats(options = {}) {
     }
     applyCodexActiveAccountFromStats();
     setStatus(statusTextFor(state.mode, state.streamConnected));
-    render();
-    renderLimitProviderCheckboxes();
-    renderToolPreferences();
-    renderWslPanel();
-    updateOpenRouterProfilesStatus();
-    renderDeepseekStatus();
-    renderMinimaxStatus();
-    renderExternalProviderStatus('zai');
-    renderExternalProviderStatus('zaiteam');
-    renderExternalProviderStatus('volcengine');
-    renderExternalProviderStatus('qoder');
-    renderExternalProviderStatus('kimi');
-    renderExternalProviderStatus('ollama');
-    renderMimoStatus();
-    renderCopilotStatus();
+    const forceFixedPeriodHistory = options.forceHistory === true;
+    if (fixedPeriodRangesApi.isDerived(state.period)) {
+      await warmFixedPeriodHistory({
+        force: forceFixedPeriodHistory,
+        retryFailed: forceFixedPeriodHistory,
+        renderOnComplete: false
+      });
+      statsRenderScheduler.request();
+    } else {
+      statsRenderScheduler.request();
+      void warmFixedPeriodHistory({
+        force: forceFixedPeriodHistory,
+        retryFailed: forceFixedPeriodHistory,
+        renderOnComplete: false
+      });
+    }
     maybeUpdateBarsIcon();
     if (feedback) settleRefreshButtonState('refreshed');
   } catch (error) {
@@ -4893,326 +7270,20 @@ function publishViewState() {
   window.tokenMonitor.setViewState?.({ period: state.period, breakdown: state.breakdown });
 }
 
-
-function ensureHourSelect(selectEl) {
-  if (!selectEl || selectEl.options.length === 24 || !customRangePickerApi) return;
-  selectEl.replaceChildren();
-  for (const option of customRangePickerApi.hourOptions()) {
-    const node = document.createElement('option');
-    node.value = String(option.value);
-    node.textContent = option.label;
-    selectEl.append(node);
-  }
-}
-
-function currentCustomRangeDraft() {
-  if (state.customRangeDraft) return customRangePickerApi.normalizeDraft(state.customRangeDraft);
-  if (state.customRange) return customRangePickerApi.normalizeDraft(state.customRange);
-  return customRangePickerApi.normalizeDraft({
-    startDate: customRangePickerApi.localDayKey(),
-    endDate: customRangePickerApi.localDayKey(),
-    startHour: 0,
-    endHour: new Date().getHours()
-  });
-}
-
-function setCustomRangeError(message) {
-  state.customRangeError = message || '';
-  if (!els.customRangeError) return;
-  els.customRangeError.textContent = state.customRangeError;
-  els.customRangeError.classList.toggle('hidden', !state.customRangeError);
-}
-
-function syncCustomRangeFields() {
-  if (!customRangePickerApi || !els.customRangeStartDate) return;
-  ensureHourSelect(els.customRangeStartHour);
-  ensureHourSelect(els.customRangeEndHour);
-  const draft = currentCustomRangeDraft();
-  state.customRangeDraft = draft;
-  els.customRangeStartDate.value = draft.startDate;
-  els.customRangeEndDate.value = draft.endDate;
-  els.customRangeStartHour.value = String(draft.startHour);
-  els.customRangeEndHour.value = String(draft.endHour);
-  if (!state.customRangeMonth) {
-    const [y, m] = draft.startDate.split('-').map(Number);
-    state.customRangeMonth = { year: y, monthIndex: m - 1 };
-  }
-  const locale = currentLocale();
-  if (els.customRangeWeekdays) {
-    const labels = customRangePickerApi.weekdayLabels(locale);
-    const frag = document.createDocumentFragment();
-    for (const label of labels) {
-      const span = document.createElement('span');
-      span.textContent = label;
-      frag.append(span);
-    }
-    els.customRangeWeekdays.replaceChildren(frag);
-  }
-  if (els.customRangeMonthLabel) {
-    els.customRangeMonthLabel.textContent = customRangePickerApi.monthLabel(
-      state.customRangeMonth.year,
-      state.customRangeMonth.monthIndex,
-      locale
-    );
-  }
-  if (els.customRangeGrid) {
-    const cells = customRangePickerApi.buildMonthCells(
-      state.customRangeMonth.year,
-      state.customRangeMonth.monthIndex,
-      draft
-    );
-    const frag = document.createDocumentFragment();
-    for (const cell of cells) {
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'custom-range-day';
-      if (!cell.inMonth) btn.classList.add('outside');
-      if (cell.inRange) btn.classList.add('in-range');
-      if (cell.isEndpoint) btn.classList.add('range-endpoint');
-      btn.textContent = String(cell.dayNumber);
-      btn.dataset.date = cell.date;
-      btn.addEventListener('click', () => {
-        state.customRangeDraft = customRangePickerApi.applyCalendarDayClick(state.customRangeDraft || draft, cell.date);
-        setCustomRangeError('');
-        syncCustomRangeFields();
-      });
-      frag.append(btn);
-    }
-    els.customRangeGrid.replaceChildren(frag);
-  }
-  if (els.customRangeApply) els.customRangeApply.disabled = Boolean(state.customRangeBusy);
-  if (els.customRangeClear) els.customRangeClear.disabled = Boolean(state.customRangeBusy);
-  setCustomRangeError(state.customRangeError);
-}
-
-function setCustomRangeOpen(open) {
-  state.customRangeOpen = Boolean(open);
-  els.shell?.classList.toggle('custom-range-open', state.customRangeOpen);
-  if (els.customRangePopover) {
-    els.customRangePopover.classList.toggle('hidden', !state.customRangeOpen);
-    // Belt-and-suspenders: class + HTML hidden attribute (this codebase has no global .hidden rule).
-    els.customRangePopover.hidden = !state.customRangeOpen;
-    els.customRangePopover.setAttribute('aria-hidden', String(!state.customRangeOpen));
-  }
-  els.customRangeButton?.setAttribute('aria-expanded', String(state.customRangeOpen));
-  if (state.customRangeOpen) {
-    if (!state.customRangeDraft) state.customRangeDraft = currentCustomRangeDraft();
-    if (!state.customRangeMonth && state.customRangeDraft?.startDate) {
-      const [y, m] = state.customRangeDraft.startDate.split('-').map(Number);
-      state.customRangeMonth = { year: y, monthIndex: m - 1 };
-    }
-    setCustomRangeError('');
-    syncCustomRangeFields();
-  }
-}
-
-function syncCustomRangeButton() {
-  const active = state.period === 'custom' && Boolean(state.customRange);
-  els.customRangeButton?.classList.toggle('active', active);
-  if (!els.customRangeButton) return;
-  if (active && state.customRange) {
-    const label = customRangePickerApi.formatRangeLabel(state.customRange, { compact: true });
-    els.customRangeButton.title = label || t('period.custom.button');
-    els.customRangeButton.setAttribute('aria-label', label || t('period.custom.button'));
-  } else {
-    els.customRangeButton.title = t('period.custom.button');
-    els.customRangeButton.setAttribute('aria-label', t('period.custom.button'));
-  }
-}
-
-function readCustomRangeDraftFromFields() {
-  return customRangePickerApi.normalizeDraft({
-    startDate: els.customRangeStartDate?.value,
-    endDate: els.customRangeEndDate?.value,
-    startHour: els.customRangeStartHour?.value,
-    endHour: els.customRangeEndHour?.value,
-    _pickPhase: state.customRangeDraft?._pickPhase
-  });
-}
-
-async function applyCustomRange(rangeInput) {
-  if (!window.tokenMonitor.getCustomRangeStats) {
-    setCustomRangeError(t('period.custom.unavailable'));
-    return false;
-  }
-  const draft = customRangePickerApi.normalizeDraft(rangeInput || readCustomRangeDraftFromFields());
-  if (!draft.ok) {
-    setCustomRangeError(t('period.custom.invalid'));
-    syncCustomRangeFields();
-    return false;
-  }
-  state.customRangeBusy = true;
-  state.customRangeError = '';
-  syncCustomRangeFields();
-  try {
-    const result = await window.tokenMonitor.getCustomRangeStats({
-      startDate: draft.startDate,
-      endDate: draft.endDate,
-      startHour: draft.startHour,
-      endHour: draft.endHour
-    });
-    if (!result?.ok || !result.period) {
-      setCustomRangeError(result?.message || t('period.custom.failed'));
-      return false;
-    }
-    state.customRange = {
-      startDate: result.range.startDate,
-      endDate: result.range.endDate,
-      startHour: result.range.startHour,
-      endHour: result.range.endHour
-    };
-    state.customRangeDraft = { ...state.customRange, ok: true, _pickPhase: 'done' };
-    if (state.stats) {
-      const existingDevices = Array.isArray(state.stats.devices) ? state.stats.devices : [];
-      const customDevices = Array.isArray(result.devices) ? result.devices : [];
-      const customById = new Map(customDevices.map((device) => [String(device?.deviceId || ''), device]));
-      const devices = existingDevices.map((device) => {
-        const custom = customById.get(String(device?.deviceId || ''));
-        if (!custom) return device;
-        return { ...device, periods: { ...(device.periods || {}), custom: custom.periods?.custom || {} } };
-      });
-      for (const custom of customDevices) {
-        if (!devices.some((device) => String(device?.deviceId || '') === String(custom?.deviceId || ''))) devices.push(custom);
-      }
-      state.stats = {
-        ...state.stats,
-        devices,
-        periods: {
-          ...(state.stats.periods || {}),
-          custom: result.period
-        }
-      };
-    } else {
-      state.stats = {
-        periods: { custom: result.period },
-        devices: Array.isArray(result.devices) ? result.devices : []
-      };
-    }
-    state.period = 'custom';
-    publishViewState();
-    syncPeriodTabs();
-    syncCustomRangeButton();
-    state.rowSignature = '';
-    state.periodMotionActive = true;
-    render();
-    state.periodMotionActive = false;
-    setCustomRangeOpen(false);
-    return true;
-  } catch (error) {
-    setCustomRangeError(error?.message || t('period.custom.failed'));
-    return false;
-  } finally {
-    state.customRangeBusy = false;
-    syncCustomRangeFields();
-    syncCustomRangeButton();
-  }
-}
-
-
-function clearCustomRangeSelection() {
-  state.customRange = null;
-  state.customRangeDraft = customRangePickerApi.normalizeDraft({
-    startDate: customRangePickerApi.localDayKey(),
-    endDate: customRangePickerApi.localDayKey(),
-    startHour: 0,
-    endHour: new Date().getHours()
-  });
-  state.customRangeError = '';
-  if (state.period === 'custom') {
-    state.period = 'today';
-    publishViewState();
-  }
-  if (state.stats?.periods?.custom) {
-    const periods = { ...state.stats.periods };
-    delete periods.custom;
-    state.stats = { ...state.stats, periods };
-  }
-  syncPeriodTabs();
-  syncCustomRangeButton();
-  syncCustomRangeFields();
-  state.rowSignature = '';
-  render();
-}
-
-function setupCustomRangeUI() {
-  if (!els.customRangeButton || !customRangePickerApi) return;
-  ensureHourSelect(els.customRangeStartHour);
-  ensureHourSelect(els.customRangeEndHour);
-  els.customRangeButton.addEventListener('click', (event) => {
-    event.stopPropagation();
-    setCustomRangeOpen(!state.customRangeOpen);
-  });
-  els.customRangeClose?.addEventListener('click', (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-    setCustomRangeOpen(false);
-  });
-  els.customRangePopover?.addEventListener('pointerdown', (event) => {
-    // Keep interactions inside the dialog from being treated as outside dismiss.
-    event.stopPropagation();
-  });
-  els.customRangePrevMonth?.addEventListener('click', () => {
-    const base = state.customRangeMonth || { year: new Date().getFullYear(), monthIndex: new Date().getMonth() };
-    state.customRangeMonth = customRangePickerApi.shiftMonth(base.year, base.monthIndex, -1);
-    syncCustomRangeFields();
-  });
-  els.customRangeNextMonth?.addEventListener('click', () => {
-    const base = state.customRangeMonth || { year: new Date().getFullYear(), monthIndex: new Date().getMonth() };
-    state.customRangeMonth = customRangePickerApi.shiftMonth(base.year, base.monthIndex, 1);
-    syncCustomRangeFields();
-  });
-  const onFieldChange = () => {
-    state.customRangeDraft = readCustomRangeDraftFromFields();
-    if (state.customRangeDraft.startDate) {
-      const [y, m] = state.customRangeDraft.startDate.split('-').map(Number);
-      state.customRangeMonth = { year: y, monthIndex: m - 1 };
-    }
-    setCustomRangeError(state.customRangeDraft.ok ? '' : t('period.custom.invalid'));
-    syncCustomRangeFields();
-  };
-  els.customRangeStartDate?.addEventListener('change', onFieldChange);
-  els.customRangeEndDate?.addEventListener('change', onFieldChange);
-  els.customRangeStartHour?.addEventListener('change', onFieldChange);
-  els.customRangeEndHour?.addEventListener('change', onFieldChange);
-  els.customRangeApply?.addEventListener('click', async () => {
-    await applyCustomRange();
-  });
-  els.customRangeClear?.addEventListener('click', () => {
-    clearCustomRangeSelection();
-    setCustomRangeOpen(false);
-  });
-  document.addEventListener('pointerdown', (event) => {
-    if (!state.customRangeOpen) return;
-    const target = event.target;
-    if (!(target instanceof Node)) return;
-    if (els.customRangePopover?.contains(target) || els.customRangeButton?.contains(target)) return;
-    setCustomRangeOpen(false);
-  });
-  document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape' && state.customRangeOpen) {
-      event.preventDefault();
-      setCustomRangeOpen(false);
-    }
-  });
-  // Popover must start closed; never auto-open on launch.
-  setCustomRangeOpen(false);
-  syncCustomRangeButton();
-}
-
 function setPeriod(period) {
   const next = normalizeInitialViewValue(period, viewPeriodValues, state.period);
   if (next === state.period) {
+    if (fixedPeriodRangesApi.isDerived(next) && state.fixedPeriodHistoryFailed) {
+      void warmFixedPeriodHistory({ retryFailed: true, renderOnComplete: true });
+    }
     publishViewState();
     return false;
   }
   state.period = next;
-  if (next !== 'custom') {
-    // Keep the last custom payload around so reopening the picker can re-apply it,
-    // but leave the active period on the chosen preset tab.
-    state.customRangeError = '';
+  if (fixedPeriodRangesApi.isDerived(next) && state.fixedPeriodHistoryFailed) {
+    void warmFixedPeriodHistory({ retryFailed: true, renderOnComplete: true });
   }
   publishViewState();
-  syncCustomRangeButton();
   return true;
 }
 
@@ -5271,6 +7342,14 @@ function applyControlLayout(swapSettingsAndRefresh) {
   }
 }
 
+function applyFontSettings(settings) {
+  const source = { ...(state.settings || {}), ...(settings || {}) };
+  const root = document.documentElement.style;
+  const { interfaceFont, displayFont } = fontSettingsApi.resolveEffectiveFontSettings(source);
+  root.setProperty('--ui-font', interfaceFont);
+  root.setProperty('--display-font', displayFont);
+}
+
 function applyAppearanceSettings(settings) {
   const opacity = glassRenderingApi.renderedGlassOpacity(settings, {
     platform: state.appInfo?.platform,
@@ -5279,28 +7358,11 @@ function applyAppearanceSettings(settings) {
   const depth = clamp(settings?.glassBlur ?? 32, 0, 100) / 100;
   const systemGlassDisabled = settings?.systemGlass === false;
   const isWindows = navigator.userAgent.toLowerCase().includes('windows');
-  const windowsBackdropUnsupported = isWindows
-    && new URLSearchParams(window.location.search).get('windowsBackdropUnsupported') === '1';
-  const windowsGlass = windowsGlassApi.appearanceState(settings, {
-    isWindows,
-    backdropSupported: !windowsBackdropUnsupported
-  });
-  const macosGlass = macosGlassApi.appearanceState(settings, {
-    isMac: state.appInfo?.platform === 'darwin',
-    liquidAvailable: settings?.macosGlassLiquidAvailable
-      ?? state.settings?.macosGlassLiquidAvailable
-      ?? false
-  });
-  const nativeWindowsBackdropEnabled = isWindows
-    && !systemGlassDisabled
-    && !windowsBackdropUnsupported
-    && windowsGlass.showBackdropControl
-    && windowsGlass.backdropMode;
-  const rootStyle = document.documentElement.style;
-  rootStyle.setProperty('--glass-alpha', opacity.toFixed(2));
-  rootStyle.setProperty('--line-alpha', (0.1 + depth * 0.09).toFixed(3));
-  rootStyle.setProperty('--line-strong-alpha', (0.18 + depth * 0.14).toFixed(3));
-  rootStyle.setProperty('--control-alpha', (0.03 + depth * 0.045).toFixed(3));
+  const windowsGlass = windowsGlassApi.appearanceState(settings, { isWindows });
+  document.documentElement.style.setProperty('--glass-alpha', opacity.toFixed(2));
+  document.documentElement.style.setProperty('--line-alpha', (0.1 + depth * 0.09).toFixed(3));
+  document.documentElement.style.setProperty('--line-strong-alpha', (0.18 + depth * 0.14).toFixed(3));
+  document.documentElement.style.setProperty('--control-alpha', (0.03 + depth * 0.045).toFixed(3));
   document.documentElement.classList.toggle('system-glass-disabled', systemGlassDisabled);
   els.windowsBackdropRow?.classList.toggle('hidden', !windowsGlass.showBackdropControl);
   if (els.windowsBackdropInput) {
@@ -5309,47 +7371,30 @@ function applyAppearanceSettings(settings) {
   if (els.windowsBackdropNote) {
     const accentFallback = windowsGlass.showAccentNote
       && new URLSearchParams(window.location.search).get('windowsBackdropFallback') === '1';
-    const showNote = windowsGlass.showAccentNote || windowsGlass.showMicaNote;
     els.windowsBackdropNote.textContent = t(accentFallback
       ? 'settings.appearance.windowsBackdropFallback'
-      : windowsGlass.showMicaNote
-        ? 'settings.appearance.windowsBackdropMicaNote'
-        : 'settings.appearance.windowsBackdropNote');
+      : 'settings.appearance.windowsBackdropNote');
     els.windowsBackdropNote.classList.toggle('error', accentFallback);
-    els.windowsBackdropNote.classList.toggle('hidden', !showNote);
+    els.windowsBackdropNote.classList.toggle('hidden', !windowsGlass.showAccentNote);
   }
-  els.macosGlassRow?.classList.toggle('hidden', !macosGlass.showStyleControl);
+  const isMac = state.appInfo?.platform === 'darwin';
+  const macosGlass = macosGlassApi.appearanceState(settings, {
+    isMac,
+    liquidAvailable: settings?.macosGlassLiquidAvailable === true
+  });
+  const macosGlassRow = els.macosGlassRow;
+  macosGlassRow?.classList.toggle('hidden', !macosGlass.showStyleControl);
   if (els.macosGlassInput) els.macosGlassInput.value = macosGlass.requestedStyle;
-  if (els.macosGlassNote) els.macosGlassNote.classList.toggle('hidden', !macosGlass.showLiquidNote);
-  if (macosGlass.showStyleControl) document.documentElement.dataset.macosGlass = macosGlass.effectiveStyle;
-  else delete document.documentElement.dataset.macosGlass;
-  // Theme colours must be applied before calculating transient Windows
-  // surfaces. Native Mica/Acrylic follows the OS theme, while menus and
-  // tooltips still need a theme-aware fill when a custom light preset is used.
-  // Preview patches omit themeColors, so reuse the saved palette while still
-  // recalculating it for the preview's native/non-native backdrop state.
-  const themeColors = settings && 'themeColors' in settings
-    ? settings.themeColors
-    : state.settings?.themeColors;
-  applyThemeColors(themeColors, { nativeBackdrop: nativeWindowsBackdropEnabled });
-  const lightTheme = nativeWindowsBackdropEnabled
-    ? systemDarkThemeMedia?.matches !== true
-    : themePresetsApi.isLightHex(resolvedThemeColor('bg'));
-  rootStyle.setProperty('--windows-popover-alpha', windowsGlassApi.nativePopoverAlpha({ lightTheme }).toFixed(3));
-
-  // The data attribute activates native-material-specific CSS only when the
-  // BrowserWindow actually has a native Windows backdrop. When system glass is
-  // off, or the OS build cannot host one (main passes windowsBackdropUnsupported),
-  // the window is a transparent CSS fallback and must keep the normal
-  // blur/surface rules instead of inheriting the low-alpha native rules.
-  if (nativeWindowsBackdropEnabled) {
-    document.documentElement.dataset.windowsBackdrop = windowsGlass.backdropMode;
-    document.body.dataset.windowsBackdrop = windowsGlass.backdropMode;
-  } else {
-    delete document.documentElement.dataset.windowsBackdrop;
-    delete document.body.dataset.windowsBackdrop;
+  if (els.macosGlassNote) {
+    els.macosGlassNote.textContent = t('settings.appearance.macosGlassLiquidNote');
+    els.macosGlassNote.classList.toggle('hidden', !macosGlass.showLiquidNote);
   }
+  document.documentElement.dataset.macosGlass = macosGlass.effectiveStyle;
   applyReduceMotionPreference(settings?.reduceMotion);
+  applyFontSettings(settings);
+  // Only full settings objects carry themeColors; glass/zoom preview patches
+  // omit it, so we must not wipe theme overrides mid-slider-drag.
+  if (settings && 'themeColors' in settings) applyThemeColors(settings.themeColors);
   els.liveDot.style.display = (settings?.showLiveDot !== false) ? '' : 'none';
   els.shell.classList.toggle('desktop-mode', settings?.windowBehavior === 'desktop');
   els.shell.classList.toggle('title-icon-only', settings?.titleIconOnly === true);
@@ -5372,10 +7417,6 @@ function applyAppearanceSettings(settings) {
   
   document.documentElement.classList.toggle('is-windows', isWindows);
   document.body.classList.toggle('is-windows', isWindows);
-
-  const isMac = state.appInfo?.platform === 'darwin'
-    || navigator.userAgent.toLowerCase().includes('macintosh');
-  document.documentElement.classList.toggle('is-macos', isMac);
   document.body.classList.toggle('is-macos', isMac);
   
   document.documentElement.classList.toggle('is-mac-legacy', isMacLegacyRadius);
@@ -5414,23 +7455,14 @@ function matchingThemePresetId(overrides) {
 }
 
 function applyThemeColors(overrides) {
-  const options = arguments[1] || {};
-  const nativeBackdrop = options.nativeBackdrop ?? Boolean(document.documentElement.dataset.windowsBackdrop);
   appliedThemeOverrides = themePresetsApi.normalizeOverrides(overrides, themePresetsApi.INTERFACE_COLOR_KEYS);
   const root = document.documentElement.style;
-  for (const { name, value } of themePresetsApi.themeCssVarEntries(appliedThemeOverrides, {
-    nativeBackdrop,
-    systemDark: systemDarkThemeMedia?.matches === true
-  })) {
+  for (const { name, value } of themePresetsApi.themeCssVarEntries(appliedThemeOverrides)) {
     if (value) root.setProperty(name, value);
     else root.removeProperty(name);
   }
   renderFloatingBubbleContent();
 }
-
-systemDarkThemeMedia?.addEventListener?.('change', () => {
-  if (state.settings) applyAppearanceSettings(state.settings);
-});
 
 function applyVendorColorOverrides(overrides) {
   const merged = themePresetsApi.mergeVendorColors(BRAND_VENDOR_COLORS, overrides);
@@ -5829,13 +7861,13 @@ function renderFloatingBubbleContent() {
       return;
     }
     el.classList.remove('bars');
-    el.textContent = (state.stats && window.TokenMonitorTrayText.formatTrayText(state.stats, mode, currentCurrency(), state.settings)) || 'Σ';
+    el.textContent = (state.stats && window.TokenMonitorTrayText.formatTrayText(state.stats, mode, currentCurrency(), compactTokenDisplayOptions())) || 'Σ';
   } else if (mode === 'icon') {
     el.classList.remove('bars');
     el.textContent = 'Σ';
   } else {
     el.classList.remove('bars');
-    el.textContent = state.stats ? (window.TokenMonitorTrayText.formatTrayText(state.stats, mode, currentCurrency(), state.settings) || '0') : '0';
+    el.textContent = state.stats ? (window.TokenMonitorTrayText.formatTrayText(state.stats, mode, currentCurrency(), compactTokenDisplayOptions()) || '0') : '0';
   }
   reportFloatingBubbleSize();
 }
@@ -5976,18 +8008,107 @@ function appearancePatchFromControls() {
   const systemGlass = els.systemGlassInputs?.find((input) => input.checked)?.value !== 'off';
   return {
     systemGlass,
-    macosGlassStyle: macosGlassModeApi.normalizeMacosGlassStyle(els.macosGlassInput?.value),
+    macosGlassStyle: els.macosGlassInput?.value || 'vibrancy',
     windowsBackdrop: windowsGlassApi.normalizeWindowsBackdropMode(els.windowsBackdropInput?.value),
     reduceMotion: els.reduceMotionInputs?.find((input) => input.checked)?.value || 'system',
     showLiveDot: Boolean(els.liveDotInput.checked),
     showToolIcons: Boolean(els.toolIconsInput.checked),
     titleIconOnly: Boolean(els.titleIconInput.checked),
     showCompactTotalTokens: Boolean(els.showCompactTotalTokensInput.checked),
+    compactTokenUnits: els.compactTokenUnitsInput?.value === 'localized' ? 'localized' : 'western',
     settingsInTitlebar: Boolean(els.swapSettingsRefreshInput.checked),
     glassOpacity: Number(els.glassInput.value === '' ? defaultAppearance.glassOpacity : els.glassInput.value),
     glassBlur: Number(els.blurInput.value === '' ? defaultAppearance.glassBlur : els.blurInput.value),
     zoomFactor: Number(els.zoomInput.value === '' ? defaultAppearance.zoomFactor * 100 : els.zoomInput.value) / 100
   };
+}
+
+function fontControlsFor(role) {
+  return role === 'display'
+    ? { preset: els.displayFontPreset, input: els.displayFontInput, customRow: els.displayFontCustomRow }
+    : { preset: els.interfaceFontPreset, input: els.interfaceFontInput, customRow: els.interfaceFontCustomRow };
+}
+
+function syncFontCustomRow(role) {
+  const controls = fontControlsFor(role);
+  const isCustom = controls.preset?.value === 'custom';
+  controls.customRow?.classList.toggle('hidden', !isCustom);
+  if (controls.input) controls.input.disabled = !isCustom;
+  updateFontPreview(role);
+}
+
+function fontFamilyFromControls(role) {
+  const controls = fontControlsFor(role);
+  return fontSettingsApi.fontFamilyForPreset(controls.preset?.value || (role === 'display' ? 'follow' : 'app'), controls.input?.value, role);
+}
+
+function fontPreviewForControls(role) {
+  const resolved = fontSettingsApi.resolveEffectiveFontSettings({
+    interfaceFontFamily: fontFamilyFromControls('interface'),
+    displayFontFamily: fontFamilyFromControls('display')
+  });
+  return role === 'display' ? resolved.displayFont : resolved.interfaceFont;
+}
+
+function updateFontPreview(role) {
+  const preview = role === 'display' ? els.displayFontPreview : els.interfaceFontPreview;
+  if (preview) preview.style.fontFamily = fontPreviewForControls(role);
+}
+
+function fontPatchFromControls() {
+  return {
+    interfaceFontFamily: fontFamilyFromControls('interface'),
+    displayFontFamily: fontFamilyFromControls('display')
+  };
+}
+
+function previewFontSettings() {
+  syncFontCustomRow('interface');
+  syncFontCustomRow('display');
+  applyFontSettings(fontPatchFromControls());
+}
+
+async function saveFontSettingsFromControls() {
+  previewFontSettings();
+  await saveSettings(fontPatchFromControls());
+}
+
+function handleFontPresetChange(role) {
+  syncFontCustomRow(role);
+  const controls = fontControlsFor(role);
+  previewFontSettings();
+  if (controls.preset?.value === 'custom') {
+    controls.input?.focus();
+    if (!fontSettingsApi.normalizeFontFamily(controls.input?.value)) return;
+  }
+  void saveFontSettingsFromControls();
+}
+
+async function resetInterfaceFont() {
+  if (els.interfaceFontPreset) els.interfaceFontPreset.value = 'app';
+  if (els.interfaceFontInput) els.interfaceFontInput.value = '';
+  syncFontCustomRow('interface');
+  previewFontSettings();
+  await saveSettings({ interfaceFontFamily: '' });
+}
+
+async function resetDisplayFont() {
+  if (els.displayFontPreset) els.displayFontPreset.value = 'app';
+  if (els.displayFontInput) els.displayFontInput.value = '';
+  syncFontCustomRow('display');
+  previewFontSettings();
+  await saveSettings({ displayFontFamily: fontSettingsApi.DEFAULT_DISPLAY_FONT });
+}
+
+function syncFontSettingsControls() {
+  for (const [role, settingKey] of [['interface', 'interfaceFontFamily'], ['display', 'displayFontFamily']]) {
+    const controls = fontControlsFor(role);
+    const value = fontSettingsApi.normalizeFontFamily(state.settings?.[settingKey]);
+    const preset = fontSettingsApi.presetForFontFamily(value, role);
+    if (controls.preset) controls.preset.value = preset;
+    if (controls.input) controls.input.value = preset === 'custom' ? value : '';
+    syncFontCustomRow(role);
+  }
 }
 
 function syncSliderRow(input) {
@@ -6026,6 +8147,7 @@ function syncHubModeUi() {
     renderHubStatus();
   }
   renderSyncClientStatus();
+  renderHubBuildStatus();
 }
 
 function renderHubStatus() {
@@ -6068,6 +8190,21 @@ function renderSyncClientStatus() {
   // Empty .hub-status still renders a bordered box, so hide it entirely when
   // there is nothing to show (connected, or not in client mode).
   els.syncClientStatus.hidden = !text;
+}
+
+function renderHubBuildStatus() {
+  if (!els.hubBuildStatus) return;
+  const visible = state.settings?.hubMode === 'client';
+  const model = visible ? hubBuildPresentationApi.presentation(state.hubBuildStatus) : null;
+  if (!model) {
+    els.hubBuildStatus.hidden = true;
+    els.hubBuildStatus.textContent = '';
+    return;
+  }
+  const target = t(model.targetKey);
+  els.hubBuildStatus.textContent = t(model.key, { target });
+  els.hubBuildStatus.className = `hub-status hub-build-status${model.tone ? ` ${model.tone}` : ''}`;
+  els.hubBuildStatus.hidden = false;
 }
 
 function renderHubAddresses(addresses, port) {
@@ -6126,23 +8263,58 @@ async function refreshHubInfo() {
   } catch (_) { /* ignore */ }
 }
 
+const HUB_BUILD_STATUS_REFRESH_TTL_MS = 5 * 60 * 1000;
+let hubBuildStatusRequest = 0;
+let hubBuildStatusLastProbeAt = 0;
+
+function hubBuildStatusRefreshDue(now = Date.now()) {
+  return !hubBuildStatusLastProbeAt
+    || now < hubBuildStatusLastProbeAt
+    || now - hubBuildStatusLastProbeAt >= HUB_BUILD_STATUS_REFRESH_TTL_MS;
+}
+
+async function refreshHubBuildStatus() {
+  const request = ++hubBuildStatusRequest;
+  if (!window.tokenMonitor.getHubBuildStatus || state.settings?.hubMode !== 'client') {
+    hubBuildStatusLastProbeAt = 0;
+    state.hubBuildStatus = null;
+    renderHubBuildStatus();
+    return;
+  }
+  hubBuildStatusLastProbeAt = Date.now();
+  const requestedUrl = String(state.settings.hubUrl || '').trim().replace(/\/$/, '');
+  try {
+    const result = await window.tokenMonitor.getHubBuildStatus();
+    const currentUrl = String(state.settings.hubUrl || '').trim().replace(/\/$/, '');
+    if (request !== hubBuildStatusRequest
+      || currentUrl !== requestedUrl
+      || (result?.hubUrl && result.hubUrl !== currentUrl)) return;
+    state.hubBuildStatus = result;
+  } catch (_) {
+    if (request !== hubBuildStatusRequest) return;
+    state.hubBuildStatus = null;
+  }
+  renderHubBuildStatus();
+}
+
 function syncPeriodTabs() {
   const tabs = Array.from(document.querySelectorAll('.tab'));
-  const presetActive = state.period !== 'custom';
-  const activeIndex = presetActive
-    ? Math.max(0, tabs.findIndex((tab) => tab.dataset.period === state.period))
-    : -1;
-  const tabsEl = document.querySelector('.tabs');
-  if (tabsEl) {
-    if (activeIndex >= 0) tabsEl.style.setProperty('--period-index', String(activeIndex));
-    tabsEl.classList.toggle('custom-active', !presetActive);
-  }
+  const activeSlot = fixedPeriodRangesApi.slotForSelection(state.period);
+  const activeIndex = Math.max(0, tabs.findIndex((tab) => tab.dataset.periodSlot === activeSlot));
+  document.querySelector('.tabs')?.style.setProperty('--period-index', String(activeIndex));
   for (const tab of tabs) {
-    const active = presetActive && tab.dataset.period === state.period;
+    const active = tab.dataset.periodSlot === activeSlot;
     tab.classList.toggle('active', active);
     tab.setAttribute('aria-pressed', String(active));
   }
-  syncCustomRangeButton();
+  if (els.monthPeriodTab) {
+    const mode = activeSlot === 'month'
+      ? fixedPeriodRangesApi.normalizeMonthMode(state.period)
+      : fixedPeriodRangesApi.normalizeMonthMode(state.settings?.periodMonthMode);
+    els.monthPeriodTab.textContent = fixedPeriodRangesApi.displayLabel(mode);
+    els.monthPeriodTab.dataset.period = mode;
+  }
+  syncPeriodMenu();
 }
 
 function applyInitialBreakdownPreference() {
@@ -6177,15 +8349,25 @@ function syncSettingsForm() {
   syncPeriodTabs();
   syncHubModeUi();
   if (els.languageInput) els.languageInput.value = currentLanguage();
+  if (els.periodMonthModeInput) {
+    els.periodMonthModeInput.value = fixedPeriodRangesApi.normalizeMonthMode(state.settings?.periodMonthMode);
+  }
   if (els.currencyInput) els.currencyInput.value = currentCurrency();
   syncCurrencyRateControls();
   els.hubUrlInput.value = state.settings.hubUrl || '';
   els.secretInput.value = state.settings.secret || '';
   els.deviceIdInput.value = state.settings.deviceId || '';
-  els.limitsRefreshInput.value = String(LIMIT_REFRESH_OPTIONS.includes(Number(state.settings.limitsRefreshMs)) ? state.settings.limitsRefreshMs : 300000);
+  els.limitsRefreshInput.value = state.settings.limitsRefreshMode === 'adaptive'
+    ? 'adaptive'
+    : String(LIMIT_REFRESH_OPTIONS.includes(Number(state.settings.limitsRefreshMs)) ? state.settings.limitsRefreshMs : 300000);
+  if (els.limitsRefreshAdaptiveNote) {
+    els.limitsRefreshAdaptiveNote.classList.toggle('hidden', state.settings.limitsRefreshMode !== 'adaptive');
+  }
   els.showLimitSourceInput.checked = Boolean(state.settings.showLimitSource);
   els.maskLimitAccountEmailsInput.checked = Boolean(state.settings.maskLimitAccountEmails);
-  els.showLimitUsedInput.value = state.settings.showLimitUsed ? 'used' : 'remaining';
+  renderSubscriptionSettings();
+  const showLimitUsed = state.settings.showLimitUsed ? 'used' : 'remaining';
+  for (const input of els.showLimitUsedInputs || []) input.checked = input.value === showLimitUsed;
   if (els.syncUploadIntervalInput) {
     const value = Number(state.settings.syncUploadIntervalMs);
     const allowed = Array.from(els.syncUploadIntervalInput.options, (option) => Number(option.value));
@@ -6194,9 +8376,11 @@ function syncSettingsForm() {
   if (els.collectionCadenceInput) {
     const value = Number(state.settings.collectionIntervalMs);
     const allowed = [300000, 900000, 1800000];
-    els.collectionCadenceInput.value = state.settings.collectionMode === 'interval'
-      ? String(allowed.includes(value) ? value : 300000)
-      : 'live';
+    els.collectionCadenceInput.value = state.settings.collectionMode === 'smart'
+      ? 'smart'
+      : state.settings.collectionMode === 'interval'
+        ? String(allowed.includes(value) ? value : 300000)
+        : 'live';
     if (els.collectionCadenceNote) {
       els.collectionCadenceNote.hidden = els.collectionCadenceInput.value === 'live';
     }
@@ -6222,21 +8406,28 @@ function syncSettingsForm() {
   renderWslPanel();
   const systemGlass = state.settings.systemGlass === false ? 'off' : 'system';
   for (const input of els.systemGlassInputs || []) input.checked = input.value === systemGlass;
-  if (els.macosGlassInput) {
-    els.macosGlassInput.value = macosGlassModeApi.normalizeMacosGlassStyle(state.settings.macosGlassStyle);
-  }
   if (els.windowsBackdropInput) els.windowsBackdropInput.value = windowsGlassApi.normalizeWindowsBackdropMode(state.settings.windowsBackdrop);
+  if (els.macosGlassInput) els.macosGlassInput.value = state.settings.macosGlassStyle || 'vibrancy';
   const reduceMotion = motionPreferenceApi.normalize(state.settings.reduceMotion);
   for (const input of els.reduceMotionInputs || []) input.checked = input.value === reduceMotion;
   els.liveDotInput.checked = state.settings.showLiveDot !== false;
   els.toolIconsInput.checked = state.settings.showToolIcons !== false;
   els.titleIconInput.checked = state.settings.titleIconOnly === true;
   els.showCompactTotalTokensInput.checked = state.settings.showCompactTotalTokens === true;
+  if (els.compactTokenUnitsInput) {
+    els.compactTokenUnitsInput.value = state.settings.compactTokenUnits === 'localized' ? 'localized' : 'western';
+  }
+  syncFontSettingsControls();
+  els.compactTokenUnitsRow?.classList.toggle(
+    'hidden',
+    !supportsLocalizedCompactTokenUnits(currentLocale())
+  );
   els.swapSettingsRefreshInput.checked = state.settings.settingsInTitlebar === true;
   els.discordRpcInput.checked = Boolean(state.settings.discordRpcEnabled);
   syncWindowBehaviorControls();
   els.floatingBubbleInput.checked = state.settings.floatingBubbleEnabled === true;
-  if (els.floatingBubbleTriggerInput) els.floatingBubbleTriggerInput.value = state.settings.floatingBubbleTrigger === 'hover' ? 'hover' : 'click';
+  const floatingBubbleTrigger = state.settings.floatingBubbleTrigger === 'hover' ? 'hover' : 'click';
+  for (const input of els.floatingBubbleTriggerInputs || []) input.checked = input.value === floatingBubbleTrigger;
   if (els.floatingBubbleContentInput) els.floatingBubbleContentInput.value = normalizeTrayContentValue(state.settings.floatingBubbleContent);
   els.floatingBubbleOptions?.classList.toggle('hidden', state.settings.floatingBubbleEnabled !== true);
   const showTrayIcon = state.settings.showTrayIcon !== false;
@@ -6249,16 +8440,11 @@ function syncSettingsForm() {
   els.showTrayProviderBadgeInput.disabled = !showTrayIcon;
   els.trayIconOptions?.classList.toggle('hidden', !showTrayIcon);
   els.trayOptions?.classList.toggle('hidden', !showTrayIcon || !state.settings.trayMode);
-  syncTrayComposerVisibility();
+  refreshTrayComposers();
   syncWindowShortcutStatus();
   if (els.startAtLoginInput) {
     els.startAtLoginInput.disabled = !state.appInfo?.loginItemSupported;
     els.startAtLoginInput.checked = Boolean(state.settings.startAtLogin && state.appInfo?.loginItemSupported);
-  }
-  if (els.startInTrayInput) els.startInTrayInput.checked = Boolean(state.settings.startInTray);
-  if (els.closeToTrayInput) {
-    els.closeToTrayInput.checked = Boolean(state.settings.closeToTray);
-    els.closeToTrayInput.disabled = !showTrayIcon;
   }
   if (els.startupNote) {
     els.startupNote.textContent = !state.appInfo?.loginItemSupported
@@ -6273,10 +8459,12 @@ function syncSettingsForm() {
   syncSliderRows();
   renderDeepseekStatus();
   renderMinimaxStatus();
+  renderExternalProviderStatus('claude');
   renderExternalProviderStatus('zai');
   renderExternalProviderStatus('zaiteam');
   renderExternalProviderStatus('volcengine');
   renderExternalProviderStatus('qoder');
+  renderExternalProviderStatus('commandcode');
   renderExternalProviderStatus('kimi');
   renderExternalProviderStatus('ollama');
   renderMimoStatus();
@@ -6287,6 +8475,7 @@ function syncSettingsForm() {
   renderSettingsSummaries();
   renderOpenCodeProfiles();
   renderOpenRouterProfiles();
+  renderThirdPartyProfiles();
   applyVendorColorOverrides(state.settings.vendorColors);
   applyAppearanceSettings(state.settings);
   buildAppearanceColorControls();
@@ -6310,6 +8499,16 @@ function hiddenClientSet() {
 
 function hiddenViewSet() {
   return new Set(viewDisplayPreferencesApi.normalizeHiddenViews(state.settings?.hiddenViews, VIEW_DISPLAY_OPTIONS).split(',').filter(Boolean));
+}
+
+// Views the user cannot reach because the feature behind them is switched off.
+// The settings rows, the summary count and the last-visible-view guard all read
+// this one list so they cannot disagree about what is on screen.
+function disabledViewIds() {
+  const ids = [];
+  if (state.settings?.historyEnabled === false) ids.push('trends');
+  if (state.settings?.projectsEnabled === false) ids.push('project');
+  return ids;
 }
 
 function hiddenHomeModuleSet() {
@@ -6472,12 +8671,12 @@ function onPreferencePointerMove(event) {
 function onPreferencePointerUp(event) {
   if (!preferenceDrag || preferenceDrag.pointerId !== event.pointerId) return;
   event.preventDefault();
-  const { kind, id } = preferenceDrag;
+  const { kind } = preferenceDrag;
   const order = applyPreferenceLiveOrder(kind, event.clientY) || preferenceDrag.order;
   const changed = preferenceDrag.changed;
   releasePreferencePointer(event.pointerId);
   finishPreferenceDrag();
-  if (changed) void onPreferenceOrderCommit(kind, order, id);
+  if (changed) void onPreferenceOrderCommit(kind, order);
 }
 
 function onPreferencePointerCancel(event) {
@@ -6492,17 +8691,13 @@ function createPreferenceOrderHandle({ kind, id, label, count }) {
   handle.type = 'button';
   handle.className = 'preference-order-handle';
   handle.dataset.preferenceOrderHandle = kind;
-  const titleKey = kind === 'client'
-    ? 'settings.tools.reorderClient'
-    : kind === 'view'
-      ? 'settings.views.reorderView'
-      : kind === 'statusProvider'
-        ? 'serviceStatus.reorderProvider'
-        : kind === 'homeModule'
-          ? 'settings.home.reorderModule'
-          : kind === 'homeLimitProvider'
-            ? 'settings.home.reorderProvider'
-            : 'settings.limits.reorderProvider';
+  const titleKey = kind === 'view'
+    ? 'settings.views.reorderView'
+    : kind === 'statusProvider'
+      ? 'serviceStatus.reorderProvider'
+      : kind === 'homeModule'
+        ? 'settings.home.reorderModule'
+        : 'settings.home.reorderProvider';
   handle.title = t(titleKey, { name: label });
   handle.setAttribute('aria-label', handle.title);
   handle.setAttribute('aria-keyshortcuts', 'ArrowUp ArrowDown Home End');
@@ -6511,6 +8706,33 @@ function createPreferenceOrderHandle({ kind, id, label, count }) {
   handle.addEventListener('keydown', (event) => onPreferenceOrderKeydown(event, kind, id));
   return handle;
 }
+
+// The limit provider list drags from the whole row instead of a handle. The
+// gesture itself is generic and lives in `rowDragController.js`; what stays
+// here is the wiring to this list's DOM, ordering setting, and accordion.
+//
+// The checkbox, nested controls, and options panel own their clicks. The main
+// disclosure button is deliberately the drag surface too: below the threshold
+// it clicks, above it the drag suppresses that click.
+const LIMIT_PROVIDER_DRAG_EXCLUDED = 'button:not(.limit-provider-main), input, select, textarea, a, .accordion-animated-container';
+
+const limitProviderRowDrag = rowDragControllerApi.createRowDragController({
+  dragSort: verticalDragSortApi,
+  getList: () => els.limitProviderCheckboxes,
+  getScrollPanel: () => els.settingsPanel,
+  rowSelector: '.limit-provider-row[data-provider]',
+  idKey: 'provider',
+  dragExcluded: LIMIT_PROVIDER_DRAG_EXCLUDED,
+  getExpanded: () => state.limitProviderSettingsExpanded,
+  setExpanded: setLimitProviderSettingsExpanded,
+  applyOrder: (order) => applyPreferenceOrder('provider', order),
+  preserveScroll: preserveSettingsPanelScroll,
+  mirrorOrder: (order) => { state.settings = { ...state.settings, limitProviderOrder: order.join(',') }; },
+  // Saved directly rather than through `onPreferenceOrderCommit`, whose no-op
+  // guard compares against the value `mirrorOrder` just wrote and would drop it.
+  persistOrder: (order) => void saveSettings({ limitProviderOrder: order.join(',') }),
+  requestRender: () => renderLimitProviderCheckboxes()
+});
 
 function renderViewPreferences() {
   if (!els.viewDisplayList) return;
@@ -6522,14 +8744,17 @@ function renderViewPreferences() {
   if (els.resetViewDisplayOrderButton) els.resetViewDisplayOrderButton.disabled = !hasCustomOrder;
   if (els.showAllViewsButton) els.showAllViewsButton.disabled = !hasHiddenViews;
   els.viewDisplayList.replaceChildren();
-  const visibleCount = views.filter((view) => !hidden.has(view.id)).length;
+  const disabled = new Set(disabledViewIds());
+  const visibleCount = viewDisplayPreferencesApi.visibleViewCount({
+    views,
+    hiddenValue: state.settings?.hiddenViews,
+    disabledIds: [...disabled]
+  });
   for (const view of views) {
     const id = view.id;
     const label = viewLabel(view);
     const isHidden = hidden.has(id);
-    const historyEnabled = state.settings?.historyEnabled !== false;
-    const projectsEnabled = state.settings?.projectsEnabled !== false;
-    const isDisabled = (id === 'trends' && !historyEnabled) || (id === 'project' && !projectsEnabled);
+    const isDisabled = disabled.has(id);
     const isEffectivelyHidden = isHidden || isDisabled;
     const row = document.createElement('div');
     row.className = 'view-preference-row';
@@ -6685,7 +8910,7 @@ function renderViewPreferences() {
 function renderHomeLimitProviderList() {
   const wrap = document.createElement('div');
   wrap.id = 'homeLimitProviderList';
-  wrap.className = 'home-limit-provider-list';
+  wrap.className = 'settings-nested-list home-limit-provider-list';
   const hidden = hiddenHomeLimitProviderSet();
   const enabled = enabledLimitProviderSet();
   const providers = limitProviderOrderApi
@@ -6810,7 +9035,7 @@ function renderHomeLimitProviderList() {
 function renderHomeSettingsList() {
   const wrap = document.createElement('div');
   wrap.id = 'homeSettingsList';
-  wrap.className = 'home-settings-list';
+  wrap.className = 'settings-nested-list home-settings-list';
   const hidden = hiddenHomeModuleSet();
   const modules = homeModulePreferencesApi.orderedHomeModules(HOME_MODULE_OPTIONS, state.settings?.homeModuleOrder);
   const hasCustomOrder = homeModulePreferencesApi.normalizeHomeModuleOrder(state.settings?.homeModuleOrder, HOME_MODULE_OPTIONS).join(',') !== homeModulePreferencesApi.DEFAULT_HOME_MODULE_ORDER;
@@ -6986,7 +9211,7 @@ function renderHomeActivitySettings() {
 function renderTrendSettingsList() {
   const wrap = document.createElement('div');
   wrap.id = 'trendSettingsList';
-  wrap.className = 'trend-settings-list';
+  wrap.className = 'settings-nested-list trend-settings-list';
   const label = document.createElement('label');
   label.className = 'checkbox-label trend-settings-row';
   const input = document.createElement('input');
@@ -7031,7 +9256,7 @@ function renderTrendSettingsList() {
 function renderProjectSettingsList() {
   const wrap = document.createElement('div');
   wrap.id = 'projectSettingsList';
-  wrap.className = 'trend-settings-list';
+  wrap.className = 'settings-nested-list trend-settings-list';
   const label = document.createElement('label');
   label.className = 'checkbox-label trend-settings-row';
   const input = document.createElement('input');
@@ -7072,7 +9297,7 @@ async function setProjectsEnabled(enabled) {
 function renderServiceProviderList() {
   const wrap = document.createElement('div');
   wrap.id = 'serviceProviderList';
-  wrap.className = 'status-provider-list';
+  wrap.className = 'settings-nested-list status-provider-list';
   const hidden = hiddenServiceProviderSet();
   const providers = serviceStatusProviderPreferencesApi.orderedOptions(SERVICE_PROVIDER_OPTIONS, state.settings?.serviceProviderDisplayOrder);
   const hasCustomOrder = serviceStatusProviderPreferencesApi.hasCustomOrder(state.settings?.serviceProviderDisplayOrder);
@@ -7152,14 +9377,380 @@ function renderServiceProviderList() {
 }
 
 function localDevice() {
-  const devices = state.stats?.devices || [];
-  const localId = state.settings?.deviceId || '';
-  return (localId && devices.find((device) => device.deviceId === localId))
-    || (devices.length === 1 ? devices[0] : null);
+  return clientHealthPresentationApi.exactDevice(state.stats, state.settings?.deviceId);
 }
 
 function localClientStatus() {
   return localDevice()?.clientStatus || {};
+}
+
+function localClientHealth() {
+  return localDevice()?.clientHealth || null;
+}
+
+// Single entry point for the tracked-tool detail accordion, mirroring the limits
+// list: the drag gesture collapses and restores it too, so the class and aria
+// bookkeeping cannot live inside the disclosure's own click handler.
+function setClientHealthExpanded(clientId) {
+  state.clientHealthExpanded = clientId || '';
+  const rows = els.clientDisplayList?.querySelectorAll('.tool-preference-row[data-client]') || [];
+  for (const row of rows) {
+    const disclosure = row.querySelector('.tool-preference-main');
+    const container = row.querySelector(':scope > .accordion-animated-container');
+    if (!disclosure || !container) continue;
+    const open = row.dataset.client === state.clientHealthExpanded;
+    // Filled here rather than during the repaint. Only one row can be open, so
+    // building all of them cost 219 of the list's 552 nodes — 40% of its DOM,
+    // rebuilt every stats tick — to render nothing. A panel already filled is
+    // left alone so a collapse still has something to animate.
+    if (open) {
+      loadClientSources(row.dataset.client);
+      if (container.childElementCount === 0) {
+        fillClientHealthPanel(container, row.dataset.client);
+      }
+    }
+    disclosure.setAttribute('aria-expanded', String(open));
+    row.classList.toggle('expanded', open);
+    container.classList.toggle('hidden', !open);
+  }
+}
+
+// This client's numbers across the three periods, straight off the stats the app
+// already renders everywhere else. No new wire field and no new collection —
+// the panel just puts them side by side, which is the whole point.
+function clientPeriodUsage(clientId) {
+  return clientHealthPresentationApi.clientPeriodUsage(localDevice(), clientId);
+}
+
+// Where this machine looks for each tool's data. A check id answers "which kind
+// of root", but "did I install it somewhere else" needs the path itself — and a
+// path only exists on the machine that probed it, so it comes over IPC rather
+// than the wire. Probe only the open client and cache it for this health
+// snapshot: a panel is rebuilt on every stats tick, and refetching made the
+// paths flicker back to bare ids. The health envelope's observedAt changes
+// only when a full source probe completes, so it refreshes path existence once
+// per snapshot without spending IPC on progressive previews that carry the old
+// envelope.
+function clientSourcesIdentity(clientId) {
+  return {
+    deviceId: String(localDevice()?.deviceId || ''),
+    clientId: String(clientId || ''),
+    observedAt: String(localClientHealth()?.observedAt || '')
+  };
+}
+
+function exactLocalClientSources(clientId) {
+  return clientSourceCacheApi.readClientSources(
+    state.clientSources,
+    clientSourcesIdentity(clientId)
+  );
+}
+
+function localClientSources(clientId) {
+  const identity = clientSourcesIdentity(clientId);
+  const exactSources = exactLocalClientSources(clientId);
+  const key = clientSourceCacheApi.clientSourceRequestKey(identity);
+  const pendingSources = key && state.clientSourcesKey === key;
+  const sources = pendingSources
+    ? (exactSources ?? clientSourceCacheApi.readLatestClientSources(state.clientSources, identity) ?? [])
+      .map((source) => ({ ...source, exists: false, pending: true }))
+    : exactSources;
+  const detectedInWsl = localDevice()?.wslStatus?.detected?.includes(clientId);
+  if (!detectedInWsl) return sources;
+  return [...(sources || []), { id: 'wsl-home', dir: '', exists: true }];
+}
+
+function loadClientSources(clientId, options = {}) {
+  const id = String(clientId || '');
+  const identity = clientSourcesIdentity(id);
+  const key = clientSourceCacheApi.clientSourceRequestKey(identity);
+  if (!key) return false;
+  if (!options.force && state.clientSourcesKey === key) return true;
+  if (
+    !options.force
+    && clientSourceCacheApi.readClientSources(state.clientSources, identity) !== null
+  ) return false;
+  state.clientSourcesKey = key;
+  const request = ++state.clientSourcesRequest;
+  void window.tokenMonitor?.clientSources?.(id).then((result) => {
+    if (!result || typeof result !== 'object') throw new TypeError('Invalid client source result');
+    if (state.clientSourcesRequest !== request || state.clientSourcesKey !== key) return;
+    clientSourceCacheApi.writeClientSources(
+      state.clientSources,
+      identity,
+      Array.isArray(result.sources) ? result.sources : []
+    );
+    state.clientSourcesKey = '';
+    refillOpenClientHealthPanel();
+  }).catch(() => {
+    if (state.clientSourcesRequest !== request || state.clientSourcesKey !== key) return;
+    state.clientSourcesKey = '';
+    refillOpenClientHealthPanel();
+  });
+  return true;
+}
+
+function refillOpenClientHealthPanel() {
+  const clientId = state.clientHealthExpanded;
+  if (!clientId) return;
+  const row = els.clientDisplayList?.querySelector(`.tool-preference-row[data-client="${CSS.escape(clientId)}"]`);
+  const container = row?.querySelector(':scope > .accordion-animated-container');
+  if (container) fillClientHealthPanel(container, clientId);
+}
+
+// Everything the panel draws beyond the health record itself: the numbers the
+// app already renders elsewhere, and this machine's own paths.
+function clientHealthDetailFor(clientId) {
+  return clientHealthPresentationApi.clientHealthDetail(localClientHealth(), clientId, {
+    usage: clientPeriodUsage(clientId),
+    sources: localClientSources(clientId)
+  });
+}
+
+function sameRenderedNode(current, next) {
+  if (current.nodeType !== next.nodeType) return false;
+  if (current.nodeType !== Node.ELEMENT_NODE) return true;
+  if (current.tagName !== next.tagName || current.className !== next.className) return false;
+  const currentAction = current.dataset?.healthAction || '';
+  const nextAction = next.dataset?.healthAction || '';
+  return currentAction === nextAction;
+}
+
+function patchRenderedNode(current, next) {
+  if (current.nodeType === Node.TEXT_NODE) {
+    if (current.nodeValue !== next.nodeValue) current.nodeValue = next.nodeValue;
+    return;
+  }
+  for (const name of current.getAttributeNames()) {
+    if (!next.hasAttribute(name)) current.removeAttribute(name);
+  }
+  for (const name of next.getAttributeNames()) {
+    const value = next.getAttribute(name);
+    if (current.getAttribute(name) !== value) current.setAttribute(name, value);
+  }
+  const currentChildren = Array.from(current.childNodes);
+  const nextChildren = Array.from(next.childNodes);
+  for (let index = 0; index < nextChildren.length; index += 1) {
+    const currentChild = currentChildren[index];
+    const nextChild = nextChildren[index];
+    if (!currentChild) {
+      current.append(nextChild);
+    } else if (sameRenderedNode(currentChild, nextChild)) {
+      patchRenderedNode(currentChild, nextChild);
+    } else {
+      currentChild.replaceWith(nextChild);
+    }
+  }
+  for (let index = nextChildren.length; index < currentChildren.length; index += 1) {
+    currentChildren[index].remove();
+  }
+}
+
+function fillClientHealthPanel(container, clientId) {
+  const detail = clientHealthDetailFor(clientId);
+  if (!detail) return;
+  const next = clientHealthPanel(detail, clientId);
+  const current = container.firstElementChild;
+  if (current && sameRenderedNode(current, next)) patchRenderedNode(current, next);
+  else container.replaceChildren(next);
+}
+
+// Home-relative so the panel does not print the user's account name back at
+// them; absolute paths remain local and are never added to the health record.
+function friendlyPath(dir) {
+  return clientHealthPresentationApi.friendlyPath(dir, state.appInfo?.homeDir, state.appInfo?.platform);
+}
+
+// Values are formatted here and nowhere else — the presentation helper returns
+// three semantic groups containing only raw numbers, timestamps and i18n keys.
+function clientHealthGroup(group, notes) {
+  const section = document.createElement('section');
+  section.className = `tool-health-group tool-health-group-${group.id}`;
+  const heading = document.createElement('h4');
+  heading.className = 'tool-health-group-title';
+  heading.textContent = t(group.key);
+  const body = document.createElement('div');
+  body.className = 'tool-health-group-body';
+
+  if (group.id === 'source') {
+    const summary = document.createElement('div');
+    summary.className = 'tool-health-group-summary';
+    summary.textContent = t(`settings.tools.health.source.${group.state}`, {
+      detected: group.detectedCount,
+      checked: group.checkedCount
+    });
+    body.append(summary);
+    if (group.checks.length > 0) {
+      const list = document.createElement('div');
+      list.className = 'tool-health-checks';
+      for (const check of group.checks) {
+        const paths = check.paths?.length ? check.paths : [{ dir: '', exists: check.exists }];
+        for (const pathInfo of paths) {
+          const chip = document.createElement('code');
+          chip.className = `tool-health-check${pathInfo.exists ? ' found' : pathInfo.pending ? ' pending' : ''}`;
+          chip.textContent = pathInfo.dir ? friendlyPath(pathInfo.dir) : check.id;
+          if (pathInfo.dir) chip.title = pathInfo.dir;
+          list.append(chip);
+        }
+      }
+      body.append(list);
+    }
+  } else if (group.id === 'collection') {
+    const summary = document.createElement('div');
+    summary.className = 'tool-health-group-summary';
+    summary.textContent = t(`settings.tools.health.sync.${group.state}`);
+    body.append(summary);
+    const stamps = [
+      ['lastAttemptAt', 'settings.tools.health.lastAttempt'],
+      ['lastSuccessAt', 'settings.tools.health.lastSuccess']
+    ];
+    for (const [field, key] of stamps) {
+      const stamp = group[field];
+      if (!stamp) continue;
+      const elapsed = Math.max(0, Date.now() - (Date.parse(stamp) || Date.now()));
+      const meta = document.createElement('div');
+      meta.className = 'tool-health-group-meta';
+      meta.textContent = t(key, { time: formatAgo(elapsed) });
+      body.append(meta);
+    }
+  } else {
+    if (group.periods) {
+      const usage = document.createElement('div');
+      usage.className = 'tool-health-usage';
+      for (const entry of group.periods) {
+        const cell = document.createElement('div');
+        cell.className = 'tool-health-usage-cell';
+        const head = document.createElement('span');
+        head.className = 'tool-health-usage-label';
+        head.textContent = t(`trayComposer.period.${entry.period}`);
+        const amount = document.createElement('span');
+        amount.className = 'tool-health-usage-value';
+        amount.textContent = formatCompact(entry.tokens);
+        cell.append(head, amount);
+        if (entry.cost > 0) {
+          const cost = document.createElement('span');
+          cost.className = 'tool-health-usage-cost';
+          cost.textContent = formatCost(entry.cost);
+          cell.append(cost);
+        }
+        usage.append(cell);
+      }
+      body.append(usage);
+    } else {
+      const tokens = document.createElement('div');
+      tokens.className = 'tool-health-group-summary';
+      tokens.textContent = t('settings.tools.health.tokensValue', { tokens: formatCompact(group.tokens) });
+      body.append(tokens);
+    }
+    if (group.lastActivityDay) {
+      const activity = document.createElement('div');
+      activity.className = 'tool-health-group-meta';
+      activity.textContent = t('settings.tools.health.lastActivityValue', {
+        relative: relativeDayLabel(group.lastActivityDay),
+        day: group.lastActivityDay
+      });
+      body.append(activity);
+    }
+  }
+
+  for (const note of notes) {
+    const line = document.createElement('div');
+    line.className = `tool-health-note-line tone-${note.tone}`;
+    line.textContent = t(`settings.tools.health.code.${note.code}`);
+    body.append(line);
+  }
+  section.append(heading, body);
+  return section;
+}
+
+function localDayKey(date = new Date()) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+// Days come from the daily history buckets, which are local dates — the same
+// boundary computePeriodWindows() rolls "today" over on. A day in the future
+// (a clock that moved) has no honest phrase, so it stays a plain date.
+function relativeDayLabel(day) {
+  const today = localDayKey();
+  if (day === today) return t('settings.tools.health.day.today');
+  const parsed = Date.parse(`${day}T00:00:00`);
+  if (!Number.isFinite(parsed)) return day;
+  const days = Math.round((Date.parse(`${today}T00:00:00`) - parsed) / 86400000);
+  if (days === 1) return t('settings.tools.health.day.yesterday');
+  if (days > 1) return t('settings.tools.health.day.daysAgo', { n: days });
+  return day;
+}
+
+function clientHealthActions(clientId) {
+  const actions = document.createElement('div');
+  actions.className = 'tool-health-actions';
+  const button = (labelKey, onClick) => {
+    const control = document.createElement('button');
+    control.type = 'button';
+    control.className = 'tool-health-action';
+    control.textContent = t(labelKey);
+    control.addEventListener('click', onClick);
+    actions.append(control);
+    return control;
+  };
+  // The detail is already bound to the exact local device. Renderer mode is a
+  // transport state (`local`/`sync`), not topology, so host and client collectors
+  // expose the same targeted capability through preload.
+  if (localDevice() && typeof window.tokenMonitor?.rescanClient === 'function') {
+    const rescanState = state.clientRescans.snapshot(clientId);
+    const feedback = document.createElement('span');
+    feedback.className = 'tool-health-action-feedback';
+    feedback.dataset.healthAction = 'rescan-feedback';
+    feedback.setAttribute('role', 'status');
+    feedback.setAttribute('aria-live', 'polite');
+    feedback.textContent = rescanState.failed ? t('settings.tools.health.rescanFailed') : '';
+    const rescan = button('settings.tools.health.rescan', async () => {
+      const requestId = state.clientRescans.begin(clientId);
+      let succeeded = false;
+      try {
+        succeeded = await window.tokenMonitor.rescanClient(clientId) === true;
+        if (succeeded) loadClientSources(clientId, { force: true });
+      } catch (_) {
+        succeeded = false;
+      } finally {
+        state.clientRescans.finish(clientId, requestId, succeeded);
+      }
+    });
+    rescan.dataset.healthAction = 'rescan';
+    rescan.id = `toolHealthRescan-${clientId}`;
+    rescan.disabled = rescanState.pending;
+    actions.append(feedback);
+  }
+  // Only where something was actually found: the button opens the first existing
+  // root, and offering it for a tool with none would open nothing.
+  if ((exactLocalClientSources(clientId) || []).some((source) => source.dir && source.exists)) {
+    const reveal = button('settings.tools.health.reveal', () => { void window.tokenMonitor?.revealClientSource?.(clientId); });
+    reveal.dataset.healthAction = 'reveal';
+    reveal.id = `toolHealthReveal-${clientId}`;
+  }
+  return actions;
+}
+
+function clientHealthPanel(detail, clientId) {
+  const inner = document.createElement('div');
+  inner.className = 'accordion-animation-inner';
+  // The padded, tinted box is a child rather than the animated element itself:
+  // a collapsed accordion is a grid row sized to 0fr, and padding does not
+  // compress — an inner with its own padding stays that many pixels tall and
+  // pads every collapsed row in the list.
+  const box = document.createElement('div');
+  box.className = 'tool-health-inner';
+  inner.append(box);
+  const groups = document.createElement('div');
+  groups.className = 'tool-health-groups';
+  for (const group of detail.groups) {
+    groups.append(clientHealthGroup(
+      group,
+      detail.notes.filter((note) => note.group === group.id)
+    ));
+  }
+  box.append(groups, clientHealthActions(clientId));
+  return inner;
 }
 
 function localWslStatus() {
@@ -7209,36 +9800,127 @@ function renderWslPanel() {
       row.append(name, tag);
       els.wslPanel.append(row);
     }
+  }
 
-    if (wslStatusPresentationApi.sqliteHelpClients(status).length > 0) {
-      const help = document.createElement('p');
-      help.className = 'settings-note wsl-panel-help';
-      const message = document.createElement('span');
-      message.textContent = t('settings.collection.wslPanel.sqliteHelp');
-      const guide = document.createElement('button');
-      guide.type = 'button';
-      guide.className = 'inline-link';
-      guide.textContent = t('settings.collection.wslPanel.setupGuide');
-      guide.addEventListener('click', () => window.tokenMonitor.openExternal?.(TOKEN_MONITOR_WSL_SQLITE_GUIDE_URL));
-      help.append(message, ' ', guide);
-      els.wslPanel.append(help);
-    }
+  if (wslStatusPresentationApi.shouldShowSqliteHelp(status)) {
+    const help = document.createElement('p');
+    help.className = 'settings-note wsl-panel-help';
+    const message = document.createElement('span');
+    message.textContent = t('settings.collection.wslPanel.sqliteHelp');
+    const guide = document.createElement('button');
+    guide.type = 'button';
+    guide.className = 'inline-link';
+    guide.textContent = t('settings.collection.wslPanel.setupGuide');
+    guide.addEventListener('click', () => window.tokenMonitor.openExternal?.(TOKEN_MONITOR_WSL_SQLITE_GUIDE_URL));
+    help.append(message, ' ', guide);
+    els.wslPanel.append(help);
   }
 }
 
+// The tracked-tools list drags from the whole row too, on the same controller
+// as the limits list. What differs is the commit: its order is not one setting.
+// While the list is on its default order the pinned block is the only thing
+// shaping it, so a drop can mean either a pin change or an explicit order.
+// `clientDisplayOrderCommit` decides, and the patch it returns is carried from
+// the local mirror to the save rather than derived twice — the mirror writes
+// the very keys that decision reads.
+const CLIENT_PREFERENCE_DRAG_EXCLUDED = 'button:not(.tool-preference-main), input, select, textarea, a, label, .accordion-animated-container';
+
+const clientPreferenceRowDrag = rowDragControllerApi.createRowDragController({
+  dragSort: verticalDragSortApi,
+  getList: () => els.clientDisplayList,
+  getScrollPanel: () => els.settingsPanel,
+  rowSelector: '.tool-preference-row[data-client]',
+  idKey: 'client',
+  dragExcluded: CLIENT_PREFERENCE_DRAG_EXCLUDED,
+  getExpanded: () => state.clientHealthExpanded,
+  setExpanded: setClientHealthExpanded,
+  applyOrder: (order) => applyPreferenceOrder('client', order),
+  preserveScroll: preserveSettingsPanelScroll,
+  mirrorOrder: (order, id) => {
+    const patch = clientDisplayPreferencesApi.clientDisplayOrderCommit(order, KNOWN_CLIENTS, state.settings?.clientDisplayOrder, state.settings?.pinnedClients, id);
+    state.settings = { ...state.settings, ...patch };
+    return patch;
+  },
+  persistOrder: (_order, _id, patch) => void saveSettings(patch),
+  requestRender: () => renderToolPreferences()
+});
+
 function renderToolPreferences() {
   if (!els.clientDisplayList) return;
+  // A stats update mid-drag would replace the rows under the pointer and kill
+  // the gesture silently. Defer the repaint until the drop.
+  if (clientPreferenceRowDrag.deferRender()) return;
+  return preserveSettingsPanelScroll(renderToolPreferencesNow);
+}
+
+function toolPreferenceRenderSignature() {
+  const clientStatus = localClientStatus();
+  const health = localClientHealth();
+  const device = localDevice();
+  return JSON.stringify({
+    settings: [
+      [...enabledClientSet()].sort(),
+      state.settings?.hiddenClients || '',
+      state.settings?.pinnedClients || '',
+      state.settings?.clientDisplayOrder || '',
+      state.settings?.locale || state.settings?.language || '',
+      state.settings?.currency || '',
+      state.settings?.compactTokenUnits || ''
+    ],
+    deviceId: device?.deviceId || '',
+    clientStatus,
+    healthRows: KNOWN_CLIENTS.map(({ id }) => [
+      id,
+      health?.clients?.[id]?.overall || '',
+      Boolean(health?.clients?.[id])
+    ])
+  });
+}
+
+function renderToolPreferencesNow() {
+  const renderSignature = toolPreferenceRenderSignature();
+  const detailSignature = JSON.stringify([
+    localClientHealth(),
+    localDevice(),
+    state.settings?.currencyRatesEffective || null
+  ]);
+  const sourceSignature = clientSourceCacheApi.clientSourceRequestKey(
+    clientSourcesIdentity(state.clientHealthExpanded)
+  );
+  if (
+    state.toolPreferenceRenderSignature
+    && state.toolPreferenceRenderSignature === renderSignature
+    && els.clientDisplayList.children.length === KNOWN_CLIENTS.length
+  ) {
+    if (state.toolPreferenceDetailSignature !== detailSignature) {
+      state.toolPreferenceDetailSignature = detailSignature;
+      if (state.toolPreferenceSourceSignature !== sourceSignature) {
+        state.toolPreferenceSourceSignature = sourceSignature;
+        loadClientSources(state.clientHealthExpanded);
+        refillOpenClientHealthPanel();
+      } else {
+        refillOpenClientHealthPanel();
+      }
+    }
+    return;
+  }
+  state.toolPreferenceRenderSignature = renderSignature;
+  state.toolPreferenceDetailSignature = detailSignature;
+  state.toolPreferenceSourceSignature = sourceSignature;
+  const previousRows = Array.from(els.clientDisplayList.children);
+  const focusedId = document.activeElement?.id || '';
   const enabled = enabledClientSet();
   const hidden = hiddenClientSet();
   const pinned = pinnedClientSet();
   const clientStatus = localClientStatus();
+  const health = localClientHealth();
   const clients = clientDisplayPreferencesApi.orderedClients(KNOWN_CLIENTS, state.settings?.clientDisplayOrder, state.settings?.pinnedClients);
   const hasCustomOrder = clientDisplayPreferencesApi.hasCustomDisplayOrder(state.settings?.clientDisplayOrder);
   const hasPinnedClients = pinned.size > 0;
   const hasHiddenClients = hidden.size > 0;
   if (els.resetClientDisplayOrderButton) els.resetClientDisplayOrderButton.disabled = !hasCustomOrder && !hasPinnedClients;
   if (els.showAllClientsButton) els.showAllClientsButton.disabled = !hasHiddenClients;
-  els.clientDisplayList.replaceChildren();
   for (const { id, label } of clients) {
     const row = document.createElement('div');
     row.className = 'tool-preference-row';
@@ -7256,7 +9938,15 @@ function renderToolPreferences() {
     if (enabled.has(id)) {
       // A tracked client with no reported status yet (first collect still running)
       // reads as "waiting for data" rather than a bare blank.
-      const tagInfo = clientStatusPresentationApi.clientStatusTag(id, clientStatus[id] || 'waiting');
+      //
+      // `attention` overrides it. The legacy status is derived from usage, so a
+      // client whose sync broke this morning still counts yesterday's tokens and
+      // would keep reporting "Tracking" — leaving the one state this whole
+      // feature exists to surface invisible until the row is expanded.
+      const needsAttention = health?.clients?.[id]?.overall === 'attention';
+      const tagInfo = needsAttention
+        ? { key: 'settings.tools.status.attention', tone: 'warn' }
+        : clientStatusPresentationApi.clientStatusTag(id, clientStatus[id] || 'waiting');
       if (tagInfo) {
         const tag = document.createElement('span');
         tag.className = `tool-status-tag tool-status-tag-${tagInfo.tone}`;
@@ -7268,14 +9958,21 @@ function renderToolPreferences() {
     track.className = 'tool-preference-toggle';
     const trackInput = document.createElement('input');
     trackInput.type = 'checkbox';
+    trackInput.id = `toolTrackEnabled-${id}`;
     trackInput.dataset.client = id;
     trackInput.dataset.preference = 'track';
     trackInput.checked = enabled.has(id);
     trackInput.setAttribute('aria-label', t('settings.tools.trackClient', { name: label }));
     trackInput.addEventListener('change', onToolTrackingToggle);
+    // The drag handle is gone, so the checkbox carries the keyboard reorder
+    // shortcuts. A checkbox has no native arrow-key behaviour, so the existing
+    // key bindings transfer unchanged.
+    trackInput.setAttribute('aria-keyshortcuts', 'ArrowUp ArrowDown Home End');
+    trackInput.addEventListener('keydown', (event) => onPreferenceOrderKeydown(event, 'client', id));
     track.append(trackInput);
     const visibility = document.createElement('button');
     visibility.type = 'button';
+    visibility.id = `toolVisibility-${id}`;
     visibility.className = `tool-visibility-button${isHidden ? ' is-hidden' : ''}`;
     visibility.dataset.client = id;
     visibility.title = t(isHidden ? 'settings.tools.showClient' : 'settings.tools.hideClient', { name: label });
@@ -7285,6 +9982,7 @@ function renderToolPreferences() {
     visibility.addEventListener('click', () => onClientVisibilityToggle(id));
     const pin = document.createElement('button');
     pin.type = 'button';
+    pin.id = `toolPin-${id}`;
     pin.className = `tool-pin-button${isPinned ? ' is-pinned' : ''}`;
     pin.dataset.client = id;
     pin.title = t(isPinned ? 'settings.tools.unpinClient' : 'settings.tools.pinClient', { name: label });
@@ -7292,61 +9990,418 @@ function renderToolPreferences() {
     pin.setAttribute('aria-pressed', String(isPinned));
     pin.append(pinIcon());
     pin.addEventListener('click', () => onClientPinnedToggle(id));
-    const handle = createPreferenceOrderHandle({ kind: 'client', id, label, count: clients.length });
     const actions = document.createElement('div');
     actions.className = 'tool-preference-actions';
-    actions.append(track, visibility, pin, handle);
-    row.append(labelGroup, actions);
+    actions.append(visibility, pin);
+    // A device whose agent predates the health field gets no chevron rather than
+    // one that opens onto an empty panel.
+    const detail = clientHealthPresentationApi.clientHealthDetail(health, id);
+    if (detail) {
+      const expanded = state.clientHealthExpanded === id;
+      row.classList.toggle('expanded', expanded);
+      const main = document.createElement('button');
+      main.type = 'button';
+      main.id = `toolHealthDisclosure-${id}`;
+      main.className = 'tool-preference-main';
+      main.title = t('settings.tools.health.open', { name: label });
+      main.setAttribute('aria-label', main.title);
+      main.setAttribute('aria-expanded', String(expanded));
+      const disclosureIcon = document.createElement('span');
+      disclosureIcon.className = 'cursor-disclosure-icon';
+      disclosureIcon.setAttribute('aria-hidden', 'true');
+      main.append(disclosureIcon);
+      const panel = document.createElement('div');
+      panel.id = `toolHealthPanel-${id}`;
+      panel.className = `accordion-animated-container${expanded ? '' : ' hidden'}`;
+      main.setAttribute('aria-controls', panel.id);
+      if (expanded) {
+        loadClientSources(id);
+        panel.append(clientHealthPanel(clientHealthDetailFor(id) || detail, id));
+      }
+      main.addEventListener('click', () => setClientHealthExpanded(state.clientHealthExpanded === id ? '' : id));
+      // Last of the row's controls, where the eye and the pin already are —
+      // the label stays plain text, exactly as it reads without this feature.
+      actions.append(main);
+      row.classList.add('has-health');
+      row.append(track, labelGroup, actions, panel);
+    } else {
+      row.append(track, labelGroup, actions);
+    }
+    row.addEventListener('pointerdown', (event) => clientPreferenceRowDrag.startRowDrag(event, id));
     els.clientDisplayList.appendChild(row);
   }
+  // Appended first and only then swapped out: replacing the list wholesale
+  // would destroy the row under the pointer on every stats tick.
+  for (const row of previousRows) row.remove();
+  if (focusedId && document.activeElement === document.body) {
+    document.getElementById(focusedId)?.focus({ preventScroll: true });
+  }
+}
+
+function connectLimitProviderCheckboxName(checkbox, nameNode, providerId) {
+  const nameId = `limitProviderName-${providerId}`;
+  nameNode.id = nameId;
+  checkbox.setAttribute('aria-labelledby', nameId);
+}
+
+function moveLimitProviderLiveNode(parent, node, before = null) {
+  if (!parent || !node || node.parentElement === parent) return;
+  parent.moveBefore(node, before);
 }
 
 function renderLimitProviderCheckboxes() {
   if (!els.limitProviderCheckboxes) return;
+  // A stats update mid-drag would replace the rows under the pointer and kill
+  // the gesture silently. Defer the repaint until the drop.
+  if (limitProviderRowDrag.deferRender()) return;
+  return preserveSettingsPanelScroll(renderLimitProviderCheckboxesNow);
+}
+
+function renderLimitProviderCheckboxesNow() {
+  const renderSignature = limitProviderSettingsRenderSignature();
+  if (
+    state.limitProviderRenderSignature === renderSignature
+    && els.limitProviderCheckboxes.children.length === LIMIT_PROVIDERS.length
+  ) {
+    return;
+  }
+  const previousRows = Array.from(els.limitProviderCheckboxes.children);
+  const focusedId = document.activeElement?.id || '';
+  const reusableSettingInputs = new Map();
+  for (const row of previousRows) {
+    const providerId = row.dataset?.provider || '';
+    const settings = LIMIT_PROVIDER_SETTINGS[providerId] || [];
+    const inputs = row.querySelectorAll?.(
+      ':scope > .accordion-animated-container .limit-provider-settings-list > .settings-item > input[type="checkbox"]'
+    ) || [];
+    settings.forEach((setting, index) => {
+      const input = inputs[index];
+      if (input) reusableSettingInputs.set(`${providerId}:${setting.key}`, input);
+    });
+  }
   const enabled = enabledLimitProviderSet();
   const collected = new Map((state.stats?.limits?.providers || []).map((provider) => [provider.provider, provider]));
   const providers = limitProviderOrderApi.orderedLimitProviders(LIMIT_PROVIDERS, state.settings?.limitProviderOrder);
-  els.limitProviderCheckboxes.replaceChildren();
   for (const { id, label, settingsLabel } of providers) {
-    const provider = enabled.has(id)
+    const isEnabled = enabled.has(id);
+    const provider = isEnabled
       ? (collected.get(id) || { provider: id, ...(state.stats ? { status: missingLimitProviderStatus() } : {}), windows: [] })
       : { provider: id, status: 'disabled', windows: [] };
     const row = document.createElement('div');
-    row.className = 'limit-provider-row';
+    row.className = `limit-provider-row${isEnabled ? '' : ' is-disabled'}`;
     row.dataset.provider = id;
     const wrap = document.createElement('label');
     wrap.className = 'client-checkbox limit-provider-toggle';
     const cb = document.createElement('input');
     cb.type = 'checkbox';
+    cb.id = `limitProviderEnabled-${id}`;
     cb.dataset.provider = id;
-    cb.checked = enabled.has(id);
+    cb.checked = isEnabled;
     cb.addEventListener('change', onLimitProviderToggle);
+    // The drag handle is gone, so the checkbox carries the keyboard reorder
+    // shortcuts. A checkbox has no native arrow-key behaviour, so the existing
+    // key bindings transfer unchanged.
+    cb.setAttribute('aria-keyshortcuts', 'ArrowUp ArrowDown Home End');
+    cb.addEventListener('keydown', (event) => onPreferenceOrderKeydown(event, 'provider', id));
     const copy = document.createElement('span');
     copy.className = 'limit-provider-copy';
+    const nameLine = document.createElement('span');
+    nameLine.className = 'limit-provider-name-line';
     const text = document.createElement('span');
     text.className = 'limit-provider-name';
     text.textContent = settingsLabel || label;
+    connectLimitProviderCheckboxName(cb, text, id);
+    nameLine.append(text);
     const tags = document.createElement('span');
     tags.className = 'limit-provider-tags';
     const provenance = limitProviderProvenance(provider);
-    for (const tagInfo of limitProviderPresentationApi.limitProviderSettingsTags(provider, provenance)) {
+    const connectionDetailKey = LIMIT_PROVIDER_CONNECTION_DETAIL_KEYS[id];
+    const accountGroup = limitProviderAccountGroup(id);
+    const tagInfos = limitProviderPresentationApi.limitProviderSettingsTags(provider, provenance);
+    const detected = provider.status === 'ok' && !provider.stale;
+    if (detected) {
+      const statusTag = tagInfos.find((tagInfo) => tagInfo.kind === 'status');
+      const dot = document.createElement('span');
+      dot.className = 'limit-provider-status-dot';
+      dot.title = translatedLimitProviderTag(statusTag);
+      dot.setAttribute('role', 'img');
+      dot.setAttribute('aria-label', dot.title);
+      nameLine.append(dot);
+    }
+    for (const tagInfo of tagInfos) {
+      if ((detected || !isEnabled) && tagInfo.kind === 'status') continue;
+      const duplicatesInlineSetup = tagInfo.kind === 'capability'
+        && ((connectionDetailKey && tagInfo.label === 'Auto')
+          || (accountGroup && tagInfo.label === 'Manual login'));
+      if (duplicatesInlineSetup) continue;
       const tag = document.createElement('span');
       tag.className = `limit-provider-tag limit-provider-tag-${tagInfo.kind}`;
       if (tagInfo.tone) tag.classList.add(`limit-provider-tag-${tagInfo.tone}`);
       tag.textContent = translatedLimitProviderTag(tagInfo);
       tags.append(tag);
     }
-    copy.append(text, tags);
-    wrap.append(cb, copy);
-    const handle = createPreferenceOrderHandle({
-      kind: 'provider',
-      id,
-      label: settingsLabel || label,
-      count: providers.length
-    });
-    row.append(wrap, handle);
+    copy.append(nameLine, tags);
+    wrap.append(cb);
+    const actions = document.createElement('span');
+    actions.className = 'limit-provider-actions';
+    const accountStatus = limitProviderAccountStatus(id);
+    if (connectionDetailKey) {
+      const mode = document.createElement('span');
+      mode.className = 'cursor-status-pill limit-provider-mode-pill';
+      mode.textContent = t('settings.limits.connection.autoDetect');
+      actions.append(mode);
+    }
+    const settings = LIMIT_PROVIDER_SETTINGS[id];
+    const hasOptions = Boolean(accountGroup || settings || connectionDetailKey);
+    let optionsContainer = null;
+    let optionsInner = null;
+    let main = null;
+    let disclosureIcon = null;
+    if (hasOptions) {
+      const expanded = state.limitProviderSettingsExpanded === id;
+      row.classList.toggle('expanded', expanded);
+      main = document.createElement('button');
+      main.type = 'button';
+      main.id = `limitProviderDisclosure-${id}`;
+      main.className = 'limit-provider-main';
+      main.title = t('settings.limits.providerOptions', { provider: settingsLabel || label });
+      main.setAttribute('aria-label', main.title);
+      main.setAttribute('aria-expanded', String(expanded));
+      disclosureIcon = document.createElement('span');
+      disclosureIcon.className = 'cursor-disclosure-icon';
+      disclosureIcon.setAttribute('aria-hidden', 'true');
+      actions.append(disclosureIcon);
+      optionsContainer = document.createElement('div');
+      optionsContainer.id = `limitProviderOptions-${id}`;
+      optionsContainer.className = `accordion-animated-container${expanded ? '' : ' hidden'}`;
+      main.setAttribute('aria-controls', optionsContainer.id);
+      optionsInner = document.createElement('div');
+      optionsInner.className = 'accordion-animation-inner limit-provider-options-inner';
+      if (accountGroup) {
+        accountGroup.classList.add('limit-provider-account-group');
+      }
+      if (connectionDetailKey) optionsInner.append(limitProviderConnectionDetail(connectionDetailKey));
+      if (settings) optionsInner.append(limitProviderSettingsList(id, settings, reusableSettingInputs));
+      optionsContainer.append(optionsInner);
+      const toggleOptions = () => {
+        const opening = state.limitProviderSettingsExpanded !== id;
+        const accountToggle = accountGroup?.querySelector(':scope > .settings-group-header');
+        const accountOpen = accountToggle?.getAttribute('aria-expanded') === 'true';
+        if (accountToggle && accountOpen !== opening) accountToggle.click();
+        else setLimitProviderSettingsExpanded(opening ? id : '');
+      };
+      main.addEventListener('click', toggleOptions);
+    }
+    if (main) {
+      main.append(copy, actions);
+      row.append(wrap, main);
+    } else {
+      row.append(wrap, copy, actions);
+    }
+    row.addEventListener('pointerdown', (event) => limitProviderRowDrag.startRowDrag(event, id));
+    // Kept inside the row rather than as a sibling: reordering moves only
+    // `.limit-provider-row` nodes, so a sibling panel would be stranded when the
+    // list is dragged.
+    if (optionsContainer) row.append(optionsContainer);
     els.limitProviderCheckboxes.appendChild(row);
+    // `moveBefore()` preserves focus and edit state while reparenting. Its
+    // destination must already be connected, so the row is mounted first.
+    moveLimitProviderLiveNode(actions, accountStatus, disclosureIcon);
+    moveLimitProviderLiveNode(optionsInner, accountGroup);
+    // OpenCode's one setting is an off-by-default fallback estimate. Rendered by
+    // the shared path it lands above the account list, reading as the first
+    // thing to set up; it belongs below the accounts, collapsed. Reparented
+    // rather than special-cased in the shared renderer so the setting keeps its
+    // change tracking and re-render signature.
+    if (id === 'opencode') moveOpenCodeLocalFallbackSetting();
   }
+  for (const row of previousRows) row.remove();
+  if (focusedId && document.activeElement === document.body) {
+    document.getElementById(focusedId)?.focus({ preventScroll: true });
+  }
+  state.limitProviderRenderSignature = renderSignature;
+}
+
+// Moves the OpenCode local-DB toggle into its own collapsed group beneath the
+// account list, and keeps that group's status pill in sync with the setting.
+function moveOpenCodeLocalFallbackSetting() {
+  const target = document.getElementById('opencodeLocalFallbackInner');
+  const list = document.querySelector('#limitProviderOptions-opencode .limit-provider-settings-list');
+  if (!target) return;
+  if (list) {
+    if (list.parentElement !== target) moveLimitProviderLiveNode(target, list);
+    // The shared renderer builds a fresh settings list on every pass, so moving
+    // without clearing stacks one copy of the toggle per re-render.
+    for (const stale of [...target.children]) if (stale !== list) stale.remove();
+    // The group header already names the setting, so the item's own title would
+    // read twice. Dropping it alone leaves the label cell empty and the switch
+    // adrift, so the description moves into that cell and becomes the label.
+    for (const item of target.querySelectorAll('.settings-item')) {
+      item.querySelector('.settings-item-title')?.remove();
+      const cell = item.querySelector('.settings-item-text');
+      const desc = item.querySelector('.settings-item-desc');
+      if (cell && desc && desc.parentElement !== cell) cell.append(desc);
+    }
+  }
+
+  const pill = document.getElementById('opencodeLocalFallbackStatus');
+  if (pill) {
+    const on = (state.settings || {}).opencodeLocalLimitsEnabled === true;
+    pill.textContent = t(on ? 'settings.appearance.motion.on' : 'settings.appearance.motion.off');
+  }
+
+  const toggle = document.getElementById('opencodeLocalFallbackSettingsToggle');
+  if (toggle && !toggle.dataset.wired) {
+    toggle.dataset.wired = '1';
+    // The shared helper, so this collapses exactly like every other group
+    // instead of a second hand-rolled implementation of the same thing.
+    toggle.addEventListener('click', () => setAccountGroupExpanded(
+      'opencodeLocalFallback',
+      toggle.getAttribute('aria-expanded') !== 'true'
+    ));
+  }
+}
+
+function limitProviderAccountGroup(providerId) {
+  const groupId = LIMIT_PROVIDER_ACCOUNT_GROUP_IDS[providerId];
+  return groupId ? document.getElementById(groupId) : null;
+}
+
+function limitProviderAccountStatus(providerId) {
+  const statusId = LIMIT_PROVIDER_ACCOUNT_STATUS_IDS[providerId];
+  return statusId ? document.getElementById(statusId) : null;
+}
+
+function limitProviderConnectionDetail(bodyKey) {
+  const panel = document.createElement('div');
+  panel.className = 'limit-provider-connection-detail';
+  const title = document.createElement('span');
+  title.className = 'limit-provider-connection-title';
+  title.textContent = t('settings.limits.connection.title');
+  const body = document.createElement('p');
+  body.className = 'settings-note';
+  body.textContent = t(bodyKey);
+  panel.append(title, body);
+  return panel;
+}
+
+// Single entry point for the provider options accordion. The drag gesture also
+// needs to collapse and restore it, so the class/aria bookkeeping cannot stay
+// inside the disclosure's own click handler.
+function setLimitProviderSettingsExpanded(providerId) {
+  state.limitProviderSettingsExpanded = providerId || '';
+  const rows = els.limitProviderCheckboxes?.querySelectorAll('.limit-provider-row[data-provider]') || [];
+  for (const row of rows) {
+    const disclosure = row.querySelector('.limit-provider-main');
+    const container = row.querySelector(':scope > .accordion-animated-container');
+    if (!disclosure || !container) continue;
+    const open = row.dataset.provider === state.limitProviderSettingsExpanded;
+    disclosure.setAttribute('aria-expanded', String(open));
+    row.classList.toggle('expanded', open);
+    container.classList.toggle('hidden', !open);
+  }
+}
+
+// Provider-scoped options, rendered under their own row rather than in the
+// section footer, which is reserved for settings that apply to every provider.
+const LIMIT_PROVIDER_SETTINGS = {
+  claude: [{
+    key: 'claudePrepaidBalanceEnabled',
+    titleKey: 'settings.limits.prepaidBalance',
+    descKey: 'settings.limits.prepaidBalanceDesc',
+    requiresConfiguredKey: 'claudeWebCookieConfigured',
+    defaultValue: true
+  }],
+  opencode: [{
+    key: 'opencodeLocalLimitsEnabled',
+    titleKey: 'settings.limits.opencodeLocalLimits',
+    descKey: 'settings.limits.opencodeLocalLimitsDesc',
+    defaultValue: false
+  }]
+};
+
+function limitProviderSettingsRenderSignature() {
+  const settings = state.settings || {};
+  const providerSignature = (provider) => {
+    return [
+      provider?.provider || '',
+      provider?.status || '',
+      Boolean(provider?.stale),
+      provider?.source || '',
+      provider?.sourceDetail || '',
+      provider?.sourceDeviceId || '',
+      provider?.accountKey || ''
+    ];
+  };
+  const deviceSignature = (device) => [
+    device?.deviceId || '',
+    device?.hostname || '',
+    (device?.limits?.providers || []).map((provider) => [
+      provider?.provider || '',
+      provider?.status || '',
+      provider?.accountKey || ''
+    ])
+  ];
+  const settingValues = Object.values(LIMIT_PROVIDER_SETTINGS).flatMap((entries) => entries.map((setting) => [
+    setting.key,
+    settings[setting.key],
+    setting.requiresConfiguredKey ? Boolean(settings[setting.requiresConfiguredKey]) : true
+  ]));
+  return JSON.stringify({
+    locale: currentLocale(),
+    mode: state.mode,
+    hubUrl: settings.hubUrl || '',
+    settings: [
+      settings.limitsEnabled !== false,
+      [...enabledLimitProviderSet()].sort(),
+      limitProviderOrderApi.orderedLimitProviders(LIMIT_PROVIDERS, settings.limitProviderOrder).map(({ id }) => id),
+      settings.deviceId || '',
+      settingValues,
+      state.limitProviderSettingsExpanded
+    ],
+    providers: (state.stats?.limits?.providers || []).map(providerSignature),
+    devices: (state.stats?.devices || []).map(deviceSignature)
+  });
+}
+
+function limitProviderSettingsList(providerId, settings, reusableInputs = null) {
+  const list = document.createElement('div');
+  list.className = 'settings-nested-list limit-provider-settings-list';
+  for (const setting of settings) {
+    // Same shape as Start at login: the description is a sibling of the input,
+    // not part of the title cell, so the switch stays on the title's line and
+    // the note wraps full-width underneath instead of squeezing it onto its own
+    // row.
+    const item = document.createElement('label');
+    item.className = 'checkbox-label settings-item';
+    const copy = document.createElement('span');
+    copy.className = 'settings-item-text';
+    const title = document.createElement('span');
+    title.className = 'settings-item-title';
+    title.textContent = t(setting.titleKey);
+    copy.append(title);
+    const inputKey = `${providerId}:${setting.key}`;
+    const existingInput = reusableInputs?.get(inputKey);
+    const input = existingInput || document.createElement('input');
+    input.type = 'checkbox';
+    const available = !setting.requiresConfiguredKey || Boolean(state.settings?.[setting.requiresConfiguredKey]);
+    const storedValue = state.settings?.[setting.key];
+    const defaultValue = setting.defaultValue !== false;
+    input.checked = available && (storedValue === undefined ? defaultValue : storedValue !== false);
+    input.disabled = !available;
+    item.classList.toggle('is-disabled', !available);
+    if (!existingInput) {
+      input.addEventListener('change', async () => {
+        await saveSettings({ [setting.key]: input.checked });
+      });
+    }
+    const desc = document.createElement('span');
+    desc.className = 'settings-note settings-item-desc';
+    desc.textContent = t(setting.descKey);
+    item.append(copy, input, desc);
+    list.append(item);
+  }
+  return list;
 }
 
 async function onToolTrackingToggle() {
@@ -7403,7 +10458,11 @@ async function onLimitProviderToggle() {
   }
   await saveSettings({ limitProviders: checked.join(','), limitsEnabled: checked.length > 0 });
   clearDisabledLimitProviderPendingChecks(new Set(checked));
-  await refreshStats({ force: true });
+  // settings:update reconfigures LimitsRuntime immediately. Its existing
+  // snapshot and the newly enabled provider's eventual result arrive through
+  // the normal stats push, so a forced usage + all-provider refresh here only
+  // replaces stable account summaries with an interim snapshot and duplicates
+  // collection work.
 }
 
 async function onLimitProviderMove(providerId, direction) {
@@ -7562,24 +10621,11 @@ async function onPreferenceReorder(kind, id, targetIndex) {
   else await onLimitProviderReorder(id, targetIndex);
 }
 
-async function onPreferenceOrderCommit(kind, order, id) {
+// Only the handle-based lists commit through here; the two whole-row lists save
+// from their own drag wiring, because this compares against the value they have
+// already mirrored into `state.settings` and would read the write as a no-op.
+async function onPreferenceOrderCommit(kind, order) {
   const value = (order || []).join(',');
-  if (kind === 'client') {
-    const pinned = clientDisplayPreferencesApi.normalizePinnedClients(state.settings?.pinnedClients, KNOWN_CLIENTS).split(',').filter(Boolean);
-    const hasCustomOrder = clientDisplayPreferencesApi.hasCustomDisplayOrder(state.settings?.clientDisplayOrder);
-    if (!hasCustomOrder && pinned.includes(id)) {
-      const pinnedSet = new Set(pinned);
-      const nextPinned = (order || []).slice(0, pinned.length);
-      if (nextPinned.length === pinned.length && nextPinned.every((clientId) => pinnedSet.has(clientId))) {
-        const pinnedValue = nextPinned.join(',');
-        if (pinnedValue !== pinned.join(',')) await saveSettings({ pinnedClients: pinnedValue });
-        return;
-      }
-    }
-    const current = clientDisplayPreferencesApi.normalizeClientDisplayOrder(state.settings?.clientDisplayOrder, KNOWN_CLIENTS).join(',');
-    if (value !== current || pinned.length > 0) await saveSettings({ clientDisplayOrder: value, pinnedClients: '' });
-    return;
-  }
   if (kind === 'view') {
     const current = viewDisplayPreferencesApi.normalizeViewDisplayOrder(effectiveViewDisplayOrderValue(), VIEW_DISPLAY_OPTIONS).join(',');
     if (value !== current) await saveSettings({ viewDisplayOrder: value });
@@ -7598,10 +10644,7 @@ async function onPreferenceOrderCommit(kind, order, id) {
   if (kind === 'statusProvider') {
     const current = serviceStatusProviderPreferencesApi.normalizeOrder(state.settings?.serviceProviderDisplayOrder, SERVICE_PROVIDER_OPTIONS).join(',');
     if (value !== current) await saveSettings({ serviceProviderDisplayOrder: value });
-    return;
   }
-  const current = limitProviderOrderApi.normalizeLimitProviderOrder(state.settings?.limitProviderOrder, LIMIT_PROVIDERS).join(',');
-  if (value !== current) await saveSettings({ limitProviderOrder: value });
 }
 
 function onPreferenceOrderKeydown(event, kind, id) {
@@ -7644,17 +10687,23 @@ function preserveSettingsPanelScroll(callback) {
   if (!panel || panel.classList.contains('hidden')) return callback();
   const scrollTop = panel.scrollTop;
   const scrollLeft = panel.scrollLeft;
+  const interactionRevision = settingsScrollInteractionRevision;
   const restore = () => {
     panel.scrollTop = scrollTop;
     panel.scrollLeft = scrollLeft;
   };
   const result = callback();
   restore();
-  if (typeof requestAnimationFrame === 'function') requestAnimationFrame(restore);
+  if (typeof requestAnimationFrame === 'function') {
+    requestAnimationFrame(() => {
+      if (settingsScrollInteractionRevision === interactionRevision) restore();
+    });
+  }
   return result;
 }
 
 async function saveSettings(patch) {
+  const settingsPushRevision = state.settingsPushRevision;
   try {
     state.settings = await window.tokenMonitor.updateSettings(patch);
   } catch (error) {
@@ -7667,7 +10716,13 @@ async function saveSettings(patch) {
     throw error;
   }
   applyEffectiveCurrencyRates();
-  preserveSettingsPanelScroll(syncSettingsForm);
+  // settings:update broadcasts the normalized settings before resolving the
+  // IPC request. The push already ran the full sync; repeating it when the
+  // promise resolves rebuilds the provider rows a second time and restarts
+  // their accordion/switch layout transition.
+  if (state.settingsPushRevision === settingsPushRevision) {
+    preserveSettingsPanelScroll(syncSettingsForm);
+  }
   restartTimer();
   maybeUpdateBarsIcon();
   if (patch.showTrayProviderBadge !== undefined) {
@@ -7710,6 +10765,7 @@ els.backHomeButton?.addEventListener('click', (event) => {
 });
 
 window.addEventListener('blur', () => {
+  cancelTokenRateBoost();
   clearViewSwitcherLongPress();
   clearViewSwitcherHoverClose();
   viewSwitcherLongPressTriggered = false;
@@ -7717,7 +10773,26 @@ window.addEventListener('blur', () => {
 });
 
 async function init() {
+  // Subscribed before the app-info round trip, not after: a theme flipped while
+  // that call is in flight would otherwise be missed until the next flip. The
+  // seeded value then only fills in when no push has already answered.
+  let systemUiThemeSeeded = false;
+  const applySystemUiTheme = (dark) => {
+    systemUiThemeSeeded = true;
+    if (dark === state.systemDarkUi) return;
+    state.systemDarkUi = dark;
+    // Two caches carry baked-in ink and both go stale here: the generated bitmap
+    // for the current mode, and the provider bitmaps main holds for the usage
+    // modes. Repainting only the first leaves a black provider icon sitting on a
+    // taskbar that just turned dark.
+    void maybeUpdateBarsIcon();
+    void deliverTrayProviderIcons();
+  };
+  window.tokenMonitor.onSystemUiThemePush?.((payload) => applySystemUiTheme(payload?.dark === true));
   try { state.appInfo = await window.tokenMonitor.getAppInfo?.(); } catch (_) {}
+  // Seeding assigns directly: the rest of init delivers both icon sets anyway,
+  // and settings have not loaded yet, so repainting from here would only churn.
+  if (!systemUiThemeSeeded) state.systemDarkUi = state.appInfo?.systemDarkUi === true;
   if (els.aboutVersion) els.aboutVersion.textContent = state.appInfo?.version ? `v${state.appInfo.version}` : '—';
   state.settings = await window.tokenMonitor.getSettings();
   applyEffectiveCurrencyRates();
@@ -7737,8 +10812,10 @@ async function init() {
     state.settings.startAtLogin = Boolean(state.appInfo.loginItemOpenAtLogin);
   }
   syncSettingsForm();
+  diagnosticsPanel?.render();
   publishViewState();
   await refreshHubInfo();
+  void refreshHubBuildStatus();
   await refreshTokscaleStatus();
   restartTimer();
   try {
@@ -7757,12 +10834,26 @@ async function init() {
 }
 
 for (const tab of document.querySelectorAll('.tab')) {
-  tab.addEventListener('click', () => {
-    if (state.customRangeOpen) setCustomRangeOpen(false);
+  tab.addEventListener('click', (event) => {
+    const slot = tab.dataset.periodSlot || tab.dataset.period;
+    const activeSlot = fixedPeriodRangesApi.slotForSelection(state.period);
+    if (slot === 'month' && activeSlot === 'month') {
+      event.stopPropagation();
+      setPeriodMenuOpen(!state.periodMenuOpen, { focus: state.periodMenuOpen ? '' : 'current' });
+      return;
+    }
+    setPeriodMenuOpen(false);
+    const targetPeriod = slot === 'month'
+      ? fixedPeriodRangesApi.normalizeMonthMode(state.settings?.periodMonthMode)
+      : tab.dataset.period;
     const snapshot = captureBreakdownMotion();
-    if (!setPeriod(tab.dataset.period)) return;
+    if (!setPeriod(targetPeriod)) return;
     syncPeriodTabs();
-    if (state.openSession) openSessionDetail(state.openSession);
+    if (state.openSession && fixedPeriodRangesApi.supportsBreakdown(state.period, 'session')) {
+      openSessionDetail(state.openSession);
+    } else if (state.openSession) {
+      state.openSession = null;
+    }
     state.rowSignature = '';
     state.periodMotionActive = true;
     render();
@@ -7771,22 +10862,86 @@ for (const tab of document.querySelectorAll('.tab')) {
   });
 }
 
+for (const button of els.monthPeriodMenu?.querySelectorAll('[data-fixed-period]') || []) {
+  button.addEventListener('click', async (event) => {
+    event.stopPropagation();
+    const selection = fixedPeriodRangesApi.normalizeMonthMode(button.dataset.fixedPeriod);
+    setPeriodMenuOpen(false, { restoreFocus: true });
+    const changed = setPeriod(selection);
+    state.settings.periodMonthMode = selection;
+    syncPeriodTabs();
+    syncPeriodMenu();
+    if (changed) {
+      state.rowSignature = '';
+      state.periodMotionActive = true;
+      render();
+      state.periodMotionActive = false;
+    }
+    await saveSettings({ periodMonthMode: selection });
+  });
+}
+
+els.monthPeriodTab?.addEventListener('keydown', (event) => {
+  if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+  event.preventDefault();
+  setPeriodMenuOpen(true, { focus: event.key === 'ArrowUp' ? 'last' : 'first' });
+});
+
+els.monthPeriodMenu?.addEventListener('keydown', (event) => {
+  if (event.key === 'Tab') {
+    setPeriodMenuOpen(false);
+    return;
+  }
+  const buttons = periodMenuButtons();
+  const currentIndex = buttons.findIndex((button) => button === event.target);
+  fixedPeriodRangesApi.handlePeriodMenuNavigation(event, {
+    currentIndex,
+    itemCount: buttons.length,
+    focusIndex: focusPeriodMenuButton
+  });
+});
+
+els.periodMonthModeInput?.addEventListener('change', async () => {
+  const selection = fixedPeriodRangesApi.normalizeMonthMode(els.periodMonthModeInput.value);
+  state.settings.periodMonthMode = selection;
+  if (fixedPeriodRangesApi.slotForSelection(state.period) === 'month') setPeriod(selection);
+  syncPeriodTabs();
+  render();
+  await saveSettings({ periodMonthMode: selection });
+});
+
+document.addEventListener('click', (event) => {
+  if (!state.periodMenuOpen) return;
+  if (els.monthPeriodMenu?.contains(event.target) || els.monthPeriodTab?.contains(event.target)) return;
+  setPeriodMenuOpen(false);
+});
+
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && state.periodMenuOpen) {
+    event.preventDefault();
+    setPeriodMenuOpen(false, { restoreFocus: true });
+  }
+});
+
 els.breakdown.addEventListener('click', (event) => {
   if (state.breakdown !== 'session') return;
   const rowEl = event.target.closest('.row');
   if (!rowEl) return;
   const key = rowEl.dataset.key || '';            // "session:<client>:<sessionId>"
   const client = rowEl.dataset.client || '';
-  if (client !== 'claude' && client !== 'claude-desktop' && client !== 'codex' && client !== 'opencode') return;
+  if (client !== 'claude' && client !== 'codex' && client !== 'opencode' && client !== 'reasonix') return;
+  if (client === 'reasonix' && rowEl.dataset.detailUnavailable === 'true') return;
   const match = key.match(/^session:([^:]+):(.+)$/);
   if (!match) return;
-  const sessionId = match[2];
+  const sessionId = client === 'reasonix' ? `reasonix:${match[2]}` : match[2];
   const period = state.stats?.periods?.[state.period];
-  const session = period?.sessions?.[`${client}:${sessionId}`];
+  const session = client === 'reasonix'
+    ? state.stats?.nativeSessions?.[state.period]?.[sessionId]
+    : period?.sessions?.[`${client}:${sessionId}`];
   openSessionDetail({
     client,
     sessionId,
-    sessionCost: Number(session?.costUsd || 0),
+    sessionCost: client === 'reasonix' ? Number(session?.reportedCostUsd || 0) : Number(session?.costUsd || 0),
     title: rowEl.querySelector('.row-title')?.textContent || ''
   });
 });
@@ -7815,6 +10970,7 @@ els.saveSettingsButton.addEventListener('click', async () => {
   }
   await saveSettings(patch);
   await refreshHubInfo();
+  void refreshHubBuildStatus();
   await refreshStats();
 });
 
@@ -7823,8 +10979,29 @@ els.hubModeOptions.addEventListener('change', async (event) => {
   if (!(target instanceof HTMLInputElement) || target.name !== 'hubMode') return;
   await saveSettings({ hubMode: target.value });
   await refreshHubInfo();
+  void refreshHubBuildStatus();
   await refreshStats();
 });
+
+// Both, not just the mark: either one reveals the reading on hover, so a click or hold that
+// only worked on one of them would leave the other looking broken. The suppression listener
+// must be registered before the existing toggle listener so a long hold does not also toggle
+// the persisted speed/burn framing when its pointerup synthesizes a click.
+els.appTitleMark?.addEventListener('pointerdown', startTokenRateBoost);
+els.liveDot?.addEventListener('pointerdown', startTokenRateBoost);
+els.appTitleMark?.addEventListener('lostpointercapture', (event) => {
+  // A normal pointerup has already entered settling before capture is released. Only an
+  // unexpected loss while boosting is a cancellation; otherwise the release animation would
+  // be cut off immediately by the browser's follow-up lostpointercapture event.
+  cancelTokenRateBoost(event, { preserveSettling: true });
+});
+els.liveDot?.addEventListener('lostpointercapture', (event) => {
+  cancelTokenRateBoost(event, { preserveSettling: true });
+});
+els.appTitleMark?.addEventListener('click', suppressTokenRateClickAfterHold);
+els.liveDot?.addEventListener('click', suppressTokenRateClickAfterHold);
+els.appTitleMark?.addEventListener('click', toggleTokenRateMode);
+els.liveDot?.addEventListener('click', toggleTokenRateMode);
 
 els.languageInput?.addEventListener('change', async () => {
   await saveSettings({ language: els.languageInput.value });
@@ -7884,7 +11061,12 @@ els.secretPasteButton?.addEventListener('click', async () => {
   } catch (_) {}
 });
 els.limitsRefreshInput.addEventListener('change', async () => {
-  await saveSettings({ limitsRefreshMs: Number(els.limitsRefreshInput.value) });
+  // Adaptive carries its own baseline, so the stored interval is left alone and
+  // comes back unchanged when a fixed option is selected again.
+  const value = els.limitsRefreshInput.value;
+  await saveSettings(value === 'adaptive'
+    ? { limitsRefreshMode: 'adaptive' }
+    : { limitsRefreshMode: 'fixed', limitsRefreshMs: Number(value) });
   await refreshStats({ force: true });
 });
 els.showLimitSourceInput.addEventListener('change', async () => {
@@ -7894,17 +11076,75 @@ els.maskLimitAccountEmailsInput.addEventListener('change', async () => {
   await saveSettings({ maskLimitAccountEmails: els.maskLimitAccountEmailsInput.checked });
   renderLimits();
 });
-els.showLimitUsedInput.addEventListener('change', async () => {
-  await saveSettings({ showLimitUsed: els.showLimitUsedInput.value === 'used' });
+els.subscriptionAddToggle?.addEventListener('click', () => {
+  const opening = els.subscriptionAddDetails?.classList.contains('hidden');
+  if (opening) {
+    beginSubscriptionAdd();
+    return;
+  }
+  if (state.subscriptionEditingId) {
+    closeSubscriptionEditor({ onClosed: openSubscriptionAddEditor });
+    return;
+  }
+  closeSubscriptionEditor();
 });
+els.subscriptionProviderInput?.addEventListener('change', () => {
+  renderSubscriptionPickers();
+  applySubscriptionAccountSelection();
+});
+els.subscriptionAccountInput?.addEventListener('change', applySubscriptionAccountSelection);
+els.subscriptionStartDateInput?.addEventListener('change', syncSubscriptionDateBounds);
+els.subscriptionAutoRenewInput?.addEventListener('change', setSubscriptionRenewalFieldMode);
+els.subscriptionOrphanAdopt?.addEventListener('click', async () => {
+  try {
+    applySubscriptionSettings(await window.tokenMonitor.adoptOrphanedSubscriptions());
+    state.subscriptionSyncError = '';
+  } catch (error) {
+    // The records stay set aside on failure — they are only cleared once the
+    // shared list has actually accepted them.
+    state.subscriptionSyncError = subscriptionWriteErrorKey(error);
+    try { applySubscriptionSettings(await window.tokenMonitor.getSettings()); } catch (_) {}
+  }
+  renderSubscriptionSettings();
+});
+els.subscriptionOrphanDiscard?.addEventListener('click', async () => {
+  try {
+    applySubscriptionSettings(await window.tokenMonitor.discardOrphanedSubscriptions());
+    // A discard that worked resolves whatever the failed adopt was complaining
+    // about; leaving the message up would describe a state that is over.
+    state.subscriptionSyncError = '';
+  } catch (error) {
+    state.subscriptionSyncError = subscriptionWriteErrorKey(error);
+    try { applySubscriptionSettings(await window.tokenMonitor.getSettings()); } catch (_) {}
+  }
+  renderSubscriptionSettings();
+});
+for (const input of els.subscriptionKindInputs || []) {
+  input.addEventListener('change', setSubscriptionFormMode);
+}
+// The ledger prints its amounts in the picked currency, so it has to redraw when
+// that changes.
+els.subscriptionCurrencyInput?.addEventListener('change', renderSubscriptionTopUpEntries);
+els.subscriptionTopUpAddButton?.addEventListener('click', addSubscriptionTopUpEntry);
+els.subscriptionSubmit?.addEventListener('click', submitSubscription);
+els.subscriptionCancelEdit?.addEventListener('click', () => closeSubscriptionEditor());
+for (const input of els.showLimitUsedInputs || []) {
+  input.addEventListener('change', async () => {
+    if (input.checked) await saveSettings({ showLimitUsed: input.value === 'used' });
+  });
+}
 els.syncUploadIntervalInput?.addEventListener('change', async () => {
   await saveSettings({ syncUploadIntervalMs: Number(els.syncUploadIntervalInput.value) });
 });
 els.collectionCadenceInput?.addEventListener('change', async () => {
   const value = els.collectionCadenceInput.value;
   await saveSettings({
-    collectionMode: value === 'live' ? 'live' : 'interval',
-    collectionIntervalMs: value === 'live' ? Number(state.settings.collectionIntervalMs || 300000) : Number(value)
+    collectionMode: value === 'live' ? 'live' : value === 'smart' ? 'smart' : 'interval',
+    collectionIntervalMs: value === 'smart'
+      ? 600000
+      : value === 'live'
+        ? Number(state.settings.collectionIntervalMs || 300000)
+        : Number(value)
   });
 });
 els.sessionUsageArchiveInput?.addEventListener('change', async () => {
@@ -7971,11 +11211,16 @@ els.resetDepthButton.addEventListener('click', async () => {
 els.glassInput.addEventListener('input', applyAppearanceFromControls);
 els.blurInput.addEventListener('input', applyAppearanceFromControls);
 els.zoomInput.addEventListener('input', applyAppearanceFromControls);
-els.glassInput.addEventListener('change', saveAppearanceFromControls);
-els.blurInput.addEventListener('change', saveAppearanceFromControls);
-els.zoomInput.addEventListener('change', saveAppearanceFromControls);
 els.resetThemeColorsButton?.addEventListener('click', () => commitThemeColors({}));
 els.resetVendorColorsButton?.addEventListener('click', () => commitVendorColors({}));
+els.interfaceFontPreset?.addEventListener('change', () => handleFontPresetChange('interface'));
+els.displayFontPreset?.addEventListener('change', () => handleFontPresetChange('display'));
+els.interfaceFontInput?.addEventListener('input', previewFontSettings);
+els.displayFontInput?.addEventListener('input', previewFontSettings);
+els.interfaceFontInput?.addEventListener('change', saveFontSettingsFromControls);
+els.displayFontInput?.addEventListener('change', saveFontSettingsFromControls);
+els.resetInterfaceFontButton?.addEventListener('click', () => resetInterfaceFont());
+els.resetDisplayFontButton?.addEventListener('click', () => resetDisplayFont());
 els.applyThemeCodeButton?.addEventListener('click', () => { void pasteAndApplyThemeCode(); });
 els.copyThemeCodeButton?.addEventListener('click', () => { void copyCurrentThemeCode(); });
 els.themeCodeInput?.addEventListener('keydown', (event) => {
@@ -7984,21 +11229,26 @@ els.themeCodeInput?.addEventListener('keydown', (event) => {
   void applyThemeCodeFromInput();
 });
 els.themeCodeInput?.addEventListener('input', invalidateThemeCodeFeedback);
-function setupThemeAccordion(group, toggle, details) {
+function setSettingsAccordionExpanded(group, toggle, details, expanded) {
   if (!group || !toggle || !details) return;
-  const setExpanded = (expanded) => {
-    const open = Boolean(expanded);
-    toggle.setAttribute('aria-expanded', String(open));
-    details.classList.toggle('hidden', !open);
-    details.inert = !open;
-    group.classList.toggle('expanded', open);
-  };
-  toggle.addEventListener('click', () => setExpanded(details.classList.contains('hidden')));
-  setExpanded(false);
+  const open = Boolean(expanded);
+  toggle.setAttribute('aria-expanded', String(open));
+  details.classList.toggle('hidden', !open);
+  details.inert = !open;
+  group.classList.toggle('expanded', open);
+}
+function setupSettingsAccordion(group, toggle, details) {
+  if (!group || !toggle || !details) return;
+  toggle.addEventListener('click', () => {
+    setSettingsAccordionExpanded(group, toggle, details, details.classList.contains('hidden'));
+  });
+  setSettingsAccordionExpanded(group, toggle, details, false);
 }
 
-setupThemeAccordion(els.themeAdvancedGroup, els.themeAdvancedToggle, els.themeAdvancedDetails);
-setupThemeAccordion(els.themeVendorGroup, els.themeVendorToggle, els.themeVendorDetails);
+setupSettingsAccordion(els.appUpdateNotes, els.appUpdateNotesToggle, els.appUpdateNotesDetails);
+setupSettingsAccordion(els.advancedSettingsGroup, els.advancedSettingsToggle, els.advancedSettingsDetails);
+setupSettingsAccordion(els.themeAdvancedGroup, els.themeAdvancedToggle, els.themeAdvancedDetails);
+setupSettingsAccordion(els.themeVendorGroup, els.themeVendorToggle, els.themeVendorDetails);
 for (const input of els.systemGlassInputs || []) {
   input.addEventListener('change', () => {
     if (input.checked) saveAppearanceFromControls();
@@ -8022,7 +11272,9 @@ els.toolIconsInput.addEventListener('change', async () => {
 els.titleIconInput.addEventListener('change', saveAppearanceFromControls);
 els.showCompactTotalTokensInput.addEventListener('change', async () => {
   await saveAppearanceFromControls();
-  if (!numberAnimHandle) updateTotalCompact(state.currentTotal);
+});
+els.compactTokenUnitsInput?.addEventListener('change', async () => {
+  await saveAppearanceFromControls();
 });
 window.addEventListener('resize', () => { if (!numberAnimHandle) fitTotalNumber(); });
 els.swapSettingsRefreshInput.addEventListener('change', () => {
@@ -8032,28 +11284,32 @@ els.swapSettingsRefreshInput.addEventListener('change', () => {
 els.discordRpcInput.addEventListener('change', saveAppearanceFromControls);
 els.windowBehaviorInput.addEventListener('change', () => saveSettings({ windowBehavior: els.windowBehaviorInput.value }));
 els.floatingBubbleInput.addEventListener('change', () => {
+  state.settings.floatingBubbleEnabled = els.floatingBubbleInput.checked;
   els.floatingBubbleOptions?.classList.toggle('hidden', !els.floatingBubbleInput.checked);
+  refreshTrayComposers();
   saveSettings({ floatingBubbleEnabled: els.floatingBubbleInput.checked });
 });
-els.floatingBubbleTriggerInput?.addEventListener('change', () => saveSettings({ floatingBubbleTrigger: els.floatingBubbleTriggerInput.value }));
+for (const input of els.floatingBubbleTriggerInputs || []) {
+  input.addEventListener('change', () => {
+    if (input.checked) void saveSettings({ floatingBubbleTrigger: input.value });
+  });
+}
 els.floatingBubbleContentInput?.addEventListener('change', async () => {
   state.settings.floatingBubbleContent = els.floatingBubbleContentInput.value;
-  syncTrayComposerVisibility();
+  refreshTrayComposers();
   await saveSettings({ floatingBubbleContent: els.floatingBubbleContentInput.value });
   renderFloatingBubbleContent();
 });
 els.showTrayIconInput?.addEventListener('change', () => {
   const showTrayIcon = els.showTrayIconInput.checked;
+  state.settings.showTrayIcon = showTrayIcon;
   els.trayModeInput.disabled = !showTrayIcon;
   if (!showTrayIcon) els.trayModeInput.checked = false;
   els.trayContentInput.disabled = !showTrayIcon;
   els.showTrayProviderBadgeInput.disabled = !showTrayIcon;
-  if (els.closeToTrayInput) {
-    els.closeToTrayInput.disabled = !showTrayIcon;
-    if (!showTrayIcon) els.closeToTrayInput.checked = false;
-  }
   els.trayIconOptions?.classList.toggle('hidden', !showTrayIcon);
   els.trayOptions?.classList.toggle('hidden', !showTrayIcon || !els.trayModeInput.checked);
+  refreshTrayComposers();
   saveSettings({ showTrayIcon, trayMode: showTrayIcon ? els.trayModeInput.checked : false });
 });
 els.trayModeInput.addEventListener('change', () => {
@@ -8062,19 +11318,21 @@ els.trayModeInput.addEventListener('change', () => {
 });
 els.trayContentInput.addEventListener('change', () => {
   state.settings.trayContent = els.trayContentInput.value;
-  syncTrayComposerVisibility();
+  refreshTrayComposers();
   saveSettings({ trayContent: els.trayContentInput.value });
 });
-els.showTrayProviderBadgeInput.addEventListener('change', () => saveSettings({ showTrayProviderBadge: els.showTrayProviderBadgeInput.checked }));
+els.showTrayProviderBadgeInput.addEventListener('change', () => {
+  state.settings.showTrayProviderBadge = els.showTrayProviderBadgeInput.checked;
+  void maybeUpdateBarsIcon();
+  saveSettings({ showTrayProviderBadge: els.showTrayProviderBadgeInput.checked });
+});
 els.windowToggleShortcutValue?.addEventListener('click', startWindowShortcutRecording);
 els.windowToggleShortcutClearButton?.addEventListener('click', () => setWindowToggleShortcut('').catch(() => {}));
 els.startAtLoginInput?.addEventListener('change', () => saveSettings({ startAtLogin: els.startAtLoginInput.checked }));
-els.startInTrayInput?.addEventListener('change', () => saveSettings({ startInTray: els.startInTrayInput.checked }));
-els.closeToTrayInput?.addEventListener('change', () => saveSettings({ closeToTray: els.closeToTrayInput.checked }));
 els.automaticAppUpdatesInput?.addEventListener('change', () => saveSettings({ automaticAppUpdates: els.automaticAppUpdatesInput.checked }));
-// Glass and Depth controls were removed from the Windows appearance panel;
-// keep this legacy reset binding optional so a missing optional control cannot
-// abort the entire renderer bootstrap.
+els.glassInput.addEventListener('change', saveAppearanceFromControls);
+els.blurInput.addEventListener('change', saveAppearanceFromControls);
+els.zoomInput.addEventListener('change', saveAppearanceFromControls);
 els.resetZoomButton?.addEventListener('click', async () => {
   els.zoomInput.value = String(Math.round(defaultAppearance.zoomFactor * 100));
   syncSliderRow(els.zoomInput);
@@ -8086,13 +11344,15 @@ els.downloadTokscaleButton?.addEventListener('click', downloadTokscaleFromNpm);
 els.resetTokscaleButton?.addEventListener('click', resetTokscaleToBundled);
 els.openTokscaleLinkButton?.addEventListener('click', () => window.tokenMonitor.openExternal?.('https://github.com/junhoyeo/tokscale'));
 els.openRepositoryButton?.addEventListener('click', () => window.tokenMonitor.openExternal?.(TOKEN_MONITOR_REPOSITORY_URL));
+els.openWebsiteButton?.addEventListener('click', () => window.tokenMonitor.openExternal?.(TOKEN_MONITOR_WEBSITE_URL));
 els.reportIssueButton?.addEventListener('click', () => window.tokenMonitor.openExternal?.(TOKEN_MONITOR_ISSUES_URL));
 els.refreshButton.addEventListener('click', () => {
   if (state.breakdown === 'status') refreshStatusViewManually().catch(() => {});
-  // Only this button asks for a history rescan: `{ force: true }` is used all over the
-  // settings/account flows, and folding history into it would re-run the expensive
-  // `tokscale graph` on every one of them.
-  else refreshStats({ force: true, forceHistory: true, feedback: true });
+  // Only this button asks for a history rescan and a self-sync: `{ force: true }` is
+  // used all over the settings/account flows, and folding those into it would re-run
+  // the expensive `tokscale graph`, plus the Cursor and Antigravity sync subprocesses,
+  // on every one of them.
+  else refreshStats({ force: true, forceHistory: true, forceSelfSync: true, feedback: true });
 });
 els.minButton.addEventListener('click', () => window.tokenMonitor.minimize());
 els.closeButton.addEventListener('click', () => window.tokenMonitor.close());
@@ -8120,7 +11380,7 @@ els.floatingBubbleTab.addEventListener('keydown', (event) => {
 });
 
 async function runAppUpdateAction() {
-  const mode = appUpdateActionMode(state.appUpdate);
+  const mode = appUpdatePresentationApi.appUpdateActionMode(state.appUpdate);
   if (mode === 'install') {
     state.appUpdate = await window.tokenMonitor.installAppUpdate();
   } else if (mode === 'download') {
@@ -8138,7 +11398,7 @@ async function runAppUpdateAction() {
 
 els.appUpdatePillAction.addEventListener('click', async () => {
   if (!renderAppUpdatePopover(state.appUpdate) || typeof els.appUpdatePopover.showPopover !== 'function') {
-    if (appUpdateActionMode(state.appUpdate) === 'install') {
+    if (appUpdatePresentationApi.appUpdateActionMode(state.appUpdate) === 'install') {
       const url = state.appUpdate?.latest?.htmlUrl;
       if (url) await window.tokenMonitor.openExternal(url);
       return;
@@ -8211,13 +11471,24 @@ els.appUpdateReleaseNotesButton.addEventListener('click', async () => {
 
 window.tokenMonitor.onSettingsPush?.((next) => {
   if (!next) return;
+  state.settingsPushRevision += 1;
   const prevMetric = state.settings?.heatmapMetric;
+  const prevLanguage = state.settings?.language;
+  const prevCompactTokenUnits = state.settings?.compactTokenUnits;
+  const prevShowCompactTotalTokens = state.settings?.showCompactTotalTokens;
   state.settings = next;
   applyEffectiveCurrencyRates();
-  syncSettingsForm();
+  preserveSettingsPanelScroll(syncSettingsForm);
   maybeUpdateBarsIcon();
   if ((prevMetric || 'cost') !== (next.heatmapMetric || 'cost')) {
     render();
+  } else if (
+    prevLanguage !== next.language
+    || prevCompactTokenUnits !== next.compactTokenUnits
+  ) {
+    render();
+  } else if (prevShowCompactTotalTokens !== next.showCompactTotalTokens) {
+    updateTotalCompact(state.currentTotal);
   }
 });
 
@@ -8254,8 +11525,43 @@ window.tokenMonitor.onTokscalePush?.((payload) => {
   renderTokscaleStatus();
 });
 
+function renderStatsUpdate() {
+  render();
+  renderCodexAccounts();
+  renderSettingsSummaries();
+  renderLimitProviderCheckboxes();
+  renderToolPreferences();
+  renderWslPanel();
+  updateOpenRouterProfilesStatus();
+  updateThirdPartyProfilesStatus();
+  renderDeepseekStatus();
+  renderMinimaxStatus();
+  renderExternalProviderStatus('claude');
+  renderExternalProviderStatus('zai');
+  renderExternalProviderStatus('zaiteam');
+  renderExternalProviderStatus('volcengine');
+  renderExternalProviderStatus('qoder');
+  renderExternalProviderStatus('commandcode');
+  renderExternalProviderStatus('kimi');
+  renderExternalProviderStatus('ollama');
+  renderCopilotStatus();
+}
+
+const statsRenderScheduler = statsRenderSchedulerApi.createStatsRenderScheduler({
+  isHidden: () => document.hidden,
+  render: renderStatsUpdate
+});
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) cancelTokenRateBoost();
+  if (!document.hidden && state.settings?.hubMode === 'client' && hubBuildStatusRefreshDue()) {
+    void refreshHubBuildStatus();
+  }
+  statsRenderScheduler.flush();
+});
+
 window.tokenMonitor.onStatsPush?.((payload) => {
   if (!payload) return;
+  const wasStreamConnected = state.streamConnected;
   if (payload.event === 'status') {
     state.streamConnected = Boolean(payload.data?.connected);
     if (payload.data?.mode) state.mode = payload.data.mode;
@@ -8264,12 +11570,12 @@ window.tokenMonitor.onStatsPush?.((payload) => {
     // Local collector overlays update client-mode data independently of the
     // Hub SSE transport. Preserve its current Offline/error state until a
     // real stream status or remote stats event proves the connection changed.
-    if (payload.data?.reason !== 'local') {
+    if (payload.data?.reason !== 'local' && payload.data?.reason !== 'presentation') {
       state.streamConnected = true;
       state.streamFailure = null;
     }
     if (payload.data?.mode) state.mode = payload.data.mode;
-    state.stats = preserveCustomPeriod(overlayAllTimeSessions(payload.data.stats));
+    state.stats = overlayAllTimeSessions(payload.data.stats);
     applyCodexActiveAccountFromStats();
     // Progressive mid-tick pushes never carry a fresh history scan (see
     // AGENTS.md collector notes), so only the final push can retire the
@@ -8281,21 +11587,23 @@ window.tokenMonitor.onStatsPush?.((payload) => {
   setLiveDot(state.streamConnected);
   setStatus(statusTextFor(state.mode, state.streamConnected));
   renderSyncClientStatus();
+  if (!wasStreamConnected && state.streamConnected && state.settings?.hubMode === 'client') {
+    void refreshHubBuildStatus();
+  }
   if (payload.data?.stats) {
-    render();
-    renderLimitProviderCheckboxes();
-    renderToolPreferences();
-    renderWslPanel();
-    updateOpenRouterProfilesStatus();
-    renderDeepseekStatus();
-    renderMinimaxStatus();
-    renderExternalProviderStatus('zai');
-    renderExternalProviderStatus('zaiteam');
-    renderExternalProviderStatus('volcengine');
-    renderExternalProviderStatus('qoder');
-    renderExternalProviderStatus('kimi');
-    renderExternalProviderStatus('ollama');
-    renderCopilotStatus();
+    if (fixedPeriodRangesApi.isDerived(state.period)) {
+      // Keep the currently rendered range stable while a new History revision is
+      // fetched; repaint once with the coherent snapshot instead of flashing an
+      // intermediate loading layout.
+      if (fixedPeriodHistoryNeedsWarmup()) {
+        void warmFixedPeriodHistory({ renderOnComplete: true });
+      } else {
+        statsRenderScheduler.request();
+      }
+    } else {
+      statsRenderScheduler.request();
+      void warmFixedPeriodHistory({ renderOnComplete: false });
+    }
     maybeUpdateBarsIcon();
   }
   restartTimer();
@@ -8343,8 +11651,15 @@ function providerImageOpticalSample(image) {
   ctx.drawImage(image, 0, 0, sampleSize, sampleSize);
 
   let bounds = { x: 0, y: 0, width: sampleSize, height: sampleSize };
+  // Whether the mark is drawn in one flat ink, i.e. authored `fill="currentColor"`
+  // and meant to be re-inked, as opposed to brand artwork that must be left alone.
+  // The rule itself lives in isFlatInkPixels so it can be tested against pixels
+  // directly; pixels we cannot read back (a future non-local image) leave it
+  // false, which means untinted.
+  let flatInk = false;
   try {
     const pixels = ctx.getImageData(0, 0, sampleSize, sampleSize).data;
+    flatInk = window.TokenMonitorTrayProviderIcons.isFlatInkPixels(pixels);
     let minX = sampleSize;
     let minY = sampleSize;
     let maxX = -1;
@@ -8370,7 +11685,7 @@ function providerImageOpticalSample(image) {
     // Keep the original frame if a future non-local image cannot be inspected.
   }
 
-  const sample = { canvas, bounds };
+  const sample = { canvas, bounds, flatInk };
   trayProviderImageOpticalSamples.set(image, sample);
   return sample;
 }
@@ -8407,6 +11722,21 @@ function paintProviderImage(ctx, image, x, y, size, templateColor = '') {
   ctx.drawImage(mask, x, y, size, size);
 }
 
+// Which ink a provider mark is drawn in. An explicit colour always wins — the
+// menubar previews and the floating bubble pass their own, and the bubble
+// deliberately passes none to keep the artwork in colour. `trayInk` is set only
+// by the two paths that hand a bitmap to the system tray, where a monochrome
+// mark has to be re-inked for a dark taskbar (see trayProviderGlyphInk).
+function trayGlyphInk(options, image) {
+  if (options?.templateIconColor) return options.templateIconColor;
+  if (options?.trayInk !== true || !image) return '';
+  return window.TokenMonitorTrayText.trayProviderGlyphInk(
+    state.appInfo?.platform,
+    state.systemDarkUi,
+    providerImageOpticalSample(image).flatInk
+  );
+}
+
 function drawProviderImage(ctx, image, x, y, size, contrastHalo = false, templateColor = '') {
   if (contrastHalo) {
     const lightSurface = themePresetsApi.isLightHex(resolvedThemeColor('bg'));
@@ -8424,7 +11754,7 @@ function renderBarsIcon(stats, height = 44, picker = pickWorstProvider, colors =
   const fillColor = colors.fill || 'rgba(0, 0, 0, 1)';
   const selection = picker(stats);
   if (!selection) return null;
-  const { providerRecord, primaryWindow, secondaryWindow } = selection;
+  const { providerRecord } = selection;
   const providerImage = trayProviderImages[providerRecord.provider];
   const { trayBarFillWidth, trayBarsLayout } = window.TokenMonitorTrayBars;
   const layout = trayBarsLayout(height);
@@ -8436,7 +11766,15 @@ function renderBarsIcon(stats, height = 44, picker = pickWorstProvider, colors =
   ctx.clearRect(0, 0, layout.width, layout.height);
 
   if (providerImage) {
-    drawProviderImage(ctx, providerImage, layout.padX, layout.iconY, layout.iconSize, options.providerContrastHalo === true);
+    drawProviderImage(
+      ctx,
+      providerImage,
+      layout.padX,
+      layout.iconY,
+      layout.iconSize,
+      options.providerContrastHalo === true,
+      trayGlyphInk(options, providerImage)
+    );
   }
 
   function drawBar(y, percent) {
@@ -8454,8 +11792,10 @@ function renderBarsIcon(stats, height = 44, picker = pickWorstProvider, colors =
     ctx.restore();
   }
 
-  drawBar(layout.barsStartY, primaryWindow?.remainingPercent);
-  drawBar(layout.barsStartY + layout.barHeight + layout.barGap, secondaryWindow?.remainingPercent);
+  // Read the selection's resolved percentages, not the raw windows: a balance
+  // window carries no wire percentage and would draw an empty (exhausted) bar.
+  drawBar(layout.barsStartY, selection.primaryPercent);
+  drawBar(layout.barsStartY + layout.barHeight + layout.barGap, selection.secondaryPercent);
   return canvas.toDataURL('image/png');
 }
 
@@ -8500,8 +11840,11 @@ function renderAllSessionsIcon(stats, height = 44, configOrder, colors = {}, opt
     ctx.restore();
   }
 
-  drawBar(layout.barsStartY, picks[0].primaryWindow.remainingPercent);
-  drawBar(layout.barsStartY + layout.barHeight + layout.barGap, picks[1].primaryWindow.remainingPercent);
+  // The picker's resolved remaining percentage, not the raw window: drawBar
+  // applies the used-mode flip itself, and a balance window has no wire
+  // percentage to read.
+  drawBar(layout.barsStartY, picks[0].remaining);
+  drawBar(layout.barsStartY + layout.barHeight + layout.barGap, picks[1].remaining);
   return canvas.toDataURL('image/png');
 }
 
@@ -8518,22 +11861,23 @@ function renderLimitSessionsIcon(stats, height = 44, configOrder, colors = {}, o
   const padX = options.contentOnly === true ? 0 : layout.padX;
   const fontSize = Math.round(height * 0.68);
   const font = `500 ${fontSize}px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif`;
-  const showUsed = Boolean(state.settings?.showLimitUsed);
 
   const measureCanvas = document.createElement('canvas');
   const measureCtx = measureCanvas.getContext('2d');
   measureCtx.font = font;
+  // `percent` / `secondaryPercent` are already mode-adjusted by the picker and
+  // handle balance windows, which carry no wire percentage of their own.
   const visiblePicks = picks.length === 1
     ? [{
         ...picks[0],
-        text: [picks[0].primaryWindow, picks[0].secondaryWindow]
-          .filter(Boolean)
-          .map((window) => formatPercent(limitFillPercent(window.remainingPercent, window.usedPercent, showUsed)))
+        text: [picks[0].percent, picks[0].secondaryPercent]
+          .filter((percent) => percent !== null && percent !== undefined)
+          .map((percent) => formatPercent(percent))
           .join(separator)
       }]
     : picks.map((pick) => ({
         ...pick,
-        text: formatPercent(limitFillPercent(pick.primaryWindow.remainingPercent, pick.primaryWindow.usedPercent, showUsed))
+        text: formatPercent(pick.percent)
       }));
   const entries = visiblePicks.map((pick) => {
     const text = pick.text;
@@ -8563,7 +11907,10 @@ function renderLimitSessionsIcon(stats, height = 44, configOrder, colors = {}, o
   const centerY = height / 2;
   entries.forEach((entry, index) => {
     if (entry.image) {
-      drawProviderImage(ctx, entry.image, x, layout.iconY, iconSize, options.providerContrastHalo === true);
+      drawProviderImage(ctx, entry.image, x, layout.iconY, iconSize,
+        options.providerContrastHalo === true,
+        trayGlyphInk(options, entry.image)
+      );
       x += iconSize + gap;
     }
     ctx.fillText(entry.text, x, centerY + 1);
@@ -8717,21 +12064,21 @@ function drawCustomTrayProviderBadge(ctx, x, y, size, color) {
   ctx.strokeStyle = color;
   ctx.stroke();
 
-  // Custom tray images remain macOS template images. Cut the T mark out of the
+  // Custom tray images remain macOS template images. Cut the sigma out of the
   // badge alpha so the mark survives the menu-bar tint as negative space.
-  const left = badgeX + badgeSize * 0.33;
-  const right = badgeX + badgeSize * 0.70;
-  const top = badgeY + badgeSize * 0.32;
-  const bottom = badgeY + badgeSize * 0.71;
-  const stemX = badgeX + badgeSize * 0.51;
+  const left = badgeX + badgeSize * 0.29;
+  const right = badgeX + badgeSize * 0.72;
+  const top = badgeY + badgeSize * 0.27;
+  const middle = badgeY + badgeSize * 0.5;
+  const bottom = badgeY + badgeSize * 0.73;
   ctx.globalCompositeOperation = 'destination-out';
   ctx.beginPath();
-  ctx.moveTo(left, top);
-  ctx.lineTo(right, top);
-  ctx.moveTo(stemX, top);
-  ctx.lineTo(stemX, bottom - badgeSize * 0.12);
-  ctx.quadraticCurveTo(stemX, bottom, stemX + badgeSize * 0.14, bottom);
-  ctx.lineWidth = Math.max(1, badgeSize * 0.12);
+  ctx.moveTo(right, top);
+  ctx.lineTo(left, top);
+  ctx.lineTo(badgeX + badgeSize * 0.56, middle);
+  ctx.lineTo(left, bottom);
+  ctx.lineTo(right, bottom);
+  ctx.lineWidth = Math.max(1, badgeSize * 0.13);
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
   ctx.strokeStyle = '#000000';
@@ -8750,7 +12097,7 @@ function drawCustomTrayProviderImage(ctx, img, provider, x, y, size, options = {
     y + inset,
     imageSize,
     options.providerContrastHalo === true,
-    options.templateIconColor || ''
+    trayGlyphInk(options, img)
   );
   if (showBadge) {
     drawCustomTrayProviderBadge(
@@ -8844,8 +12191,9 @@ function renderCustomTrayItemCanvas(item, height = 44, colors = {}, options = {}
     };
     if (showIcon) {
       const preferredIndex = item.icon === 'second' ? 1 : 0;
-      const iconRow = rows[preferredIndex]?.selection ? rows[preferredIndex] : rows.find((row) => row.selection);
-      const provider = item.icon === 'app' ? 'app' : iconRow?.selection?.provider || '';
+      const provider = item.icon === 'app'
+        ? 'app'
+        : trayLayoutApi.preferredRowProvider(rows, preferredIndex);
       const providerImage = trayProviderImages[provider];
       if (providerImage) {
         drawCustomTrayProviderImage(
@@ -8874,8 +12222,9 @@ function renderCustomTrayItemCanvas(item, height = 44, colors = {}, options = {}
     const rows = item.rows.slice(0, 2);
     const showIcon = item.icon !== 'none';
     const preferredIndex = item.icon === 'second' ? 1 : 0;
-    const iconRow = rows[preferredIndex]?.selection ? rows[preferredIndex] : rows.find((row) => row.selection);
-    const provider = item.icon === 'app' ? 'app' : iconRow?.selection?.provider || '';
+    const provider = item.icon === 'app'
+      ? 'app'
+      : trayLayoutApi.preferredRowProvider(rows, preferredIndex);
     const iconSize = h;
     const iconGap = Math.max(2, Math.round(h * 0.08));
     const fontSize = Math.max(8, Math.round(h * 0.43));
@@ -8957,6 +12306,7 @@ function renderCustomTrayLayout(stats, layout, height = 44, colors = {}, options
     : '';
   const resolved = trayLayoutApi.resolveTrayLayout(layout, stats, {
     currency: currentCurrency(),
+    ...compactTokenDisplayOptions(),
     nowMs: Date.now(),
     activeAccountKeys: activeCodexKey ? { codex: activeCodexKey } : {},
     availableProviderIds: Object.keys(trayProviderImages)
@@ -8964,7 +12314,7 @@ function renderCustomTrayLayout(stats, layout, height = 44, colors = {}, options
   const items = resolved.items.map((item) => (
     item.type === 'text'
       && item.metric === 'account'
-      && state.settings?.maskLimitAccountEmails
+      && limitAccountEmailsMasked()
       ? { ...item, text: accountIdentityApi.maskEmailAddress(item.text) }
       : item
   ));
@@ -8984,9 +12334,10 @@ function renderCustomTrayLayout(stats, layout, height = 44, colors = {}, options
 }
 
 function barsDataUrlForMode(mode, size = 44, colors, options = {}) {
-  if (mode === 'barsAllSessions') return renderAllSessionsIcon(state.stats, size, configuredLimitProviderOrder(), colors, options);
+  const stats = options.stats || state.stats;
+  if (mode === 'barsAllSessions') return renderAllSessionsIcon(stats, size, configuredLimitProviderOrder(), colors, options);
   const pickers = { barsSession: pickWorstSessionProvider, barsWeekly: pickWorstWeeklyProvider };
-  return renderBarsIcon(state.stats, size, pickers[mode] || pickWorstProvider, colors, options);
+  return renderBarsIcon(stats, size, pickers[mode] || pickWorstProvider, colors, options);
 }
 
 function trayDataUrlForMode(mode, size = 44, colors, options = {}) {
@@ -9002,7 +12353,9 @@ function trayDataUrlForMode(mode, size = 44, colors, options = {}) {
       }
     );
   }
-  if (mode === 'limitsAllSessions') return renderLimitSessionsIcon(state.stats, size, configuredLimitProviderOrder(), colors, options);
+  if (mode === 'limitsAllSessions') {
+    return renderLimitSessionsIcon(options.stats || state.stats, size, configuredLimitProviderOrder(), colors, options);
+  }
   return barsDataUrlForMode(mode, size, colors, options);
 }
 
@@ -9011,7 +12364,11 @@ async function maybeUpdateBarsIcon(options = {}) {
   const mode = state.settings?.trayContent;
   if (!window.TokenMonitorTrayText.isGeneratedTrayIconMode(mode)) return;
   if (!window.tokenMonitor.setTrayIcons) return;
-  const dataUrl = trayDataUrlForMode(mode, 44);
+  // Ink follows the surface the shell will draw this on, not the app's own theme
+  // (see trayGeneratedIconColors) — on a dark taskbar the historical black made
+  // the icon invisible.
+  const colors = window.TokenMonitorTrayText.trayGeneratedIconColors(state.appInfo?.platform, state.systemDarkUi);
+  const dataUrl = trayDataUrlForMode(mode, 44, colors, { trayInk: true });
   try { await window.tokenMonitor.setTrayIcons({ [mode]: dataUrl || null }); } catch (_) {}
 }
 
@@ -9130,10 +12487,127 @@ function renderTrayComposerFontPreview(item, fontStyle, options = {}) {
   return renderTrayComposerItem({ ...item, fontStyle }, options);
 }
 
+function trayPreviewUsageIconId(stats, mode) {
+  if (mode === 'icon') return 'app';
+  const period = ['tokensAll', 'costAll', 'bothAll'].includes(mode) ? 'allTime' : 'today';
+  const metric = ['cost', 'costAll'].includes(mode) ? 'cost' : 'tokens';
+  return window.TokenMonitorTrayText.pickUsageProviderId(
+    stats,
+    metric,
+    period,
+    Object.keys(trayProviderImages)
+  ) || 'app';
+}
+
+function joinTrayPreviewCanvases(segments, height = 44, gap = Math.max(1, Math.round(height * 0.03))) {
+  const visible = segments.filter(Boolean);
+  if (!visible.length) return '';
+  const canvas = document.createElement('canvas');
+  canvas.width = visible.reduce((width, segment) => width + segment.width, 0) + gap * Math.max(0, visible.length - 1);
+  canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  let x = 0;
+  for (const segment of visible) {
+    ctx.drawImage(segment, x, 0);
+    x += segment.width + gap;
+  }
+  return canvas.toDataURL('image/png');
+}
+
+function renderStandardUsageTrayPreview(mode, stats) {
+  const height = 44;
+  const colors = floatingBubbleGeneratedColors();
+  const showProviderBadge = state.settings?.showTrayProviderBadge === true;
+  const icon = renderCustomTrayItemCanvas(
+    { type: 'icon', provider: trayPreviewUsageIconId(stats, mode) },
+    height,
+    colors,
+    {
+      showProviderBadge,
+      templateIconColor: showProviderBadge ? '' : colors.text
+    }
+  );
+  // Windows and Linux only get the icon; their text lives in the tooltip, so
+  // previewing a title there would advertise something the tray never draws.
+  if (mode === 'icon' || !window.TokenMonitorTrayText.trayShowsTitle(state.appInfo?.platform)) {
+    return joinTrayPreviewCanvases([icon], height);
+  }
+
+  const text = window.TokenMonitorTrayText.formatTrayText(
+    stats,
+    mode,
+    currentCurrency(),
+    compactTokenDisplayOptions()
+  );
+  const title = text
+    ? renderCustomTrayItemCanvas({ type: 'text', text, fontStyle: 'normal' }, height, colors)
+    : null;
+  return joinTrayPreviewCanvases([icon, title], height);
+}
+
+function renderStandardTrayPreview(mode, stats) {
+  if (window.TokenMonitorTrayText.isGeneratedTrayIconMode(mode)) {
+    const colors = floatingBubbleGeneratedColors();
+    return {
+      // Match the same high-resolution source that main resizes to the tray's 20 px height.
+      generatedSrc: trayDataUrlForMode(mode, 44, colors, {
+        stats,
+        templateIconColor: colors.text
+      })
+    };
+  }
+  return { src: renderStandardUsageTrayPreview(mode, stats) };
+}
+
+function trayComposerPreview(surface) {
+  const isTray = surface === 'tray';
+  const contentKey = isTray ? 'trayContent' : 'floatingBubbleContent';
+  const layoutKey = isTray ? 'trayCustomLayout' : 'floatingBubbleCustomLayout';
+  const mode = state.settings?.[contentKey] || (isTray ? 'tokens' : 'icon');
+  const stats = statsForTrayComposer();
+  if (isTray) return renderStandardTrayPreview(mode, stats);
+  if (window.TokenMonitorTrayText.isGeneratedTrayIconMode(mode)) {
+    // Mirror renderFloatingBubbleContent exactly: the bubble draws provider
+    // icons in colour, so no templateIconColor here — that is a menu-bar-only
+    // requirement and would preview the bubble as monochrome.
+    return {
+      src: trayDataUrlForMode(mode, 44, floatingBubbleGeneratedColors(), {
+        stats,
+        layout: state.settings?.[layoutKey],
+        contentOnly: mode === 'barsAllSessions' || mode === 'limitsAllSessions',
+        providerContrastHalo: true,
+        showProviderBadge: false
+      })
+    };
+  }
+  if (mode === 'icon') return { text: 'Σ' };
+  return {
+    text: window.TokenMonitorTrayText.formatTrayText(
+      stats,
+      mode,
+      currentCurrency(),
+      compactTokenDisplayOptions()
+    ) || '—'
+  };
+}
+
+function activateTrayComposer(surface) {
+  const isTray = surface === 'tray';
+  const contentKey = isTray ? 'trayContent' : 'floatingBubbleContent';
+  const input = isTray ? els.trayContentInput : els.floatingBubbleContentInput;
+  state.settings[contentKey] = 'custom';
+  if (input) input.value = 'custom';
+  if (isTray) void maybeUpdateBarsIcon();
+  else renderFloatingBubbleContent();
+  refreshTrayComposers();
+  void saveSettings({ [contentKey]: 'custom' });
+}
+
 function createTrayComposer(surface) {
   const isTray = surface === 'tray';
   const root = isTray ? els.trayComposer : els.floatingBubbleComposer;
   const layoutKey = isTray ? 'trayCustomLayout' : 'floatingBubbleCustomLayout';
+  const contentKey = isTray ? 'trayContent' : 'floatingBubbleContent';
   return window.TokenMonitorTrayComposer.createTrayComposer({
     root,
     surface,
@@ -9152,6 +12626,9 @@ function createTrayComposer(surface) {
     renderItem: (item) => renderTrayComposerItem(item, {
       showProviderBadge: isTray && state.settings?.showTrayProviderBadge === true
     }),
+    getPreview: () => trayComposerPreview(surface),
+    isEditable: () => state.settings?.[contentKey] === 'custom',
+    onCustomize: () => activateTrayComposer(surface),
     providerChoices: trayComposerProviderChoices,
     accountChoices: trayComposerAccountChoices,
     windowChoices: trayComposerWindowChoices,
@@ -9161,23 +12638,24 @@ function createTrayComposer(surface) {
       if (isTray) void maybeUpdateBarsIcon({ refreshComposers: commit });
       else {
         renderFloatingBubbleContent();
-        if (commit) syncTrayComposerVisibility();
+        if (commit) refreshTrayComposers();
       }
       if (commit) void saveSettings({ [layoutKey]: state.settings[layoutKey] });
     }
   });
 }
 
-function syncTrayComposerVisibility() {
+function refreshTrayComposers() {
   const surfaces = [
-    { id: 'tray', root: els.trayComposer, visible: state.settings?.trayContent === 'custom' },
-    { id: 'floatingBubble', root: els.floatingBubbleComposer, visible: state.settings?.floatingBubbleContent === 'custom' }
+    { id: 'tray', root: els.trayComposer, visible: state.settings?.showTrayIcon !== false },
+    { id: 'floatingBubble', root: els.floatingBubbleComposer, visible: state.settings?.floatingBubbleEnabled === true }
   ];
   window.TokenMonitorTrayComposer.syncTrayComposerSurfaces(
     surfaces,
     trayComposers,
     createTrayComposer
   );
+  Object.values(trayComposers).forEach((composer) => composer?.refresh());
   const clockNeeded = (
     state.settings?.trayContent === 'custom'
       && trayLayoutApi.trayLayoutNeedsClock(state.settings?.trayCustomLayout)
@@ -9194,11 +12672,6 @@ function syncTrayComposerVisibility() {
     clearInterval(customTrayClockTimer);
     customTrayClockTimer = null;
   }
-}
-
-function refreshTrayComposers() {
-  syncTrayComposerVisibility();
-  Object.values(trayComposers).forEach((composer) => composer?.refresh());
 }
 
 function loadImage(src) {
@@ -9233,7 +12706,7 @@ function providerImageToPngDataUrl(img, size, showBadge = false, options = {}) {
     imageInset,
     imageSize,
     false,
-    showBadge ? '' : options.templateColor || ''
+    trayGlyphInk({ templateIconColor: options.templateColor, trayInk: options.trayInk }, img)
   );
 
   if (!showBadge) return canvas.toDataURL('image/png');
@@ -9246,19 +12719,19 @@ function providerImageToPngDataUrl(img, size, showBadge = false, options = {}) {
   ctx.strokeStyle = '#ffffff';
   ctx.stroke();
 
-  // Draw the project's T token mark as geometry so it remains crisp without a font dependency.
-  const left = x + badgeSize * 0.33;
-  const right = x + badgeSize * 0.70;
-  const top = y + badgeSize * 0.32;
-  const bottom = y + badgeSize * 0.71;
-  const stemX = x + badgeSize * 0.51;
+  // Draw the project's sigma mark as geometry so it remains crisp without a font dependency.
+  const left = x + badgeSize * 0.29;
+  const right = x + badgeSize * 0.72;
+  const top = y + badgeSize * 0.27;
+  const middle = y + badgeSize * 0.5;
+  const bottom = y + badgeSize * 0.73;
   ctx.beginPath();
-  ctx.moveTo(left, top);
-  ctx.lineTo(right, top);
-  ctx.moveTo(stemX, top);
-  ctx.lineTo(stemX, bottom - badgeSize * 0.12);
-  ctx.quadraticCurveTo(stemX, bottom, stemX + badgeSize * 0.14, bottom);
-  ctx.lineWidth = Math.max(2, badgeSize * 0.12);
+  ctx.moveTo(right, top);
+  ctx.lineTo(left, top);
+  ctx.lineTo(x + badgeSize * 0.56, middle);
+  ctx.lineTo(left, bottom);
+  ctx.lineTo(right, bottom);
+  ctx.lineWidth = Math.max(2, badgeSize * 0.13);
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
   ctx.strokeStyle = '#ffffff';
@@ -9277,7 +12750,7 @@ async function deliverTrayProviderIcons(showBadge = state.settings?.showTrayProv
       const img = await loadImage(path);
       trayProviderImages[id] = img;
       trayProviderImageIds.set(img, id);
-      icons[id] = providerImageToPngDataUrl(img, 44, showBadge);
+      icons[id] = providerImageToPngDataUrl(img, 44, showBadge, { trayInk: true });
     } catch (_) { /* skip missing */ }
   }
   if (!trayProviderIconDeliveryGuard.isCurrent(deliveryId)) return;
@@ -9297,6 +12770,16 @@ function setAccountGroupExpanded(prefix, expanded, stateKey) {
   toggle.setAttribute('aria-expanded', next ? 'true' : 'false');
   details.classList.toggle('hidden', !next);
   if (group) group.classList.toggle('expanded', next);
+  syncLimitProviderAccountExpansion(prefix, next);
+}
+
+function syncLimitProviderAccountExpansion(providerId, expanded) {
+  if (!LIMIT_PROVIDER_ACCOUNT_GROUP_IDS[providerId]) return;
+  if (expanded) {
+    setLimitProviderSettingsExpanded(providerId);
+  } else if (state.limitProviderSettingsExpanded === providerId) {
+    setLimitProviderSettingsExpanded('');
+  }
 }
 
 function setCodexAccountExpanded(expanded) {
@@ -9313,6 +12796,57 @@ function setOpencodeCookieExpanded(expanded) {
 
 function setOpenrouterAccountExpanded(expanded) {
   setAccountGroupExpanded('openrouter', expanded, 'openrouterAccountExpanded');
+}
+
+function setThirdPartyAccountExpanded(expanded) {
+  setAccountGroupExpanded('thirdparty', expanded, 'thirdPartyAccountExpanded');
+}
+
+function selectedThirdPartyAdapter() {
+  const platform = String(document.getElementById('thirdpartyPlatformInput')?.value || 'newapi');
+  const mode = String(document.getElementById('thirdpartyModeInput')?.value || 'account');
+  if (platform === 'custom') return 'custom';
+  return mode === 'token' ? 'newapi-token' : 'newapi-account';
+}
+
+function updateThirdPartyHttpWarning() {
+  const input = document.getElementById('thirdpartyBaseUrlInput');
+  const warning = document.getElementById('thirdpartyHttpWarning');
+  if (!warning) return;
+  let insecure;
+  try {
+    insecure = new URL(String(input?.value || '').trim()).protocol === 'http:';
+  } catch {
+    warning.classList.add('hidden');
+    return;
+  }
+  warning.classList.toggle('hidden', !insecure);
+}
+
+function setThirdPartyAdapterFields() {
+  const adapter = selectedThirdPartyAdapter();
+  const customMode = adapter === 'custom';
+  const accountMode = adapter === 'newapi-account';
+  const newApiAccountMode = adapter === 'newapi-account';
+  document.getElementById('thirdpartyChoiceGrid')?.classList.toggle('single-field', customMode);
+  document.getElementById('thirdpartyModeField')?.classList.toggle('hidden', customMode);
+  document.getElementById('thirdpartyCredentialGrid')?.classList.toggle(
+    'single-field',
+    !newApiAccountMode
+  );
+  document.getElementById('thirdpartyAccessTokenRow')?.classList.toggle('hidden', !accountMode);
+  document.getElementById('thirdpartyUserIdRow')?.classList.toggle('hidden', !newApiAccountMode);
+  document.getElementById('thirdpartyApiKeyRow')?.classList.toggle('hidden', accountMode);
+  document.getElementById('thirdpartyCustomConfig')?.classList.toggle('hidden', !customMode);
+  const hint = document.getElementById('thirdpartyModeHint');
+  if (hint) {
+    const hintKey = customMode
+      ? 'settings.thirdparty.hintCustom'
+      : adapter === 'newapi-token'
+      ? 'settings.thirdparty.hintNewApiToken'
+      : 'settings.thirdparty.hintNewApiAccount';
+    hint.textContent = t(hintKey);
+  }
 }
 
 function setDeepseekAccountExpanded(expanded) {
@@ -9397,6 +12931,7 @@ function renderCodexAccounts() {
     empty.textContent = t('settings.codex.empty');
     listEl.append(empty);
   } else {
+    const codexProviders = localProviderStatuses('codex');
     for (const account of accounts) {
       const enabled = account.enabled !== false;
       const row = document.createElement('div');
@@ -9436,7 +12971,11 @@ function renderCodexAccounts() {
         : account.workspaceLabel;
       const accountMetadata = [
         workspaceLabel,
-        enabled ? limitProviderPresentationApi.limitProviderDisplayLabel(account.accountLabel) : t('settings.codex.disabled')
+        enabled
+          ? limitProviderPresentationApi.limitProviderDisplayLabel(
+            accountIdentityApi.codexManagedAccountPlanLabel(account, codexProviders)
+          )
+          : t('settings.codex.disabled')
       ].filter((value, index, values) => value && values.indexOf(value) === index);
       info.textContent = accountMetadata.join(' · ');
       info.title = accountMetadata.join(' · ');
@@ -9551,10 +13090,6 @@ function clearDeepseekPendingCheck() {
 function clearDeepseekProviderStatus() {
   if (!Array.isArray(state.stats?.limits?.providers)) return;
   state.stats.limits.providers = state.stats.limits.providers.filter((provider) => provider.provider !== 'deepseek');
-}
-
-function mimoAccountLinked() {
-  return (state.settings?.mimoManagedAccounts || []).length > 0;
 }
 
 function renderMimoStatus() {
@@ -9720,6 +13255,11 @@ function clearCopilotProviderStatus() {
 }
 
 const externalLimitAccountConfig = {
+  claude: {
+    configuredKey: 'claudeWebCookieConfigured',
+    sourceKey: 'claudeWebCookieSource',
+    pendingKey: 'claudePendingCheckSince'
+  },
   zai: {
     configuredKey: 'zaiApiKeyConfigured',
     sourceKey: 'zaiApiKeySource',
@@ -9739,6 +13279,11 @@ const externalLimitAccountConfig = {
     configuredKey: 'qoderCookieConfigured',
     sourceKey: 'qoderCookieSource',
     pendingKey: 'qoderPendingCheckSince'
+  },
+  commandcode: {
+    configuredKey: 'commandcodeCookieConfigured',
+    sourceKey: 'commandcodeCookieSource',
+    pendingKey: 'commandcodePendingCheckSince'
   },
   kimi: {
     configuredKey: 'kimiCredentialConfigured',
@@ -9867,9 +13412,12 @@ function setExternalAccountExpanded(providerName, expanded) {
   const details = document.getElementById(`${providerName}SettingsDetails`);
   const toggle = document.getElementById(`${providerName}SettingsToggle`);
   if (!details || !toggle) return;
-  state[`${providerName}AccountExpanded`] = expanded;
-  details.classList.toggle('hidden', !expanded);
-  toggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+  const next = Boolean(expanded);
+  state[`${providerName}AccountExpanded`] = next;
+  details.classList.toggle('hidden', !next);
+  toggle.setAttribute('aria-expanded', next ? 'true' : 'false');
+  limitProviderAccountGroup(providerName)?.classList.toggle('expanded', next);
+  syncLimitProviderAccountExpansion(providerName, next);
 }
 
 function zaiPlatformUrl() {
@@ -9886,6 +13434,10 @@ function zaiteamPlatformUrl() {
 
 function volcenginePlatformUrl() {
   return 'https://console.volcengine.com/ark/region:ark+cn-beijing/openManagement?LLM=%7B%7D&advancedActiveKey=subscribe';
+}
+
+function claudePlatformUrl() {
+  return 'https://claude.ai/settings/usage';
 }
 
 function selectedQoderSite() {
@@ -9912,6 +13464,13 @@ function kimiPlatformUrl() {
 
 function ollamaPlatformUrl() {
   return 'https://ollama.com/settings';
+}
+
+function commandcodePlatformUrl() {
+  // Account-scoped in the address bar (/<username>/settings/usage), but this
+  // path resolves to it and bounces through signin?returnTo= when signed out,
+  // so it is the one link that works without knowing the username.
+  return 'https://commandcode.ai/settings/usage';
 }
 
 function ollamaValidationError(provider) {
@@ -9960,7 +13519,8 @@ function renderExternalProviderStatus(providerName) {
   );
   manualPanel.classList.toggle('hidden', linked);
   openBtn.classList.toggle('hidden', linked);
-  logoutBtn.classList.toggle('hidden', !linked || source !== 'settings');
+  const canClearConfiguredClaude = providerName === 'claude' && configured;
+  logoutBtn.classList.toggle('hidden', source !== 'settings' || (!linked && !canClearConfiguredClaude));
   refreshBtn.classList.toggle('hidden', !configured);
   renderSettingsSummaries();
 }
@@ -9969,9 +13529,12 @@ function setMinimaxAccountExpanded(expanded) {
   const details = document.getElementById('minimaxSettingsDetails');
   const toggle = document.getElementById('minimaxSettingsToggle');
   if (!details || !toggle) return;
-  state.minimaxAccountExpanded = expanded;
-  details.classList.toggle('hidden', !expanded);
-  toggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+  const next = Boolean(expanded);
+  state.minimaxAccountExpanded = next;
+  details.classList.toggle('hidden', !next);
+  toggle.setAttribute('aria-expanded', next ? 'true' : 'false');
+  limitProviderAccountGroup('minimax')?.classList.toggle('expanded', next);
+  syncLimitProviderAccountExpansion('minimax', next);
 }
 
 function renderMinimaxStatus() {
@@ -10060,18 +13623,119 @@ function renderOpenCodeProfiles() {
 
   const api = window.tokenMonitor.opencode;
 
-  api.getProfiles().then(({ profiles, hasEnvVar }) => {
+  api.getProfiles().then(({ profiles, hasEnvVar, hasAmbientKey, ambientEnabled = true }) => {
     listEl.innerHTML = '';
     const entries = Object.entries(profiles);
 
-    if (entries.length === 0 && !hasEnvVar) {
+    if (entries.length === 0 && !hasEnvVar && !hasAmbientKey) {
       listEl.innerHTML = '<div class="opencode-empty">' + t('settings.opencode.emptyList') + '</div>';
       state.opencodeProfileCount = 0;
+      renderOpenCodeProfilesStatusSummary({});
       renderSettingsSummaries();
       return;
     }
 
-    state.opencodeProfileCount = entries.length;
+    // The auto-detected key counts as an account: it is what the limits card is
+    // reading, so leaving it out of the total reports "not set up" next to live
+    // quota. It has no toggle or delete because Token Monitor does not own that
+    // credential — OpenCode does — but naming it does belong here: a name is
+    // what lets it join an account, and typing an existing account's name is
+    // how a user says the two are the same OpenCode account.
+    if (hasAmbientKey) {
+      const item = document.createElement('div');
+      item.className = 'opencode-profile-item';
+      // Switchable like any other account, even without a name. Turning it off
+      // is a device preference rather than a stored credential, so the row keeps
+      // rendering with its box clear instead of disappearing along with the only
+      // control that could bring it back.
+      const ambientToggle = document.createElement('input');
+      ambientToggle.className = 'profile-toggle';
+      ambientToggle.type = 'checkbox';
+      ambientToggle.checked = ambientEnabled;
+      ambientToggle.title = t('settings.opencode.ambientDetail');
+      ambientToggle.addEventListener('change', async () => {
+        await window.tokenMonitor.opencode.setAmbientEnabled(ambientToggle.checked);
+        renderOpenCodeProfiles();
+        updateOpenCodeProfilesStatus();
+        renderSettingsSummaries();
+      });
+      const nameBox = document.createElement('span');
+      nameBox.className = 'profile-name-box';
+      // An editable field rather than a label behind an edit button: this row
+      // has no name yet, and naming it is the only thing a user can do here, so
+      // hiding that behind a hover-revealed pencil hides the whole feature. The
+      // placeholder carries the label the row used to show.
+      const nameInput = document.createElement('input');
+      nameInput.className = 'profile-name-input is-placeholder';
+      nameInput.type = 'text';
+      nameInput.placeholder = t('settings.opencode.ambientName');
+      nameInput.title = t('settings.opencode.nameAmbient');
+
+      // Typing an existing account's name binds the auto-detected key into that
+      // account. That claim is confirmed, never inferred: the main process
+      // refuses it without `merge`, so a blur landing on a name that happens to
+      // exist offers the button instead of quietly merging.
+      const mergeBtn = document.createElement('button');
+      mergeBtn.className = 'credential-merge-btn hidden';
+      const offer = opencodeMergeOffer(mergeBtn, (name) => applyNaming(name, true));
+      const applyNaming = async (name, merge) => {
+        const at = offer.revision();
+        // 'ambient' stores a reference rather than the key, so a key rotated
+        // inside OpenCode keeps being read live.
+        const result = await window.tokenMonitor.opencode.saveProfile(name, '', 'ambient', { merge });
+        if (!result.ok) {
+          if (result.nameTaken) {
+            offer.offer(at, name, t('settings.opencode.mergeInto', { name }));
+            return;
+          }
+          if (offer.stale(at)) return;
+          const errorEl = document.getElementById('opencodeErrorMessage');
+          errorEl.textContent = opencodeSaveErrorText(result);
+          errorEl.classList.remove('hidden');
+          return;
+        }
+        renderOpenCodeProfiles();
+        updateOpenCodeProfilesStatus();
+        renderSettingsSummaries();
+      };
+      const endNaming = async (save) => {
+        const name = nameInput.value.trim();
+        if (!save || !name) {
+          nameInput.value = '';
+          offer.withdraw();
+          return;
+        }
+        await applyNaming(name, false);
+      };
+      // Editing the name withdraws the offer: the confirmation names one account,
+      // and it must be the one on screen when the user clicks it.
+      nameInput.addEventListener('input', () => offer.withdraw());
+      nameInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') endNaming(true);
+        if (e.key === 'Escape') endNaming(false);
+      });
+      nameInput.addEventListener('blur', () => endNaming(true));
+
+      const detail = document.createElement('span');
+      detail.className = 'profile-detail';
+      detail.textContent = t('settings.opencode.ambientDetail');
+      nameBox.append(nameInput, mergeBtn, detail);
+
+      const rightBox = document.createElement('span');
+      rightBox.className = 'profile-right';
+      const infoSpan = document.createElement('span');
+      infoSpan.className = 'profile-info';
+      // Not `opencode-info-<name>`: that shape is generated from user-chosen
+      // account names, so a profile named the same as any sentinel would take
+      // this row's status.
+      infoSpan.id = 'opencodeAmbientInfo';
+      infoSpan.textContent = ambientEnabled ? '...' : t('settings.opencode.disabled');
+      rightBox.append(infoSpan);
+      item.append(ambientToggle, nameBox, rightBox);
+      listEl.appendChild(item);
+    }
+
+    state.opencodeProfileCount = entries.length + (hasAmbientKey ? 1 : 0);
     renderSettingsSummaries();
 
     for (const [name, profile] of entries) {
@@ -10116,18 +13780,43 @@ function renderOpenCodeProfiles() {
         nameInput.focus();
         nameInput.select();
       }
-      function endRename(save) {
+      // Renaming onto an existing account merges the two, which asserts they are
+      // the same OpenCode account. That claim gets a visible button rather than
+      // a repeated keypress: confirming should be something the user chooses,
+      // not something they discover by pressing Enter again.
+      const mergeBtn = document.createElement('button');
+      mergeBtn.className = 'credential-merge-btn hidden';
+      const offer = opencodeMergeOffer(mergeBtn, (next) => applyRename(next, true));
+      const applyRename = async (next, merge) => {
+        const at = offer.revision();
+        const errorEl = document.getElementById('opencodeErrorMessage');
+        const result = await api.renameProfile(name, next, { merge });
+        if (!result.ok) {
+          if (result.nameTaken) {
+            offer.offer(at, next, t('settings.opencode.mergeInto', { name: next }));
+            return;
+          }
+          if (offer.stale(at)) return;
+          errorEl.textContent = opencodeSaveErrorText(result);
+          errorEl.classList.remove('hidden');
+          return;
+        }
+        errorEl.classList.add('hidden');
+        renderOpenCodeProfiles();
+        updateOpenCodeProfilesStatus();
+        renderSettingsSummaries();
+      };
+      // Retyping withdraws the offer, so the button can only ever confirm the
+      // name the user is currently proposing.
+      nameInput.addEventListener('input', () => offer.withdraw());
+      async function endRename(save) {
         if (!editing) return;
         editing = false;
         nameInput.classList.add('hidden');
         nameSpan.classList.remove('hidden');
-        if (save && nameInput.value.trim() && nameInput.value.trim() !== name) {
-          api.renameProfile(name, nameInput.value.trim()).then(() => {
-            renderOpenCodeProfiles();
-            updateOpenCodeProfilesStatus();
-            renderSettingsSummaries();
-          });
-        }
+        const next = nameInput.value.trim();
+        if (!save || !next || next === name) return;
+        await applyRename(next, false);
       }
       renameBtn.addEventListener('click', beginRename);
       nameInput.addEventListener('keydown', (e) => {
@@ -10136,14 +13825,54 @@ function renderOpenCodeProfiles() {
       });
       nameInput.addEventListener('blur', () => endRename(true));
 
-      nameBox.append(nameSpan, nameInput, renameBtn);
+      // Which credentials this account holds. Two of them under one name is the
+      // user's assertion that they are the same OpenCode account, and that
+      // assertion decides which source answers for quota and which identity the
+      // account is published under, so it stays visible. Acting on them lives in
+      // the expanded section rather than inline: a click that unbinds an account
+      // should not sit one pixel from the account's own controls.
+      // A reference the collector has stopped using says so on its own row.
+      // Otherwise an account that also holds a cookie shows the credential as
+      // present, keeps reporting fine from the cookie, and nothing anywhere
+      // reveals that its Go quota is no longer coming from the detected key.
+      const ambientLabel = profile.ambientStale
+        ? `${t('settings.opencode.ambientName')} · ${t('settings.opencode.needsRebind')}`
+        : t('settings.opencode.ambientName');
+      const credentials = [
+        ['ambient', profile.usesAmbientKey, ambientLabel],
+        ['api', profile.hasApiKey, t('settings.opencode.kindApi')],
+        ['cookie', profile.hasCookie, t('settings.opencode.kindCookie')]
+      ].filter(([, present]) => present);
+
+      // The summary line is the control that expands it: clicking the thing you
+      // want to see beats a separate chevron stranded between the status text
+      // and the delete button.
+      const multiCredential = credentials.length > 1;
+      const detail = document.createElement(multiCredential ? 'button' : 'span');
+      detail.className = 'profile-detail';
+      let chevron = null;
+      if (multiCredential) {
+        detail.type = 'button';
+        detail.classList.add('is-expandable');
+        detail.setAttribute('aria-expanded', 'false');
+        detail.title = t('settings.opencode.showCredentials');
+        // The same disclosure chevron every other group uses, so it animates and
+        // reads the same; only the direction differs, pointing right when closed.
+        chevron = document.createElement('span');
+        chevron.className = 'cursor-disclosure-icon';
+        chevron.setAttribute('aria-hidden', 'true');
+      }
+      detail.textContent = credentials.map(([, , label]) => label).join(' + ');
+      if (chevron) detail.append(chevron);
+
+      nameBox.append(nameSpan, nameInput, renameBtn, mergeBtn, detail);
 
       const rightBox = document.createElement('span');
       rightBox.className = 'profile-right';
 
       const infoSpan = document.createElement('span');
       infoSpan.className = 'profile-info';
-      infoSpan.id = 'opencode-info-' + name.replace(/[^a-zA-Z0-9_-]/g, '_');
+      infoSpan.id = opencodeRowId('opencode-info-', name);
       infoSpan.textContent = profile.enabled ? '...' : t('settings.opencode.disabled');
 
       const deleteBtn = document.createElement('button');
@@ -10165,8 +13894,32 @@ function renderOpenCodeProfiles() {
         renderSettingsSummaries();
       });
 
+      // Expanding is only worth offering once an account holds more than one
+      // credential — with a single one the row already says everything.
+      let credentialList = null;
+      if (multiCredential) {
+        credentialList = document.createElement('div');
+        credentialList.className = 'opencode-credential-list accordion-animated-container hidden';
+        credentialList.id = opencodeRowId('opencode-credentials-', name);
+        // The shared accordion squeezes one inner wrapper, so the rows go inside
+        // it rather than on the container, which cannot shrink.
+        const credentialInner = document.createElement('div');
+        credentialInner.className = 'accordion-animation-inner';
+        for (const [kind, , label] of credentials) {
+          credentialInner.append(opencodeCredentialRow(name, kind, label));
+        }
+        credentialList.append(credentialInner);
+        detail.setAttribute('aria-controls', credentialList.id);
+        detail.addEventListener('click', () => {
+          const open = credentialList.classList.toggle('hidden') === false;
+          detail.setAttribute('aria-expanded', String(open));
+          detail.classList.toggle('is-open', open);
+        });
+      }
+
       rightBox.append(infoSpan, deleteBtn);
       item.append(toggle, nameBox, rightBox);
+      if (credentialList) item.append(credentialList);
       listEl.appendChild(item);
     }
 
@@ -10174,17 +13927,200 @@ function renderOpenCodeProfiles() {
   });
 }
 
+// A merge that would land two credentials of the same kind on one account is
+// refused rather than resolved: confirming that two accounts are the same is a
+// different question from choosing which of two cookies to keep.
+function opencodeSaveErrorText(result) {
+  if (result?.credentialConflict) {
+    return t('settings.opencode.credentialConflict', {
+      kind: t(result.kind === 'cookie' ? 'settings.opencode.kindCookie'
+        : result.kind === 'ambient' ? 'settings.opencode.ambientName'
+          : 'settings.opencode.kindApi')
+    });
+  }
+  return result?.error || t('settings.opencode.saveFailedShort');
+}
+
+// A merge confirmation names one specific proposal: this credential, into this
+// account. Editing the field withdraws it, so the click the main process
+// receives is consent to what the user is looking at.
+//
+// Hiding the button is not enough on its own, because the answer that offers it
+// arrives after an await: an edit made while that request is in flight is
+// overtaken by the reply, and the button comes back describing the proposal the
+// user has just moved on from. So a withdrawal advances a revision the reply is
+// checked against, and a reply from a superseded revision is dropped rather
+// than shown. The same rule reached four call sites by copy, which is why it
+// lives in one place now.
+//
+// There is deliberately one way to take an offer down. A plain hide looks
+// harmless on the cancel paths (Escape, a blur onto nothing) but leaves the
+// revision where it was, so the reply to the request the user just cancelled
+// still matched and put the button back — the original bug, reached through the
+// other door. Everything that ends an offer withdraws it.
+function opencodeMergeOffer(button, confirm) {
+  let revision = 0;
+  let pending = '';
+  button.addEventListener('click', () => {
+    if (pending !== '') confirm(pending);
+  });
+  return {
+    // Captured before the await, compared after it.
+    revision: () => revision,
+    stale: (at) => at !== revision,
+    withdraw: () => {
+      revision += 1;
+      pending = '';
+      button.classList.add('hidden');
+    },
+    offer: (at, name, label) => {
+      if (at !== revision) return;
+      pending = name;
+      button.textContent = label;
+      button.classList.remove('hidden');
+    }
+  };
+}
+
+// Element ids for a row, from the account name.
+//
+// Reversible rather than sanitized. Replacing everything outside a safe set with
+// `_` is not injective, so two accounts a user is perfectly entitled to name —
+// `a b` and `a_b`, or `a/b` and `a_b` — landed on one id, and whichever rendered
+// first collected the other's status. `encodeURIComponent` is injective and
+// leaves no whitespace, which is the only thing an id may not contain.
+//
+// A counter would work too, but these two call sites are independent: one
+// renders the row, the other looks it up from a later status reply. A pure
+// function of the name cannot drift between them the way a shared table can.
+function opencodeRowId(prefix, name) {
+  return `${prefix}${encodeURIComponent(name)}`;
+}
+
+// One credential inside an expanded account. Renaming moves it to another
+// account name, which is what splits a binding apart or forms a new one;
+// deleting drops just this credential and leaves the rest of the account.
+function opencodeCredentialRow(accountName, kind, label) {
+  const api = window.tokenMonitor.opencode;
+  const errorEl = () => document.getElementById('opencodeErrorMessage');
+  const refresh = () => {
+    renderOpenCodeProfiles();
+    updateOpenCodeProfilesStatus();
+    renderSettingsSummaries();
+  };
+
+  const row = document.createElement('div');
+  row.className = 'opencode-credential-row';
+
+  const labelSpan = document.createElement('span');
+  labelSpan.className = 'credential-label';
+  labelSpan.textContent = label;
+
+  // The account name is shown on every credential rather than hidden behind an
+  // edit button, because seeing the same name twice is the explanation for why
+  // these are one account. Typing a different one moves that credential out.
+  const nameInput = document.createElement('input');
+  nameInput.className = 'credential-name-input';
+  nameInput.type = 'text';
+  nameInput.value = accountName;
+  nameInput.title = t('settings.opencode.moveCredential', { kind: label });
+  nameInput.placeholder = t('settings.opencode.profileNamePlaceholder');
+
+  const actions = document.createElement('span');
+  actions.className = 'credential-actions';
+
+  // A merge is a claim that two credentials belong to one OpenCode account, so
+  // it is confirmed with a visible button rather than by pressing the same key
+  // twice and hoping the user reads why.
+  const mergeBtn = document.createElement('button');
+  mergeBtn.className = 'credential-merge-btn hidden';
+  const offer = opencodeMergeOffer(mergeBtn, (target) => finishMove(target, true));
+
+  const finishMove = async (target, merge) => {
+    const at = offer.revision();
+    const result = await api.moveCredential(accountName, kind, target, { merge });
+    if (!result.ok) {
+      if (result.nameTaken) {
+        offer.offer(at, target, t('settings.opencode.mergeInto', { name: target }));
+        return;
+      }
+      if (offer.stale(at)) return;
+      errorEl().textContent = opencodeSaveErrorText(result);
+      errorEl().classList.remove('hidden');
+      return;
+    }
+    refresh();
+  };
+  const endMove = async (save) => {
+    const target = nameInput.value.trim();
+    if (!save || !target || target === accountName) {
+      nameInput.value = accountName;
+      offer.withdraw();
+      return;
+    }
+    await finishMove(target, false);
+  };
+
+  // Same rule as everywhere else: retyping the target withdraws the pending
+  // confirmation rather than leaving a button that would move it somewhere the
+  // user is no longer proposing.
+  nameInput.addEventListener('input', () => offer.withdraw());
+  nameInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') endMove(true);
+    if (e.key === 'Escape') endMove(false);
+  });
+  nameInput.addEventListener('blur', () => endMove(true));
+
+  const removeBtn = document.createElement('button');
+  removeBtn.className = 'profile-delete';
+  removeBtn.textContent = '✕';
+  removeBtn.title = t('settings.opencode.removeCredential', { kind: label });
+  // Two-step, like deleting an account: unbinding is not undoable from here.
+  let confirming = false;
+  removeBtn.addEventListener('click', async () => {
+    if (!confirming) {
+      confirming = true;
+      removeBtn.classList.add('confirming');
+      removeBtn.textContent = '✓';
+      return;
+    }
+    const result = await api.removeCredential(accountName, kind);
+    if (result.ok) refresh();
+  });
+
+  actions.append(removeBtn);
+  // The merge label carries the target account name and never fits beside the
+  // input, so it trails the row and wraps onto its own line when it appears.
+  row.append(labelSpan, nameInput, actions, mergeBtn);
+  return row;
+}
+
 async function updateOpenCodeProfilesStatus() {
   const api = window.tokenMonitor.opencode;
   const status = await api.status();
   const profiles = status.profiles || {};
 
-  for (const [name, s] of Object.entries(profiles)) {
-    const safeName = name.replace(/[^a-zA-Z0-9_-]/g, '_');
-    const infoEl = document.getElementById('opencode-info-' + safeName);
+  // The auto-detected key has no account name, so it arrives in its own field
+  // and lands on its own element rather than one keyed by a name a user could
+  // also type.
+  const entries = Object.entries(profiles).map(([name, s]) => [
+    opencodeRowId('opencode-info-', name),
+    s
+  ]);
+  if (status.ambient) entries.push(['opencodeAmbientInfo', status.ambient]);
+
+  for (const [elementId, s] of entries) {
+    const infoEl = document.getElementById(elementId);
     if (!infoEl) continue;
 
-    if (s.expired) {
+    if (s.disabled) {
+      infoEl.textContent = t('settings.opencode.disabled');
+    } else if (s.needsRebind) {
+      // Said once, on the credential line, which has room for it and is the
+      // thing that needs re-attaching. This cell is a fixed narrow column and
+      // would only repeat it truncated.
+      infoEl.textContent = '';
+    } else if (s.expired) {
       infoEl.textContent = t('settings.opencode.statusExpired');
     } else if (s.linked) {
       const parts = [];
@@ -10202,12 +14138,19 @@ async function updateOpenCodeProfilesStatus() {
     }
   }
 
-  // Update summary pill
+  renderOpenCodeProfilesStatusSummary(profiles, status.ambient);
+}
+
+// `ambient` counts toward both halves: it is a row in the list and it is what
+// the limits card reads on a machine with nothing configured, so leaving it out
+// reports "0/0" beside live quota.
+function renderOpenCodeProfilesStatusSummary(profiles, ambient = null) {
   const totalEl = document.getElementById('opencodeCookieStatus');
   if (totalEl) {
-    const linkedCount = Object.values(profiles).filter(s => s.linked).length;
+    const statuses = [...Object.values(profiles), ...(ambient ? [ambient] : [])];
+    const linkedCount = statuses.filter(s => s.linked).length;
     const configuredProfileCount = state.opencodeProfileCount || 0;
-    const totalCount = Math.max(Object.keys(profiles).length, configuredProfileCount);
+    const totalCount = Math.max(statuses.length, configuredProfileCount);
     if (totalCount > 0) {
       totalEl.textContent = t('settings.opencode.connected', { linked: linkedCount, total: totalCount });
     } else {
@@ -10216,11 +14159,13 @@ async function updateOpenCodeProfilesStatus() {
   }
 }
 
-function openrouterProfileStatusText(provider, enabled = true) {
-  if (!enabled) return t('settings.opencode.disabled');
-  if (!provider) return t('settings.openrouter.checking');
-  if (provider.status === 'unauthorized') return t('settings.openrouter.invalidKey');
-  if (provider.status !== 'ok') return t('settings.openrouter.unavailable');
+function openrouterProfileStatusText(provider, options = {}) {
+  const status = limitProviderPresentationApi.namedApiProfileStatus(provider, options);
+  if (status === 'disabled') return t('settings.profiles.disabled');
+  if (status === 'hidden') return '';
+  if (status === 'checking') return t('settings.openrouter.checking');
+  if (status === 'invalid') return t('settings.openrouter.invalidKey');
+  if (status !== 'linked') return t('settings.openrouter.unavailable');
   const balance = optionalFiniteNumber(provider.balance?.amount);
   if (balance !== null) return `✓ ${formatMoney(balance, 'USD')}`;
   const quota = (provider.windows || []).find((window) => window?.showMeter !== false);
@@ -10229,24 +14174,72 @@ function openrouterProfileStatusText(provider, enabled = true) {
   return '✓';
 }
 
-function updateOpenRouterProfilesStatus() {
-  const providers = localProviderStatuses('openrouter');
-  const byName = new Map(providers.map((provider) => [String(provider.accountName || provider.accountLabel || ''), provider]));
-  for (const infoEl of document.querySelectorAll('[data-openrouter-profile-name]')) {
-    const name = infoEl.dataset.openrouterProfileName || '';
-    const profile = state.settings?.openrouterProfiles?.[name];
-    infoEl.textContent = openrouterProfileStatusText(byName.get(name), profile?.enabled !== false);
-  }
-  const envInfo = document.querySelector('[data-openrouter-environment]');
-  if (envInfo) envInfo.textContent = openrouterProfileStatusText(byName.get('environment'));
+function thirdPartyProfileStatusText(provider, options = {}) {
+  const status = limitProviderPresentationApi.namedApiProfileStatus(provider, options);
+  if (status === 'disabled') return t('settings.profiles.disabled');
+  if (status === 'hidden') return '';
+  if (status === 'checking') return t('settings.thirdparty.checking');
+  if (status === 'invalid') return t('settings.thirdparty.invalidKey');
+  if (status !== 'linked') return t('settings.thirdparty.unavailable');
+  const balance = optionalFiniteNumber(provider.balance?.amount);
+  if (balance !== null) return `✓ ${formatCompactMoney(balance, provider.balance?.currency || 'USD')}`;
+  const unlimited = (provider.windows || []).some((window) => (
+    window?.showMeter === false && String(window?.detail || '').toLowerCase() === 'unlimited'
+  ));
+  return unlimited ? `✓ ${t('settings.thirdparty.unlimited')}` : '✓';
+}
 
-  const statusEl = document.getElementById('openrouterStatus');
+function updateNamedApiProfilesStatus({
+  providerId,
+  profileSettingsKey,
+  profileCountStateKey,
+  statusText
+}) {
+  const providerEnabled = limitProviderEnabled(providerId);
+  const providers = localProviderStatuses(providerId);
+  const byName = new Map(providers.map((provider) => [
+    String(provider.accountName || provider.accountLabel || ''),
+    provider
+  ]));
+  for (const infoEl of document.querySelectorAll(`[data-managed-profile-provider="${providerId}"][data-managed-profile-name]`)) {
+    const name = infoEl.dataset.managedProfileName || '';
+    const profile = state.settings?.[profileSettingsKey]?.[name];
+    infoEl.textContent = statusText(byName.get(name), {
+      providerEnabled,
+      profileEnabled: profile?.enabled !== false
+    });
+  }
+  const envInfo = document.querySelector(
+    `[data-managed-profile-provider="${providerId}"][data-managed-profile-environment]`
+  );
+  if (envInfo) envInfo.textContent = statusText(byName.get('environment'), { providerEnabled });
+  const statusEl = document.getElementById(`${providerId}Status`);
   if (!statusEl) return;
-  const total = state.openrouterProfileCount || 0;
+  const total = state[profileCountStateKey] || 0;
   const linked = providers.filter((provider) => provider.status === 'ok').length;
-  statusEl.textContent = total > 0
-    ? t('settings.openrouter.connected', { linked, total })
-    : t('settings.openrouter.statusNotSet');
+  statusEl.textContent = total === 0
+    ? t(`settings.${providerId}.statusNotSet`)
+    : !providerEnabled
+      ? t(`settings.${providerId}.nAccounts`, { count: total })
+      : t(`settings.${providerId}.connected`, { linked, total });
+}
+
+function updateOpenRouterProfilesStatus() {
+  updateNamedApiProfilesStatus({
+    providerId: 'openrouter',
+    profileSettingsKey: 'openrouterProfiles',
+    profileCountStateKey: 'openrouterProfileCount',
+    statusText: openrouterProfileStatusText
+  });
+}
+
+function updateThirdPartyProfilesStatus() {
+  updateNamedApiProfilesStatus({
+    providerId: 'thirdparty',
+    profileSettingsKey: 'thirdPartyProfiles',
+    profileCountStateKey: 'thirdPartyProfileCount',
+    statusText: thirdPartyProfileStatusText
+  });
 }
 
 function openrouterProfileErrorText(result) {
@@ -10255,143 +14248,256 @@ function openrouterProfileErrorText(result) {
   return result?.error || t('settings.openrouter.saveFailedShort');
 }
 
-function renderOpenRouterProfiles() {
-  const listEl = document.getElementById('openrouterProfileList');
-  if (!listEl || !window.tokenMonitor.openrouter) return;
-  const api = window.tokenMonitor.openrouter;
+function thirdPartyProfileErrorText(result) {
+  if (result?.errorCode === 'invalidName') return t('settings.thirdparty.invalidName');
+  if (result?.errorCode === 'invalidAdapter') return t('settings.thirdparty.invalidAdapter');
+  if (result?.errorCode === 'invalidBaseUrl') return t('settings.thirdparty.invalidBaseUrl');
+  if (result?.errorCode === 'missingAccessToken') return t('settings.thirdparty.missingAccessToken');
+  if (result?.errorCode === 'missingApiKey') return t('settings.thirdparty.missingApiKey');
+  if (result?.errorCode === 'invalidEndpointPath') return t('settings.thirdparty.invalidEndpointPath');
+  if (result?.errorCode === 'invalidAuthMode') return t('settings.thirdparty.invalidAuthMode');
+  if (result?.errorCode === 'invalidJsonPath') return t('settings.thirdparty.invalidJsonPath');
+  if (result?.errorCode === 'invalidCurrency') return t('settings.thirdparty.invalidCurrency');
+  if (result?.errorCode === 'invalidDivisor') return t('settings.thirdparty.invalidDivisor');
+  if (result?.errorCode === 'invalidCredential') return t('settings.thirdparty.invalidCredential');
+  if (result?.errorCode === 'unavailable') return t('settings.thirdparty.unavailable');
+  return result?.error || t('settings.thirdparty.saveFailedShort');
+}
+
+function appendNamedApiProfileRow(listEl, config) {
+  const {
+    api,
+    providerId,
+    name = '',
+    profile = { enabled: true },
+    env = false,
+    rerender,
+    updateStatus,
+    errorText,
+    detail = ''
+  } = config;
+  const item = document.createElement('div');
+  item.className = 'opencode-profile-item';
+  if (!env) {
+    const toggle = document.createElement('input');
+    toggle.className = 'profile-toggle';
+    toggle.type = 'checkbox';
+    toggle.checked = profile.enabled !== false;
+    toggle.setAttribute('aria-label', name);
+    toggle.addEventListener('change', async () => {
+      const previousEnabled = profile.enabled !== false;
+      profile.enabled = toggle.checked;
+      toggle.disabled = true;
+      updateStatus();
+      try {
+        const result = await api.setProfileEnabled(name, toggle.checked);
+        if (!result?.ok) {
+          toggle.checked = previousEnabled;
+          profile.enabled = previousEnabled;
+          updateStatus();
+        }
+      } catch (_) {
+        toggle.checked = previousEnabled;
+        profile.enabled = previousEnabled;
+        updateStatus();
+      } finally {
+        toggle.disabled = false;
+        renderSettingsSummaries();
+      }
+    });
+    item.append(toggle);
+  } else {
+    const spacer = document.createElement('span');
+    spacer.className = 'profile-toggle';
+    spacer.setAttribute('aria-hidden', 'true');
+    item.append(spacer);
+  }
+
+  const nameBox = document.createElement('span');
+  nameBox.className = 'profile-name-box';
+  const nameSpan = document.createElement('span');
+  nameSpan.className = 'profile-name';
+  nameSpan.textContent = env ? t(`settings.${providerId}.environment`) : name;
+  nameBox.append(nameSpan);
+  if (detail) {
+    const detailSpan = document.createElement('span');
+    detailSpan.className = 'profile-detail';
+    detailSpan.textContent = detail;
+    detailSpan.title = detail;
+    nameBox.append(detailSpan);
+  }
+
+  if (!env) {
+    const nameInput = document.createElement('input');
+    nameInput.className = 'profile-name-input hidden';
+    nameInput.type = 'text';
+    nameInput.value = name;
+    const renameBtn = document.createElement('button');
+    renameBtn.className = 'profile-rename-btn';
+    renameBtn.textContent = '✎';
+    renameBtn.title = t('settings.profiles.rename');
+    let editing = false;
+    const finishRename = async (save) => {
+      if (!editing) return;
+      editing = false;
+      nameInput.classList.add('hidden');
+      nameSpan.classList.remove('hidden');
+      const nextName = nameInput.value.trim();
+      if (save && nextName && nextName !== name) {
+        const result = await api.renameProfile(name, nextName);
+        if (result?.ok) {
+          rerender();
+        } else {
+          nameInput.value = name;
+          const errorEl = document.getElementById(`${providerId}ErrorMessage`);
+          if (errorEl) {
+            errorEl.textContent = errorText(result);
+            errorEl.classList.remove('hidden');
+          }
+        }
+      }
+    };
+    renameBtn.addEventListener('click', () => {
+      editing = true;
+      nameSpan.classList.add('hidden');
+      nameInput.classList.remove('hidden');
+      nameInput.focus();
+      nameInput.select();
+    });
+    nameInput.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') void finishRename(true);
+      if (event.key === 'Escape') void finishRename(false);
+    });
+    nameInput.addEventListener('blur', () => void finishRename(true));
+    nameBox.append(nameInput, renameBtn);
+  }
+
+  const rightBox = document.createElement('span');
+  rightBox.className = 'profile-right';
+  const info = document.createElement('span');
+  info.className = 'profile-info';
+  info.dataset.managedProfileProvider = providerId;
+  if (env) info.dataset.managedProfileEnvironment = 'true';
+  else info.dataset.managedProfileName = name;
+  info.textContent = t(`settings.${providerId}.checking`);
+  rightBox.append(info);
+
+  if (!env) {
+    const deleteBtn = document.createElement('button');
+    deleteBtn.className = 'profile-delete';
+    deleteBtn.textContent = '✕';
+    deleteBtn.title = t('settings.profiles.delete');
+    let confirming = false;
+    deleteBtn.addEventListener('click', async () => {
+      if (!confirming) {
+        confirming = true;
+        deleteBtn.classList.add('confirming');
+        deleteBtn.textContent = '✓';
+        deleteBtn.title = t('settings.profiles.deleteConfirm', { name });
+        return;
+      }
+      const result = await api.deleteProfile(name);
+      if (result?.ok) rerender();
+    });
+    rightBox.append(deleteBtn);
+  }
+  item.append(nameBox, rightBox);
+  listEl.append(item);
+}
+
+function renderNamedApiProfiles(config) {
+  const {
+    providerId,
+    profileSettingsKey,
+    envConfiguredKey,
+    profileCountStateKey,
+    api,
+    rerender,
+    updateStatus,
+    errorText,
+    detailForProfile = () => ''
+  } = config;
+  const listEl = document.getElementById(`${providerId}ProfileList`);
+  if (!listEl || !api) return;
   api.getProfiles().then(({ profiles, hasEnvVar }) => {
     listEl.replaceChildren();
-    state.settings.openrouterProfiles = profiles;
-    state.settings.openrouterEnvConfigured = Boolean(hasEnvVar);
+    state.settings[profileSettingsKey] = profiles;
+    state.settings[envConfiguredKey] = Boolean(hasEnvVar);
     const entries = Object.entries(profiles);
-    state.openrouterProfileCount = entries.length + (hasEnvVar ? 1 : 0);
-    if (state.openrouterProfileCount === 0) {
+    state[profileCountStateKey] = entries.length + (hasEnvVar ? 1 : 0);
+    if (state[profileCountStateKey] === 0) {
       const empty = document.createElement('div');
       empty.className = 'opencode-empty';
-      empty.textContent = t('settings.openrouter.emptyList');
+      empty.textContent = t(`settings.${providerId}.emptyList`);
       listEl.append(empty);
-      updateOpenRouterProfilesStatus();
+      updateStatus();
       renderSettingsSummaries();
       return;
     }
 
-    const appendRow = ({ name = '', profile = { enabled: true }, env = false } = {}) => {
-      const item = document.createElement('div');
-      item.className = 'opencode-profile-item';
-      if (!env) {
-        const toggle = document.createElement('input');
-        toggle.className = 'profile-toggle';
-        toggle.type = 'checkbox';
-        toggle.checked = profile.enabled !== false;
-        toggle.setAttribute('aria-label', name);
-        toggle.addEventListener('change', async () => {
-          const result = await api.setProfileEnabled(name, toggle.checked);
-          if (!result?.ok) toggle.checked = !toggle.checked;
-          updateOpenRouterProfilesStatus();
-          renderSettingsSummaries();
-        });
-        item.append(toggle);
-      } else {
-        const spacer = document.createElement('span');
-        spacer.className = 'profile-toggle';
-        spacer.setAttribute('aria-hidden', 'true');
-        item.append(spacer);
-      }
-
-      const nameBox = document.createElement('span');
-      nameBox.className = 'profile-name-box';
-      const nameSpan = document.createElement('span');
-      nameSpan.className = 'profile-name';
-      nameSpan.textContent = env ? t('settings.openrouter.environment') : name;
-      nameBox.append(nameSpan);
-
-      if (!env) {
-        const nameInput = document.createElement('input');
-        nameInput.className = 'profile-name-input hidden';
-        nameInput.type = 'text';
-        nameInput.value = name;
-        const renameBtn = document.createElement('button');
-        renameBtn.className = 'profile-rename-btn';
-        renameBtn.textContent = '✎';
-        renameBtn.title = t('settings.opencode.rename');
-        let editing = false;
-        const finishRename = async (save) => {
-          if (!editing) return;
-          editing = false;
-          nameInput.classList.add('hidden');
-          nameSpan.classList.remove('hidden');
-          const nextName = nameInput.value.trim();
-          if (save && nextName && nextName !== name) {
-            const result = await api.renameProfile(name, nextName);
-            if (result?.ok) {
-              renderOpenRouterProfiles();
-            } else {
-              nameInput.value = name;
-              const errorEl = document.getElementById('openrouterErrorMessage');
-              if (errorEl) {
-                errorEl.textContent = openrouterProfileErrorText(result);
-                errorEl.classList.remove('hidden');
-              }
-            }
-          }
-        };
-        renameBtn.addEventListener('click', () => {
-          editing = true;
-          nameSpan.classList.add('hidden');
-          nameInput.classList.remove('hidden');
-          nameInput.focus();
-          nameInput.select();
-        });
-        nameInput.addEventListener('keydown', (event) => {
-          if (event.key === 'Enter') void finishRename(true);
-          if (event.key === 'Escape') void finishRename(false);
-        });
-        nameInput.addEventListener('blur', () => void finishRename(true));
-        nameBox.append(nameInput, renameBtn);
-      }
-
-      const rightBox = document.createElement('span');
-      rightBox.className = 'profile-right';
-      const info = document.createElement('span');
-      info.className = 'profile-info';
-      if (env) {
-        info.dataset.openrouterEnvironment = 'true';
-      } else {
-        info.dataset.openrouterProfileName = name;
-      }
-      info.textContent = t('settings.openrouter.checking');
-      rightBox.append(info);
-
-      if (!env) {
-        const deleteBtn = document.createElement('button');
-        deleteBtn.className = 'profile-delete';
-        deleteBtn.textContent = '✕';
-        deleteBtn.title = t('settings.opencode.delete');
-        let confirming = false;
-        deleteBtn.addEventListener('click', async () => {
-          if (!confirming) {
-            confirming = true;
-            deleteBtn.classList.add('confirming');
-            deleteBtn.textContent = '✓';
-            deleteBtn.title = t('settings.opencode.deleteConfirm', { name });
-            return;
-          }
-          const result = await api.deleteProfile(name);
-          if (result?.ok) renderOpenRouterProfiles();
-        });
-        rightBox.append(deleteBtn);
-      }
-      item.append(nameBox, rightBox);
-      listEl.append(item);
-    };
-
-    for (const [name, profile] of entries) appendRow({ name, profile });
-    if (hasEnvVar) appendRow({ env: true });
-    updateOpenRouterProfilesStatus();
+    for (const [name, profile] of entries) {
+      appendNamedApiProfileRow(listEl, {
+        api,
+        providerId,
+        name,
+        profile,
+        rerender,
+        updateStatus,
+        errorText,
+        detail: detailForProfile(profile)
+      });
+    }
+    if (hasEnvVar) {
+      appendNamedApiProfileRow(listEl, {
+        api,
+        providerId,
+        env: true,
+        rerender,
+        updateStatus,
+        errorText
+      });
+    }
+    updateStatus();
     renderSettingsSummaries();
   }).catch(() => {
-    const statusEl = document.getElementById('openrouterStatus');
-    if (statusEl) statusEl.textContent = t('settings.openrouter.unavailable');
+    const statusEl = document.getElementById(`${providerId}Status`);
+    if (statusEl) statusEl.textContent = t(`settings.${providerId}.unavailable`);
+  });
+}
+
+function renderOpenRouterProfiles() {
+  renderNamedApiProfiles({
+    providerId: 'openrouter',
+    profileSettingsKey: 'openrouterProfiles',
+    envConfiguredKey: 'openrouterEnvConfigured',
+    profileCountStateKey: 'openrouterProfileCount',
+    api: window.tokenMonitor.openrouter,
+    rerender: renderOpenRouterProfiles,
+    updateStatus: updateOpenRouterProfilesStatus,
+    errorText: openrouterProfileErrorText
+  });
+}
+
+function renderThirdPartyProfiles() {
+  renderNamedApiProfiles({
+    providerId: 'thirdparty',
+    profileSettingsKey: 'thirdPartyProfiles',
+    envConfiguredKey: 'thirdPartyEnvConfigured',
+    profileCountStateKey: 'thirdPartyProfileCount',
+    api: window.tokenMonitor.thirdparty,
+    rerender: renderThirdPartyProfiles,
+    updateStatus: updateThirdPartyProfilesStatus,
+    errorText: thirdPartyProfileErrorText,
+    detailForProfile: (profile) => {
+      const adapter = profile?.adapter === 'newapi-token'
+        ? t('settings.thirdparty.detailNewApiKey')
+        : profile?.adapter === 'custom'
+          ? t('settings.thirdparty.detailCustom')
+          : t('settings.thirdparty.detailNewApiAccount');
+      let host = '';
+      try { host = new URL(String(profile?.baseUrl || '')).host; } catch (_) {}
+      return [adapter, host].filter(Boolean).join(' · ');
+    }
   });
 }
 
@@ -10416,7 +14522,7 @@ function renderCursorStatus() {
     refreshBtn.classList.remove('hidden');
     manualPanel.classList.remove('hidden');
     setCursorCheckboxesEnabled(false);
-    setSettingsSectionExpanded('accounts', true);
+    setSettingsSectionExpanded('limits', true);
     setCursorAccountExpanded(true);
     renderSettingsSummaries();
     return;
@@ -10446,7 +14552,7 @@ function renderCursorStatus() {
     refreshBtn.classList.remove('hidden');
     manualPanel.classList.remove('hidden');
     setCursorCheckboxesEnabled(false);
-    setSettingsSectionExpanded('accounts', true);
+    setSettingsSectionExpanded('limits', true);
     setCursorAccountExpanded(true);
     renderSettingsSummaries();
     return;
@@ -10663,9 +14769,7 @@ function setupCustomPricingUI() {
       outputPerM: outputEl.value === '' ? undefined : Number(outputEl.value),
       cacheReadPerM: cacheReadEl.value === '' ? undefined : Number(cacheReadEl.value)
     };
-    const hasInput = typeof entry.inputPerM === 'number' && entry.inputPerM > 0;
-    const hasOutput = typeof entry.outputPerM === 'number' && entry.outputPerM > 0;
-    if (!hasInput && !hasOutput) { showError(t('settings.customPricing.errorNoPrice')); return; }
+    if (!customPricingFormApi.hasUsableBasePrice(entry)) { showError(t('settings.customPricing.errorNoPrice')); return; }
     const next = customPricingFormApi.upsertOverride(state.settings?.customModelPricing || [], entry);
     await saveSettings({ customModelPricing: next });
     closeForm();
@@ -10876,26 +14980,112 @@ function setupCursorAccountUI() {
       window.tokenMonitor.openExternal('https://opencode.ai/auth');
     });
 
+    // API key is the default: it needs no browser round trip. The cookie stays
+    // selectable because it is the only thing that reaches the Zen balance.
+    const kindSelect = document.getElementById('opencodeCredentialKind');
+    // The merge confirmation is about one specific proposal: this name, this
+    // credential. Editing any part of the form makes the offer on screen stale,
+    // and a confirmation the user gives has to be a confirmation of what they
+    // are looking at, so any edit withdraws it.
+    const addMergeButton = document.getElementById('opencodeCredentialMerge');
+    // Confirming re-runs the submit handler's own closure, which is what holds
+    // the name and credential the offer was made for.
+    let confirmOpenCodeMerge = () => {};
+    const addMergeOffer = addMergeButton
+      ? opencodeMergeOffer(addMergeButton, () => confirmOpenCodeMerge())
+      : null;
+    const clearOpenCodeMergeOffer = () => addMergeOffer?.withdraw();
+    for (const id of ['opencodeProfileName', 'opencodeApiKeyInput', 'opencodeCookieInput']) {
+      document.getElementById(id)?.addEventListener('input', clearOpenCodeMergeOffer);
+    }
+    const applyOpenCodeCredentialKind = () => {
+      const isCookie = kindSelect?.value === 'cookie';
+      document.getElementById('opencodeApiFields')?.classList.toggle('hidden', isCookie);
+      document.getElementById('opencodeCookieFields')?.classList.toggle('hidden', !isCookie);
+      // One button for both modes; only what it is fetching differs. The keys
+      // page itself lives under a workspace id we do not have, so both land on
+      // the console sign-in.
+      const browserButton = document.getElementById('opencodeOpenBrowser');
+      if (browserButton) {
+        const key = isCookie ? 'settings.opencode.openBrowser' : 'settings.opencode.openBrowserKeys';
+        browserButton.dataset.i18n = key;
+        browserButton.textContent = t(key);
+      }
+      // Clear the field being hidden so a value typed under one credential type
+      // can never be submitted as the other.
+      const stale = document.getElementById(isCookie ? 'opencodeApiKeyInput' : 'opencodeCookieInput');
+      if (stale) stale.value = '';
+      document.getElementById('opencodeErrorMessage')?.classList.add('hidden');
+      clearOpenCodeMergeOffer();
+    };
+    kindSelect?.addEventListener('change', applyOpenCodeCredentialKind);
+    applyOpenCodeCredentialKind();
+
     document.getElementById('opencodeCookieSubmit').addEventListener('click', async () => {
-      const input = document.getElementById('opencodeCookieInput');
+      const opencodeCredentialKind = kindSelect?.value === 'cookie' ? 'cookie' : 'api';
+      const input = document.getElementById(opencodeCredentialKind === 'cookie'
+        ? 'opencodeCookieInput'
+        : 'opencodeApiKeyInput');
       const nameInput = document.getElementById('opencodeProfileName');
       const errorEl = document.getElementById('opencodeErrorMessage');
-      const name = (nameInput.value || '').trim() || 'default';
+      const name = (nameInput.value || '').trim();
       const cookie = input.value;
 
       errorEl.classList.add('hidden');
 
-      const result = await window.tokenMonitor.opencode.saveProfile(name, cookie);
-      if (result.ok) {
-        input.value = '';
-        nameInput.value = '';
-        renderOpenCodeProfiles();
-        updateOpenCodeProfilesStatus();
-        renderSettingsSummaries();
-      } else {
-        errorEl.textContent = result.error || t('settings.opencode.saveFailedShort');
+      // The name is required rather than defaulted. Saving one credential keeps
+      // the other under the same name, and the collector reads that as "these
+      // are the same account", so a blank name silently becoming `default`
+      // could attach one account's key to another account's cookie. Making the
+      // user type the name is what keeps the association explicit.
+      if (!name) {
+        errorEl.textContent = t('settings.opencode.nameRequired');
         errorEl.classList.remove('hidden');
+        nameInput.focus();
+        return;
       }
+
+      // A name that already holds a different credential kind binds the two into
+      // one account, so the main process refuses it and the form asks first.
+      // The confirmation replaces the submit button rather than appearing beside
+      // it: the next click has different consequences from the one just made.
+      const submit = async (merge) => {
+        const at = addMergeOffer?.revision();
+        confirmOpenCodeMerge = () => submit(true);
+        const result = await window.tokenMonitor.opencode.saveProfile(
+          name,
+          cookie,
+          opencodeCredentialKind,
+          { merge }
+        );
+        // Whether or not the form still shows this proposal, a save that landed
+        // has to reach the list. Only the fields are left alone, so an edit made
+        // while the request was in flight is not wiped by its reply.
+        const stale = addMergeOffer ? addMergeOffer.stale(at) : false;
+        if (result.ok) {
+          // Only this proposal's own offer is taken down. Two saves can overlap,
+          // and the newer one can answer first: clearing unconditionally let an
+          // older success wipe a merge confirmation the user was looking at and
+          // that was still correct.
+          if (!stale) {
+            input.value = '';
+            nameInput.value = '';
+            addMergeOffer?.withdraw();
+          }
+          renderOpenCodeProfiles();
+          updateOpenCodeProfilesStatus();
+          renderSettingsSummaries();
+          return;
+        }
+        if (stale) return;
+        if (result.nameTaken && addMergeOffer) {
+          addMergeOffer.offer(at, name, t('settings.opencode.mergeInto', { name }));
+          return;
+        }
+        errorEl.textContent = opencodeSaveErrorText(result);
+        errorEl.classList.remove('hidden');
+      };
+      await submit(false);
     });
   }
 
@@ -10941,6 +15131,89 @@ function setupCursorAccountUI() {
         await refreshStats({ force: true });
       } else if (errorEl) {
         errorEl.textContent = openrouterProfileErrorText(result);
+        errorEl.classList.remove('hidden');
+      }
+    });
+  }
+
+  const thirdpartyToggle = document.getElementById('thirdpartySettingsToggle');
+  if (thirdpartyToggle) {
+    thirdpartyToggle.addEventListener('click', () => {
+      const expanding = !state.thirdPartyAccountExpanded;
+      setThirdPartyAccountExpanded(expanding);
+      if (expanding) renderThirdPartyProfiles();
+    });
+    setThirdPartyAccountExpanded(false);
+
+    const addToggle = document.getElementById('thirdpartyAddToggle');
+    const addDetails = document.getElementById('thirdpartyAddDetails');
+    const platformInput = document.getElementById('thirdpartyPlatformInput');
+    const modeInput = document.getElementById('thirdpartyModeInput');
+    const baseUrlInput = document.getElementById('thirdpartyBaseUrlInput');
+    platformInput?.addEventListener('change', setThirdPartyAdapterFields);
+    modeInput?.addEventListener('change', setThirdPartyAdapterFields);
+    baseUrlInput?.addEventListener('input', updateThirdPartyHttpWarning);
+    setThirdPartyAdapterFields();
+    updateThirdPartyHttpWarning();
+    addToggle?.addEventListener('click', () => {
+      const expanded = addDetails?.classList.contains('hidden');
+      addToggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+      addDetails?.classList.toggle('hidden', !expanded);
+      document.getElementById('thirdpartyAddForm')?.classList.toggle('expanded', expanded);
+    });
+    document.getElementById('thirdpartyProfileSubmit')?.addEventListener('click', async () => {
+      const nameInput = document.getElementById('thirdpartyProfileName');
+      const accessTokenInput = document.getElementById('thirdpartyAccessTokenInput');
+      const userIdInput = document.getElementById('thirdpartyUserIdInput');
+      const keyInput = document.getElementById('thirdpartyApiKeyInput');
+      const endpointPathInput = document.getElementById('thirdpartyEndpointPathInput');
+      const authModeInput = document.getElementById('thirdpartyAuthModeInput');
+      const remainingPathInput = document.getElementById('thirdpartyRemainingPathInput');
+      const usedPathInput = document.getElementById('thirdpartyUsedPathInput');
+      const totalPathInput = document.getElementById('thirdpartyTotalPathInput');
+      const currencyInput = document.getElementById('thirdpartyCurrencyInput');
+      const divisorInput = document.getElementById('thirdpartyDivisorInput');
+      const errorEl = document.getElementById('thirdpartyErrorMessage');
+      const name = String(nameInput?.value || '').trim() || 'default';
+      const adapter = selectedThirdPartyAdapter();
+      const baseUrl = String(baseUrlInput?.value || '').trim();
+      const accessToken = String(accessTokenInput?.value || '').trim();
+      const userId = String(userIdInput?.value || '').trim();
+      const apiKey = String(keyInput?.value || '').trim();
+      errorEl?.classList.add('hidden');
+      const result = await window.tokenMonitor.thirdparty.saveProfile({
+        name,
+        adapter,
+        baseUrl,
+        accessToken,
+        userId,
+        apiKey,
+        endpointPath: String(endpointPathInput?.value || '').trim(),
+        authMode: String(authModeInput?.value || '').trim(),
+        remainingPath: String(remainingPathInput?.value || '').trim(),
+        usedPath: String(usedPathInput?.value || '').trim(),
+        totalPath: String(totalPathInput?.value || '').trim(),
+        currency: String(currencyInput?.value || '').trim(),
+        divisor: String(divisorInput?.value || '').trim()
+      });
+      if (result?.ok) {
+        nameInput.value = '';
+        baseUrlInput.value = '';
+        updateThirdPartyHttpWarning();
+        accessTokenInput.value = '';
+        userIdInput.value = '';
+        keyInput.value = '';
+        endpointPathInput.value = '/user/balance';
+        authModeInput.value = 'bearer';
+        remainingPathInput.value = '';
+        usedPathInput.value = '';
+        totalPathInput.value = '';
+        currencyInput.value = 'USD';
+        divisorInput.value = '1';
+        renderThirdPartyProfiles();
+        await refreshStats({ force: true });
+      } else if (errorEl) {
+        errorEl.textContent = thirdPartyProfileErrorText(result);
         errorEl.classList.remove('hidden');
       }
     });
@@ -11202,6 +15475,83 @@ function setupCursorAccountUI() {
     });
   }
 
+  const claudeToggle = document.getElementById('claudeSettingsToggle');
+  if (claudeToggle) {
+    claudeToggle.addEventListener('click', () => setExternalAccountExpanded('claude', !state.claudeAccountExpanded));
+    setExternalAccountExpanded('claude', false);
+    renderExternalProviderStatus('claude');
+
+    document.getElementById('claudeOpenBrowser').addEventListener('click', () => {
+      window.tokenMonitor.openExternal(claudePlatformUrl());
+    });
+
+    document.getElementById('claudeLogoutButton').addEventListener('click', async () => {
+      await saveSettings({ claudeWebCookie: '' });
+      clearExternalProviderCheckPending('claude');
+      clearExternalProviderPendingStatus('claude');
+      renderExternalProviderStatus('claude');
+      await refreshStats({ force: true });
+    });
+
+    document.getElementById('claudeRefreshButton').addEventListener('click', async () => {
+      await refreshStats({ force: true });
+    });
+
+    document.getElementById('claudeWebCookieSubmit').addEventListener('click', async () => {
+      const input = document.getElementById('claudeWebCookieInput');
+      const submitButton = document.getElementById('claudeWebCookieSubmit');
+      const errorEl = document.getElementById('claudeErrorMessage');
+      errorEl.classList.add('hidden');
+      if (!String(input.value || '').trim()) {
+        errorEl.textContent = t('settings.claude.cookieRequired');
+        errorEl.classList.remove('hidden');
+        return;
+      }
+      if (/[\r\n]/.test(input.value)) {
+        errorEl.textContent = t('settings.claude.cookieInvalidFormat');
+        errorEl.classList.remove('hidden');
+        return;
+      }
+      if (submitButton.disabled) return;
+      submitButton.disabled = true;
+      submitButton.textContent = t('settings.common.checking');
+      try {
+        const result = await window.tokenMonitor.claude.saveCookie(input.value);
+        if (result?.superseded) return;
+        if (!result?.ok) {
+          if (result?.errorCode === 'INVALID_CLAUDE_WEB_SESSION_KEY') {
+            errorEl.textContent = t('settings.claude.cookieInvalidFormat');
+          } else if (result?.errorCode === 'CLAUDE_WEB_SOURCE_CHALLENGE') {
+            errorEl.textContent = t('settings.claude.sourceChallenge');
+          } else if (result?.status === 'unauthorized') {
+            errorEl.textContent = t('settings.claude.cookieRejected');
+          } else {
+            errorEl.textContent = t('settings.claude.cookieCheckFailed');
+          }
+          errorEl.classList.remove('hidden');
+          return;
+        }
+        markExternalProviderCheckPending('claude');
+        await saveSettings({
+          limitProviders: limitProviderSelectionIncluding('claude'),
+          limitsEnabled: true
+        });
+        input.value = '';
+        renderExternalProviderStatus('claude');
+        await refreshStats({ force: true });
+        setExternalAccountExpanded('claude', !externalProviderAccountLinked('claude'));
+        renderExternalProviderStatus('claude');
+      } catch (err) {
+        clearExternalProviderCheckPending('claude');
+        errorEl.textContent = t('settings.claude.saveFailed', { message: err.message });
+        errorEl.classList.remove('hidden');
+      } finally {
+        submitButton.disabled = false;
+        submitButton.textContent = t('settings.claude.saveCookie');
+      }
+    });
+  }
+
   const qoderToggle = document.getElementById('qoderSettingsToggle');
   if (qoderToggle) {
     qoderToggle.addEventListener('click', () => setExternalAccountExpanded('qoder', !state.qoderAccountExpanded));
@@ -11253,6 +15603,57 @@ function setupCursorAccountUI() {
       } catch (err) {
         clearExternalProviderCheckPending('qoder');
         errorEl.textContent = t('settings.qoder.saveFailed', { message: err.message });
+        errorEl.classList.remove('hidden');
+      }
+    });
+  }
+
+  const commandcodeToggle = document.getElementById('commandcodeSettingsToggle');
+  if (commandcodeToggle) {
+    commandcodeToggle.addEventListener('click', () => setExternalAccountExpanded('commandcode', !state.commandcodeAccountExpanded));
+    setExternalAccountExpanded('commandcode', false);
+    renderExternalProviderStatus('commandcode');
+
+    document.getElementById('commandcodeOpenBrowser').addEventListener('click', () => {
+      window.tokenMonitor.openExternal(commandcodePlatformUrl());
+    });
+
+    document.getElementById('commandcodeLogoutButton').addEventListener('click', async () => {
+      await saveSettings({ commandcodeCookie: '' });
+      clearExternalProviderCheckPending('commandcode');
+      clearExternalProviderPendingStatus('commandcode');
+      renderExternalProviderStatus('commandcode');
+      await refreshStats({ force: true });
+    });
+
+    document.getElementById('commandcodeRefreshButton').addEventListener('click', async () => {
+      await refreshStats({ force: true });
+    });
+
+    document.getElementById('commandcodeCookieSubmit').addEventListener('click', async () => {
+      const input = document.getElementById('commandcodeCookieInput');
+      const errorEl = document.getElementById('commandcodeErrorMessage');
+      errorEl.classList.add('hidden');
+      if (!String(input.value || '').trim()) {
+        errorEl.textContent = t('settings.commandcode.statusNotSet');
+        errorEl.classList.remove('hidden');
+        return;
+      }
+      try {
+        markExternalProviderCheckPending('commandcode');
+        await saveSettings({
+          commandcodeCookie: input.value,
+          limitProviders: limitProviderSelectionIncluding('commandcode'),
+          limitsEnabled: true
+        });
+        input.value = '';
+        renderExternalProviderStatus('commandcode');
+        await refreshStats({ force: true });
+        setExternalAccountExpanded('commandcode', !externalProviderAccountLinked('commandcode'));
+        renderExternalProviderStatus('commandcode');
+      } catch (err) {
+        clearExternalProviderCheckPending('commandcode');
+        errorEl.textContent = t('settings.commandcode.saveFailed', { message: err.message });
         errorEl.classList.remove('hidden');
       }
     });
@@ -11606,8 +16007,11 @@ function initSettingsAnimationWrappers() {
   const selectors = [
     '.settings-section-details',
     '.cursor-settings-details',
+    '.advanced-settings-details',
+    '.app-update-notes-details',
     '.hub-mode-fields',
     '.presence-feature-body',
+    '#claudeManualPanel',
     '#cursorManualPanel',
     '#opencodeManualPanel',
     '#deepseekManualPanel',
@@ -11616,6 +16020,7 @@ function initSettingsAnimationWrappers() {
     '#zaiteamManualPanel',
     '#volcengineManualPanel',
     '#qoderManualPanel',
+    '#commandcodeManualPanel',
     '#kimiManualPanel',
     '#ollamaManualPanel'
   ].join(', ');
@@ -11644,5 +16049,4 @@ initSettingsAnimationWrappers();
 setupSettingsSections();
 setupCursorAccountUI();
 setupCustomPricingUI();
-setupCustomRangeUI();
 init();

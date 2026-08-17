@@ -11,6 +11,7 @@ const MIMO_MIGRATION_VERSION = 1;
 const CREDENTIAL_SETTING_PATHS = Object.freeze({
   hubHostSecret: ['hub', 'hostSecret'],
   secret: ['hub', 'clientSecret'],
+  claudeWebCookie: ['providers', 'claude', 'webCookie'],
   opencodeCookie: ['providers', 'opencode', 'cookie'],
   opencodeProfiles: ['providers', 'opencode', 'profiles'],
   openrouterProfiles: ['providers', 'openrouter', 'profiles'],
@@ -24,9 +25,11 @@ const CREDENTIAL_SETTING_PATHS = Object.freeze({
   volcengineAccessKeyId: ['providers', 'volcengine', 'accessKeyId'],
   volcengineSecretAccessKey: ['providers', 'volcengine', 'secretAccessKey'],
   qoderCookie: ['providers', 'qoder', 'cookie'],
+  commandcodeCookie: ['providers', 'commandcode', 'cookie'],
   kimiApiKey: ['providers', 'kimi', 'apiKey'],
   kimiWebAccessToken: ['providers', 'kimi', 'webAccessToken'],
-  ollamaCookie: ['providers', 'ollama', 'cookie']
+  ollamaCookie: ['providers', 'ollama', 'cookie'],
+  thirdPartyProfiles: ['providers', 'thirdparty', 'profiles']
 });
 
 function emptyDocument() {

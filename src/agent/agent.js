@@ -6,7 +6,12 @@ const { defaultDeviceId, loadDotEnv, normalizeHubUrl, parseArgs, pidFilePath } =
 const { appVersion } = require('../shared/appVersion');
 const { clientsCsvForSetting } = require('../shared/clientTracking');
 const { normalizeHistoryIntervalMs } = require('../shared/collector');
-const { normalizeLimitsRefreshMs, parseBoolean, parseLimitProviders } = require('../shared/limitCollector');
+const {
+  normalizeLimitsRefreshMode,
+  normalizeLimitsRefreshMs,
+  parseBoolean,
+  parseLimitProviders
+} = require('../shared/limitCollector');
 const { postSyncPayload } = require('../shared/syncPayload');
 const { applyProjectRollups } = require('../shared/usage');
 const { runAgent, runAgentOnce } = require('./runtime');
@@ -23,8 +28,14 @@ const args = parseArgs(process.argv.slice(2));
 const hubUrl = normalizeHubUrl(args.hub || args.hubUrl || process.env.TOKEN_MONITOR_HUB_URL || 'http://127.0.0.1:17321').replace(/\/$/, '');
 const secret = String(args.secret || process.env.TOKEN_MONITOR_SECRET || '').trim();
 const deviceId = String(args.device || args.deviceId || process.env.TOKEN_MONITOR_DEVICE_ID || defaultDeviceId());
-const intervalMs = Number(args.interval || args.intervalMs || process.env.TOKEN_MONITOR_INTERVAL_MS || 5 * 60 * 1000);
-const watchEnabled = String(args.watch ?? process.env.TOKEN_MONITOR_WATCH ?? '1') !== '0';
+const collectionMode = String(args.collectionMode || process.env.TOKEN_MONITOR_COLLECTION_MODE || '').trim().toLowerCase();
+const smartCollection = collectionMode === 'smart';
+const intervalMs = smartCollection
+  ? 10 * 60 * 1000
+  : Number(args.interval || args.intervalMs || process.env.TOKEN_MONITOR_INTERVAL_MS || 5 * 60 * 1000);
+const watchEnabled = collectionMode === 'interval'
+  ? false
+  : String(args.watch ?? process.env.TOKEN_MONITOR_WATCH ?? '1') !== '0';
 const watchDebounceMs = Number(args.watchDebounceMs || process.env.TOKEN_MONITOR_WATCH_DEBOUNCE_MS || 1500);
 const clients = clientsCsvForSetting(args.clients ?? process.env.TOKEN_MONITOR_CLIENTS);
 const allTimeSince = String(args.since || args.allTimeSince || process.env.TOKEN_MONITOR_ALL_TIME_SINCE || '2024-01-01');
@@ -32,10 +43,25 @@ const commandTimeoutMs = Number(args.timeoutMs || process.env.TOKEN_MONITOR_TOKS
 const limitsEnabled = parseBoolean(args.limits ?? args.limitsEnabled ?? process.env.TOKEN_MONITOR_LIMITS_ENABLED, true);
 const limitProviders = parseLimitProviders(args.limitProviders ?? process.env.TOKEN_MONITOR_LIMIT_PROVIDERS).join(',');
 const limitsRefreshMs = normalizeLimitsRefreshMs(args.limitsRefreshMs || process.env.TOKEN_MONITOR_LIMITS_REFRESH_MS);
+const limitsRefreshMode = normalizeLimitsRefreshMode(args.limitsRefreshMode || process.env.TOKEN_MONITOR_LIMITS_REFRESH_MODE);
 const historyEnabled = parseBoolean(args.history ?? args.historyEnabled ?? process.env.TOKEN_MONITOR_HISTORY_ENABLED, true);
 const projectsEnabled = parseBoolean(args.projects ?? args.projectsEnabled ?? process.env.TOKEN_MONITOR_PROJECTS_ENABLED, false);
 const sessionUsageArchiveEnabled = parseBoolean(args.sessionArchive ?? args.sessionUsageArchiveEnabled ?? process.env.TOKEN_MONITOR_SESSION_USAGE_ARCHIVE_ENABLED, true);
 const wslScanEnabled = parseBoolean(args.wslScan ?? args.wslScanEnabled ?? process.env.TOKEN_MONITOR_WSL_SCAN, true);
+const opencodeLocalLimitsEnabled = parseBoolean(
+  args['opencode-local-limits']
+    ?? args.opencodeLocalLimits
+    ?? args.opencodeLocalLimitsEnabled
+    ?? process.env.TOKEN_MONITOR_OPENCODE_LOCAL_LIMITS,
+  false
+);
+const opencodeAmbientEnabled = parseBoolean(
+  args['opencode-ambient']
+    ?? args.opencodeAmbient
+    ?? args.opencodeAmbientEnabled
+    ?? process.env.TOKEN_MONITOR_OPENCODE_AMBIENT,
+  true
+);
 const opencodeCookie = String(process.env.TOKEN_MONITOR_OPENCODE_COOKIE || '').trim();
 const once = Boolean(args.once);
 const dryRun = Boolean(args['dry-run'] || args.dryRun);
@@ -48,6 +74,7 @@ const usageOptions = {
   agentVersion: appVersion(),
   agentRuntime: 'headless-agent',
   projectsEnabled,
+  reasonixNativeSessionsEnabled: true,
   historyEnabled,
   historyIntervalMs: normalizeHistoryIntervalMs(process.env.TOKEN_MONITOR_HISTORY_INTERVAL_MS),
   dailyHistoryArchiveEnabled: sessionUsageArchiveEnabled,
@@ -55,6 +82,8 @@ const usageOptions = {
   anchorPersistenceEnabled: !once && !dryRun,
   intervalMs,
   watchEnabled,
+  watchTriggersCollection: !smartCollection,
+  intervalRequiresActivity: smartCollection,
   watchDebounceMs,
   wslScanEnabled,
   onError: (error, reason) => console.error(`[${new Date().toISOString()}] (${reason}) ${error.message}`),
@@ -63,7 +92,11 @@ const usageOptions = {
 const limitsOptions = {
   limitsEnabled,
   limitProviders,
+  limitsRefreshMode,
   limitsRefreshMs,
+  claudeWebCookie: '',
+  opencodeLocalLimitsEnabled,
+  opencodeAmbientEnabled,
   opencodeCookie
 };
 let sessionUsageArchive;

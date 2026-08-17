@@ -14,6 +14,15 @@ function createDeviceRuntime(options = {}, deps = {}) {
   const sink = options.sink || null;
   let active = true;
 
+  function forwardDiagnosticEvent(event) {
+    if (!active) return;
+    try {
+      options.onDiagnosticEvent?.(event);
+    } catch (error) {
+      try { options.onError?.(error, 'diagnostic'); } catch (_) {}
+    }
+  }
+
   const deviceState = makeDeviceState({
     epoch,
     envelope: options.envelope,
@@ -47,6 +56,14 @@ function createDeviceRuntime(options = {}, deps = {}) {
         ? options.transformUsage(summary, reason, { preview: false })
         : summary;
       deviceState.updateUsage(transformed, reason, { epoch, preview: false });
+      return transformed;
+    },
+    onDiagnosticEvent(event) {
+      if (!active) return;
+      try { options.usageOptions?.onDiagnosticEvent?.(event); } catch (error) {
+        try { options.onError?.(error, 'usage-diagnostic'); } catch (_) {}
+      }
+      forwardDiagnosticEvent(event);
     }
   };
   if (options.progressive === true) {
@@ -72,30 +89,43 @@ function createDeviceRuntime(options = {}, deps = {}) {
     onUpdate(summary) {
       if (!active) return;
       deviceState.updateLimits(summary, 'limits', { epoch });
+    },
+    onEvent(event) {
+      if (!active) return;
+      try { deps.limitsDeps?.onEvent?.(event); } catch (error) {
+        try { options.onError?.(error, 'limits-diagnostic'); } catch (_) {}
+      }
+      if (event?.type === 'retry-scheduled') {
+        forwardDiagnosticEvent({ subsystem: 'limits', code: 'limits-retry-scheduled', provider: event.provider });
+      }
     }
   };
 
   const usageRuntime = makeUsageRuntime(usageOptions, deps.usageDeps || {});
   const limitsRuntime = makeLimitsRuntime(limitsOptions, limitsDeps);
 
-  function stop() {
+  function stop(options = {}) {
     if (!active) return;
     active = false;
     deviceState.stop();
-    usageRuntime?.stop?.();
+    usageRuntime?.stop?.(options);
     limitsRuntime?.stop?.();
     sink?.stop?.();
   }
 
   return {
-    clearLimits: (scope, reason) => limitsRuntime.clear(scope, reason),
-    flush: () => sink?.flush?.() || Promise.resolve(),
+    clearLimits: (scope, reason) => active ? limitsRuntime.clear(scope, reason) : null,
+    flush: () => active ? (sink?.flush?.() || Promise.resolve()) : Promise.resolve(),
+    getDiagnostics: () => ({
+      usage: usageRuntime?.getDiagnostics?.() ?? null,
+      limits: limitsRuntime?.getDiagnostics?.() ?? null
+    }),
     getSnapshot: () => deviceState.getSnapshot(),
-    reconfigureLimits: (next) => limitsRuntime.reconfigure(next),
-    refreshClient: (clientId, refreshOptions) => usageRuntime.refreshClient(clientId, refreshOptions),
-    refreshLimits: (scope, reason) => limitsRuntime.refresh(scope, reason),
+    reconfigureLimits: (next) => active ? limitsRuntime.reconfigure(next) : null,
+    refreshClient: (clientId, refreshOptions) => active ? usageRuntime.refreshClient(clientId, refreshOptions) : Promise.resolve(false),
+    refreshLimits: (scope, reason) => active ? limitsRuntime.refresh(scope, reason) : Promise.resolve(false),
     stop,
-    tick: (reason, tickOptions) => usageRuntime.tick(reason, tickOptions)
+    tick: (reason, tickOptions) => active ? usageRuntime.tick(reason, tickOptions) : Promise.resolve(false)
   };
 }
 

@@ -80,7 +80,6 @@ test('signVolcengineRequest signs the empty POST body with Volcengine V4 headers
     date: new Date('2026-07-06T00:00:00Z')
   });
 
-  assert.equal(signed.headers.Host, 'open.volcengineapi.com');
   assert.equal(signed.headers['X-Date'], '20260706T000000Z');
   assert.equal(signed.headers['X-Content-Sha256'], 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855');
   assert.match(

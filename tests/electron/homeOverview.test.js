@@ -7,10 +7,12 @@ const test = require('node:test');
 
 const {
   homeActivityHeatmapLayout,
+  activityStatsForPeriod,
   homeDeviceRows,
   homeLimitAccounts,
   homeLimitAccountsForProviders,
   homeModelRows,
+  longRangePeakDayTokens,
   homeToolRows,
   homeActivityWheelRoute,
   homeActivityScrollTarget,
@@ -53,6 +55,10 @@ test('Home activity heatmap is a scaled copy of the dashboard heatmap', () => {
   }
   assert.doesNotMatch(rule(css, '.home-activity-scroll'), /padding-block/);
   assert.match(rule(css, '.home-activity-canvas .heat-bright-layer'), /pointer-events:\s*none/);
+  assert.match(
+    css,
+    /\.home-activity-scroll\.is-restoring-hover \.heat,\s*\.home-activity-scroll\.is-restoring-hover \.heat-bright-layer\s*\{[^}]*transition:\s*none/
+  );
   assert.match(rule(css, '.home-activity-tooltip'), /position:\s*fixed/);
   assert.match(rule(css, '.home-activity-canvas .heat-month'), /fill:\s*rgba\(var\(--line-rgb\), 0\.5\)/);
 });
@@ -78,20 +84,47 @@ test('Home activity uses a custom spotlight hover instead of native SVG titles',
   assert.match(rendererSource, /computeHeatmapIntensities\(daily\)/);
 });
 
-test('Home activity tooltip is dismissed on Home rerender and when the view leaves Home', () => {
+test('Home activity tooltip survives Home rerenders and is dismissed when the view leaves Home', () => {
   const rendererSource = fs.readFileSync(path.join(__dirname, '../../src/electron/renderer/app.js'), 'utf8');
   // The body-level tooltip only has scroller-local pointer handlers; DOM removal fires
   // no pointerleave, so the hover setup must expose a teardown other code can invoke.
-  assert.match(rendererSource, /state\.homeActivityHoverTeardown\s*=\s*hide/);
+  assert.match(rendererSource, /state\.homeActivityHoverPoint\s*=\s*\{\s*x:\s*clientX,\s*y:\s*clientY\s*\}/);
+  assert.match(rendererSource, /state\.homeActivityHoverDate\s*=\s*cell\.dataset\.d/);
+  assert.match(rendererSource, /state\.homeActivityHoverTeardown\s*=\s*\(\{\s*preserveHover/);
+  assert.match(rendererSource, /state\.homeActivityHoverRestore\s*=\s*\(\)\s*=>/);
+  assert.match(rendererSource, /candidate\.dataset\.d\s*===\s*date/);
+  assert.match(rendererSource, /stillHovered[\s\S]*?showAtPoint\(point\.x,\s*point\.y,\s*cell\)/);
   // Clearing the ref after teardown lets a discarded scroller closure be collected.
-  const hideFn = rendererSource.match(/function hideHomeActivityTooltip\(\) \{([\s\S]*?)\n\}/);
+  const hideFn = rendererSource.match(/function hideHomeActivityTooltip\(\{ preserveHover = false \} = \{\}\) \{([\s\S]*?)\n\}/);
   assert.ok(hideFn, 'hideHomeActivityTooltip exists');
   assert.match(hideFn[1], /state\.homeActivityHoverTeardown\s*=\s*null/);
-  // renderHome replaces the scroller that owns those handlers — it must hide the tooltip
-  // before rebuilding, or a cell hovered across a stats refresh leaves a stale tooltip.
+  assert.match(hideFn[1], /state\.homeActivityHoverRestore\s*=\s*null/);
+  // renderHome replaces the scroller on live stats refreshes. Preserve the pointer point,
+  // restore the attached scroller position before measuring the new cell, and repeat the
+  // hover restoration after ResizeObserver confirms that layout has settled.
   const renderHome = rendererSource.match(/function renderHome\(\) \{([\s\S]*?)\n\}\n\nfunction render\(\)/);
   assert.ok(renderHome, 'renderHome exists');
-  assert.match(renderHome[1], /hideHomeActivityTooltip\(\)/);
+  assert.match(renderHome[1], /hideHomeActivityTooltip\(\{\s*preserveHover:\s*true\s*\}\)/);
+  assert.match(
+    renderHome[1],
+    /replaceChildren\(\.\.\.nodes\)[\s\S]*?applyHomeActivityScroll\(activityScroller\)[\s\S]*?homeActivityHoverRestore\(\)/
+  );
+  const trendsModule = rendererSource.match(/function renderHomeTrendsModule\(\) \{([\s\S]*?)\n\}\n\nfunction renderHome/);
+  assert.ok(trendsModule, 'renderHomeTrendsModule exists');
+  assert.match(
+    trendsModule[1],
+    /setupHomeActivityScroller\(activityScroll,\s*\(\)\s*=>\s*\{[\s\S]*?homeActivityHoverRestore\?\.\(\)[\s\S]*?animateHomeHistoryVisuals/
+  );
+  assert.match(trendsModule[1], /homeActivityHoverPoint[\s\S]*?homeActivityHoverDate[\s\S]*?classList\.add\('is-restoring-hover'\)/);
+  assert.match(
+    renderHome[1],
+    /homeActivityHoverRestore\(\)[\s\S]*?requestAnimationFrame\(\(\)\s*=>\s*activityScroller\.classList\.remove\('is-restoring-hover'\)\)/
+  );
+  assert.match(rendererSource, /homeActivityProgrammaticScrollers\.add\(scroller\)[\s\S]*?scroller\.scrollLeft\s*=\s*target/);
+  assert.match(
+    rendererSource,
+    /addEventListener\('scroll',\s*\(\)\s*=>\s*\{[\s\S]*?homeActivityProgrammaticScrollers\.delete\(scroller\)[\s\S]*?homeActivityHoverRestore\?\.\(\)[\s\S]*?hide\(\)/
+  );
   // Leaving Home for another view must also dismiss it (the panel is only CSS-hidden).
   const render = rendererSource.match(/function render\(\) \{([\s\S]*?)\n\}\n\nfunction setStatus/);
   assert.ok(render, 'render exists');
@@ -175,7 +208,7 @@ test('homeLimitAccountsForProviders includes Grok billing and DeepSeek balance r
       {
         provider: 'deepseek',
         balance: { amount: 4.61, monthSpend: 0, currency: 'CNY' },
-        windows: []
+        windows: [{ kind: 'billing', metric: 'credits', label: 'Balance', remaining: 4.61, currency: 'CNY' }]
       }
     ],
     providerOptions: [
@@ -191,8 +224,8 @@ test('homeLimitAccountsForProviders includes Grok billing and DeepSeek balance r
   assert.deepEqual(rows[0].windows.map((window) => [window.kind, window.label, window.remainingPercent]), [
     ['billing', 'Monthly', 100]
   ]);
-  assert.deepEqual(rows[1].windows.map((window) => [window.kind, window.label, window.remainingPercent, window.amount, window.currency, window.value]), [
-    ['balance', 'balance', 100, 4.61, 'CNY', '']
+  assert.deepEqual(rows[1].windows.map((window) => [window.kind, window.metric, window.label, window.remainingPercent, window.remaining, window.currency, window.value]), [
+    ['billing', 'credits', 'Balance', 100, 4.61, 'CNY', '']
   ]);
 });
 
@@ -201,12 +234,15 @@ test('homeLimitAccountsForProviders includes MiMo Token Plan status and balance'
     providers: [
       {
         provider: 'mimo',
-        windows: [],
+        windows: [{ kind: 'billing', metric: 'credits', label: 'Balance', remaining: 7.51, currency: 'CNY' }],
         balance: { amount: 7.51, currency: 'CNY', planStatus: 'active', planUsed: 250, planLimit: 1000 }
       },
       {
         provider: 'mimo',
-        windows: [{ kind: 'billing', label: 'Token Plan', remainingPercent: 100 }],
+        windows: [
+          { kind: 'billing', label: 'Token Plan', remainingPercent: 100 },
+          { kind: 'billing', metric: 'credits', label: 'Balance', remaining: 7.51, currency: 'CNY' }
+        ],
         balance: { amount: 7.51, currency: 'CNY', planStatus: 'expired' }
       }
     ],
@@ -216,12 +252,12 @@ test('homeLimitAccountsForProviders includes MiMo Token Plan status and balance'
     limit: 5
   });
 
-  assert.deepEqual(rows[0].windows.map((window) => window.kind), ['billing', 'balance']);
+  assert.deepEqual(rows[0].windows.map((window) => window.metric), ['', 'credits']);
   assert.equal(rows[0].windows[0].remainingPercent, 75);
-  assert.equal(rows[0].windows[1].amount, 7.51);
-  assert.deepEqual(rows[1].windows.map((window) => [window.kind, window.planStatus]), [
-    ['billing', 'expired'],
-    ['balance', '']
+  assert.equal(rows[0].windows[1].remaining, 7.51);
+  assert.deepEqual(rows[1].windows.map((window) => [window.metric, window.planStatus]), [
+    ['', 'expired'],
+    ['credits', '']
   ]);
 });
 
@@ -231,7 +267,7 @@ test('MiMo balance without plan data does not synthesize a Token Plan meter', ()
       provider: 'mimo',
       accountKey: 'mimo-no-plan',
       status: 'ok',
-      windows: [],
+      windows: [{ kind: 'billing', metric: 'credits', label: 'Balance', remaining: 9.61, currency: 'CNY' }],
       balance: {
         amount: 9.61,
         currency: 'CNY',
@@ -248,9 +284,9 @@ test('MiMo balance without plan data does not synthesize a Token Plan meter', ()
   });
 
   assert.equal(rows.length, 1);
-  assert.deepEqual(rows[0].windows.map((window) => window.kind), ['balance']);
-  assert.equal(rows[0].windows.some((window) => window.kind === 'billing'), false);
-  assert.equal(rows[0].windows[0].amount, 9.61);
+  // Only the balance survives — no Token Plan meter was invented for it.
+  assert.deepEqual(rows[0].windows.map((window) => window.metric), ['credits']);
+  assert.equal(rows[0].windows[0].remaining, 9.61);
 });
 
 test('MiMo empty plan values do not synthesize a Token Plan meter', () => {
@@ -259,7 +295,7 @@ test('MiMo empty plan values do not synthesize a Token Plan meter', () => {
       key: 'mimo-empty-plan',
       providerId: 'mimo',
       name: 'MiMo',
-      windows: [],
+      windows: [{ kind: 'billing', metric: 'credits', label: 'Balance', remaining: 4.83, currency: 'CNY' }],
       balance: {
         amount: 4.83,
         currency: 'CNY',
@@ -271,7 +307,8 @@ test('MiMo empty plan values do not synthesize a Token Plan meter', () => {
   ]);
 
   assert.equal(rows.length, 1);
-  assert.deepEqual(rows[0].windows.map((window) => window.kind), ['balance']);
+  // Only the balance survives — no Token Plan meter was invented for it.
+  assert.deepEqual(rows[0].windows.map((window) => window.metric), ['credits']);
 });
 
 test('MiMo active unused plan keeps a real 100 percent remaining meter', () => {
@@ -312,7 +349,8 @@ test('home limit windows ignore missing percentage values', () => {
 test('homeModelRows returns one-line token shares without cost fields', () => {
   const rows = homeModelRows([
     { name: 'claude-opus-4-8', value: 34_000_000, cost: 21.96, color: '#cc7c5e' },
-    { name: 'gpt-5.5', value: 29_800_000, cost: 25.88, color: '#49a3b0' }
+    { name: 'gpt-5.5', value: 29_800_000, cost: 25.88, color: '#49a3b0' },
+    { name: 'cost-only', value: 0, cost: 3.25, color: '#9aa0aa' }
   ], 63_800_000);
 
   assert.deepEqual(rows, [
@@ -488,11 +526,70 @@ test('patchDailyToday appends today with live cost so its heatmap cell is not em
   assert.equal(appended.cost, 492.5); // intensity uses cost — a 0 here renders today as empty
 });
 
-test('renderHomeTrendsModule patches the activity today cell with the live period total', () => {
+test('renderHomeTrendsModule preserves long-range Activity and peak', () => {
   const rendererSource = fs.readFileSync(path.join(__dirname, '../../src/electron/renderer/app.js'), 'utf8');
   const match = rendererSource.match(/function renderHomeTrendsModule\(\) \{([\s\S]*?)\n\}\n\nfunction renderHome/);
   assert.ok(match, 'renderHomeTrendsModule exists');
-  assert.match(match[1], /patchDailyToday\([\s\S]*?totalTokens/);
+  assert.match(match[1], /patchDailyToday\(/);
+  assert.match(match[1], /rollingYearHeatmap\(/);
+  assert.match(match[1], /clampDaily\(points, 45\)/);
+  assert.match(match[1], /longRangePeakDayTokens\(/);
+  assert.doesNotMatch(match[1], /activityStatsForPeriod\(/);
+});
+
+test('Home peak uses the freshest maximum across retained and live daily data', () => {
+  assert.equal(longRangePeakDayTokens({
+    historySummary: { peakDayTokens: 999 },
+    daily: [{ tokens: 100 }, { tokens: 200 }]
+  }), 999);
+  assert.equal(longRangePeakDayTokens({
+    historySummary: { peakDayTokens: 100 },
+    daily: [{ tokens: 200 }]
+  }), 200);
+  assert.equal(longRangePeakDayTokens({
+    historySummary: {},
+    daily: [{ tokens: 100 }, { tokens: 200 }]
+  }), 200);
+});
+
+test('Trends preserves its long-range chart while selecting range stats', () => {
+  const rendererSource = fs.readFileSync(path.join(__dirname, '../../src/electron/renderer/app.js'), 'utf8');
+  const match = rendererSource.match(/function renderTrends\(\) \{([\s\S]*?)\n\}\n\nfunction viewLabelById/);
+  assert.ok(match, 'renderTrends exists');
+  assert.match(match[1], /selectPreviewSeries\(preview, fixed\?\.status === 'ready' \? 'allTime' : state\.period\)/);
+  assert.match(match[1], /activityStatsForPeriod\(/);
+});
+
+test('Activity keeps long-term day and streak stats while range-shaping time and peak', () => {
+  const fixedSnapshot = {
+    status: 'ready',
+    summary: { activeDays: 4, currentStreak: 4, activeTimeMs: 3600000, peakDayTokens: 80 }
+  };
+  assert.deepEqual(activityStatsForPeriod({
+    period: 'last7',
+    fixedSnapshot,
+    historySummary: { activeDays: 119, currentStreak: 87, activeTimeMs: 999, peakDayTokens: 999 }
+  }), {
+    activeDays: 119,
+    currentStreak: 87,
+    activeTimeMs: 3600000,
+    peakDayTokens: 80
+  });
+});
+
+test('native DAY and MONTH activity time and peak follow their calendar range', () => {
+  const daily = [
+    { date: '2026-07-31', tokens: 90, activeTimeMs: 9000 },
+    { date: '2026-08-11', tokens: 40, activeTimeMs: 4000 },
+    { date: '2026-08-12', tokens: 70, activeTimeMs: 7000 }
+  ];
+  const historySummary = { activeDays: 120, currentStreak: 8, activeTimeMs: 20000, peakDayTokens: 90 };
+  assert.deepEqual(activityStatsForPeriod({
+    period: 'today', daily, historySummary, todayKey: '2026-08-12'
+  }), { activeDays: 120, currentStreak: 8, activeTimeMs: 7000, peakDayTokens: 70 });
+  assert.deepEqual(activityStatsForPeriod({
+    period: 'month', daily, historySummary, todayKey: '2026-08-12'
+  }), { activeDays: 120, currentStreak: 8, activeTimeMs: 11000, peakDayTokens: 70 });
 });
 
 test('loadHomeHistory wires the bounded retry through a timer, not a render', () => {
@@ -631,3 +728,88 @@ test('shouldFetchHomeHistory never polls a zero-usage account', () => {
   assert.equal(shouldFetchHomeHistory({ requested: true, stats: null }), false);
 });
 
+test('Home carries credits windows through as money, not a percentage', () => {
+  const [row] = homeLimitAccounts([{
+    key: 'thirdparty:0',
+    providerId: 'thirdparty',
+    name: 'production',
+    windows: [{
+      kind: 'billing',
+      metric: 'credits',
+      label: 'Balance',
+      remaining: 25,
+      currency: 'USD',
+      used: 75,
+      limit: 100,
+      usedPercent: 75,
+      remainingPercent: 25
+    }]
+  }]);
+
+  const [window] = row.windows;
+  assert.equal(window.metric, 'credits');
+  assert.equal(window.remaining, 25);
+  assert.equal(window.currency, 'USD');
+});
+
+test('Home no longer synthesizes a balance window for DeepSeek', () => {
+  const [row] = homeLimitAccounts([{
+    key: 'deepseek',
+    providerId: 'deepseek',
+    name: 'DeepSeek',
+    windows: [{
+      kind: 'billing',
+      metric: 'credits',
+      label: 'Balance',
+      remaining: 4,
+      currency: 'CNY'
+    }],
+    balance: { amount: 4, currency: 'CNY', monthSpend: 0 }
+  }]);
+
+  assert.equal(row.windows.length, 1);
+  assert.equal(row.windows[0].kind, 'billing');
+  assert.equal(row.windows[0].metric, 'credits');
+  assert.equal(row.windows[0].remaining, 4);
+});
+
+test('Home shows a MiMo token plan and balance side by side', () => {
+  const [row] = homeLimitAccounts([{
+    key: 'mimo',
+    providerId: 'mimo',
+    name: 'MiMo',
+    windows: [
+      { kind: 'billing', label: 'Token Plan', usedPercent: 22, remainingPercent: 78 },
+      { kind: 'billing', metric: 'credits', label: 'Balance', remaining: 12.5, currency: 'CNY' }
+    ],
+    balance: { amount: 12.5, currency: 'CNY', monthSpend: 0 }
+  }]);
+
+  assert.equal(row.windows.length, 2);
+  assert.equal(row.windows[0].label, 'Token Plan');
+  assert.equal(row.windows[0].remainingPercent, 78);
+  assert.equal(row.windows[1].metric, 'credits');
+  assert.equal(row.windows[1].remaining, 12.5);
+});
+
+test('Home sorts a nearly drained balance ahead of a healthy percentage quota', () => {
+  const rows = homeLimitAccounts([
+    {
+      key: 'claude',
+      providerId: 'claude',
+      name: 'Claude',
+      windows: [{ kind: 'session', usedPercent: 8, remainingPercent: 92 }]
+    },
+    {
+      key: 'deepseek',
+      providerId: 'deepseek',
+      name: 'DeepSeek',
+      windows: [{ kind: 'billing', metric: 'credits', label: 'Balance', remaining: 1, currency: 'CNY' }],
+      balance: { amount: 1, currency: 'CNY', monthSpend: 99 }
+    }
+  ]);
+
+  // 1 / (1 + 99) = 1% remaining, so DeepSeek must sort first.
+  assert.equal(rows[0].key, 'deepseek');
+  assert.equal(rows[1].key, 'claude');
+});

@@ -3,6 +3,7 @@
 const crypto = require('node:crypto');
 const { hashKey } = require('./hashKey');
 const { normalizeLimitProvider } = require('./limits');
+const { BROWSER_USER_AGENT } = require('./browserUserAgent');
 
 const MIMO_PLATFORM_CONSOLE_URL = 'https://platform.xiaomimimo.com/#/console/balance';
 const MIMO_API_BASE_URL = 'https://platform.xiaomimimo.com/api/v1';
@@ -80,11 +81,19 @@ function unwrapApiBody(value) {
   return value.data && typeof value.data === 'object' ? value.data : value;
 }
 
+// MiMo reports `percent` as a 0-1 ratio, so it overshoots 1 once the request
+// that exhausts the plan pushes used past limit. Inferring the scale from the
+// value ("<= 1 must be a ratio, above that must already be a percentage") reads
+// that 1.005 as 1% used and paints a spent plan as 99% left (#292), so treat
+// the field as the ratio it is — and prefer used/limit, which carry no scale
+// ambiguity at all, whenever the item reports both.
 function normalizePercent(value, used, limit) {
+  if (used !== null && limit !== null && limit > 0) {
+    return Math.max(0, Math.min(100, (used / limit) * 100));
+  }
   const explicit = numberFrom(value);
-  if (explicit !== null) return Math.max(0, Math.min(100, explicit <= 1 ? explicit * 100 : explicit));
-  if (used !== null && limit !== null && limit > 0) return Math.max(0, Math.min(100, (used / limit) * 100));
-  return null;
+  if (explicit === null) return null;
+  return Math.max(0, Math.min(100, explicit * 100));
 }
 
 function parseMimoBalance(body) {
@@ -184,7 +193,7 @@ function requestHeaders(cookieHeader) {
     Cookie: cookieHeader,
     Origin: 'https://platform.xiaomimimo.com',
     Referer: MIMO_PLATFORM_CONSOLE_URL,
-    'User-Agent': 'Mozilla/5.0 AppleWebKit/537.36 Chrome/143 Safari/537.36'
+    'User-Agent': BROWSER_USER_AGENT
   };
 }
 
@@ -262,6 +271,18 @@ async function fetchMimoAccount(account, deps = {}) {
         remaining: usage.used === null ? null : Math.max(0, usage.limit - usage.used),
         usedPercent: usage.usedPercent,
         resetsAt: detail.resetsAt
+      });
+    }
+    // The wallet balance is money, not a metered quota, so it ships as a
+    // credits window with no wire percentage — it sits beside the Token Plan
+    // rather than replacing it.
+    if (balance.amount !== null) {
+      windows.push({
+        kind: 'billing',
+        metric: 'credits',
+        label: 'Balance',
+        remaining: balance.amount,
+        currency: balance.currency
       });
     }
     return normalizeLimitProvider({

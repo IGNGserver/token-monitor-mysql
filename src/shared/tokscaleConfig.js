@@ -27,8 +27,55 @@ function tokscaleConfigDir({ env = process.env, platform = process.platform, hom
   return path.join(configHome, 'tokscale');
 }
 
+function windowsNativeAbsolutePath(value) {
+  const raw = typeof value === 'string' ? value.trim() : '';
+  return /^[A-Za-z]:[\\/]/.test(raw) || /^[\\/]{2}[^\\/]+[\\/][^\\/]+/.test(raw);
+}
+
+function profileHomeDir(homeDir) {
+  return typeof homeDir === 'string' && homeDir.length > 0 ? homeDir : os.homedir();
+}
+
+function tokscaleHomeDir({ env, platform, profileHome }) {
+  if (platform === 'win32' && windowsNativeAbsolutePath(env.HOME)) return env.HOME.trim();
+  return profileHome;
+}
+
+// Mirror tokscale-core's canonical cache root plus its legacy fallbacks. An
+// explicit TOKSCALE_CONFIG_DIR is hermetic and must not reach into a real
+// profile's legacy cache.
+function tokscaleCacheDirs(options = {}) {
+  const env = options.env || process.env;
+  const platform = options.platform || process.platform;
+  const profileHome = profileHomeDir(options.homeDir);
+  const tokscaleHome = tokscaleHomeDir({ env, platform, profileHome });
+  const canonical = path.join(tokscaleConfigDir({ env, platform, homeDir: profileHome }), 'cache');
+  const override = env.TOKSCALE_CONFIG_DIR;
+  if (typeof override === 'string' && override.length > 0) return [canonical];
+
+  let platformCache;
+  if (platform === 'darwin') {
+    platformCache = path.join(profileHome, 'Library', 'Caches', 'tokscale');
+  } else if (platform === 'win32') {
+    const localAppData = (typeof env.LOCALAPPDATA === 'string' && env.LOCALAPPDATA.length > 0)
+      ? env.LOCALAPPDATA
+      : path.join(profileHome, 'AppData', 'Local');
+    platformCache = path.join(localAppData, 'tokscale');
+  } else {
+    const xdg = env.XDG_CACHE_HOME;
+    const cacheHome = (typeof xdg === 'string' && path.isAbsolute(xdg)) ? xdg : path.join(profileHome, '.cache');
+    platformCache = path.join(cacheHome, 'tokscale');
+  }
+
+  return [...new Set([
+    canonical,
+    platformCache,
+    path.join(tokscaleHome, '.cache', 'tokscale')
+  ])];
+}
+
 function customPricingPath(opts) {
   return path.join(tokscaleConfigDir(opts), 'custom-pricing.json');
 }
 
-module.exports = { tokscaleConfigDir, customPricingPath };
+module.exports = { tokscaleCacheDirs, tokscaleConfigDir, customPricingPath };

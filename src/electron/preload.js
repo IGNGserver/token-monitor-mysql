@@ -5,6 +5,9 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('tokenMonitor', {
   getSettings: () => ipcRenderer.invoke('settings:get'),
   updateSettings: (patch) => ipcRenderer.invoke('settings:update', patch),
+  saveSubscriptions: (subscriptions, base) => ipcRenderer.invoke('subscriptions:save', subscriptions, base),
+  adoptOrphanedSubscriptions: () => ipcRenderer.invoke('subscriptions:adoptOrphans'),
+  discardOrphanedSubscriptions: () => ipcRenderer.invoke('subscriptions:discardOrphans'),
   clearSessionUsageArchive: () => ipcRenderer.invoke('sessionUsageArchive:clear'),
   lookupModelPricing: (modelId) => ipcRenderer.invoke('pricing:lookup', modelId),
   previewAppearance: (patch) => ipcRenderer.invoke('appearance:preview', patch),
@@ -14,7 +17,7 @@ contextBridge.exposeInMainWorld('tokenMonitor', {
   getStreamStatus: () => ipcRenderer.invoke('stream:status'),
   getServiceStatus: (options) => ipcRenderer.invoke('serviceStatus:get', options),
   openDashboard: () => ipcRenderer.invoke('dashboard:open'),
-  getDashboardHistory: () => ipcRenderer.invoke('dashboard:getHistory'),
+  getDashboardHistory: (options) => ipcRenderer.invoke('dashboard:getHistory', options),
   onDashboardHistoryChanged: (callback) => {
     const listener = () => { try { callback(); } catch (_) {} };
     ipcRenderer.on('dashboard:historyChanged', listener);
@@ -26,6 +29,7 @@ contextBridge.exposeInMainWorld('tokenMonitor', {
     close: () => ipcRenderer.send('dashboard:close')
   },
   getHubInfo: () => ipcRenderer.invoke('hub:getInfo'),
+  getHubBuildStatus: () => ipcRenderer.invoke('hub:getBuildStatus'),
   regenerateHubSecret: () => ipcRenderer.invoke('hub:regenerateSecret'),
   onHubPush: (callback) => {
     const listener = (_event, payload) => { try { callback(payload); } catch (_) {} };
@@ -41,6 +45,11 @@ contextBridge.exposeInMainWorld('tokenMonitor', {
     const listener = (_event, payload) => { try { callback(payload); } catch (_) {} };
     ipcRenderer.on('settings:push', listener);
     return () => ipcRenderer.removeListener('settings:push', listener);
+  },
+  onSystemUiThemePush: (callback) => {
+    const listener = (_event, payload) => { try { callback(payload); } catch (_) {} };
+    ipcRenderer.on('theme:systemUi', listener);
+    return () => ipcRenderer.removeListener('theme:systemUi', listener);
   },
   onOpenSettings: (callback) => {
     const listener = () => { try { callback(); } catch (_) {} };
@@ -58,7 +67,11 @@ contextBridge.exposeInMainWorld('tokenMonitor', {
     return () => ipcRenderer.removeListener('tokscale:push', listener);
   },
   getAppInfo: () => ipcRenderer.invoke('app:getInfo'),
+  generateDiagnosticReport: () => ipcRenderer.invoke('diagnostics:generate'),
   copyText: (text) => ipcRenderer.invoke('clipboard:write', text),
+  clientSources: (clientId) => ipcRenderer.invoke('usage:clientSources', clientId),
+  revealClientSource: (clientId) => ipcRenderer.invoke('usage:revealClientSource', clientId),
+  rescanClient: (clientId) => ipcRenderer.invoke('usage:rescanClient', clientId),
   openExternal: (url) => ipcRenderer.invoke('app:openExternal', url),
   openUserData: () => ipcRenderer.invoke('app:openUserData'),
   mimo: {
@@ -107,6 +120,9 @@ contextBridge.exposeInMainWorld('tokenMonitor', {
     logout: () => ipcRenderer.invoke('cursor:logout'),
     status: () => ipcRenderer.invoke('cursor:status')
   },
+  claude: {
+    saveCookie: (cookie) => ipcRenderer.invoke('claude:saveCookie', cookie)
+  },
   ollama: {
     validateCookie: (cookie) => ipcRenderer.invoke('ollama:validateCookie', cookie)
   },
@@ -115,10 +131,13 @@ contextBridge.exposeInMainWorld('tokenMonitor', {
     logout: () => ipcRenderer.invoke('opencode:logout'),
     status: () => ipcRenderer.invoke('opencode:status'),
     getProfiles: () => ipcRenderer.invoke('opencode:getProfiles'),
-    saveProfile: (name, cookie) => ipcRenderer.invoke('opencode:saveProfile', name, cookie),
+    saveProfile: (name, credential, kind, options) => ipcRenderer.invoke('opencode:saveProfile', name, credential, kind, options),
     deleteProfile: (name) => ipcRenderer.invoke('opencode:deleteProfile', name),
-    renameProfile: (oldName, newName) => ipcRenderer.invoke('opencode:renameProfile', oldName, newName),
-    setProfileEnabled: (name, enabled) => ipcRenderer.invoke('opencode:setProfileEnabled', name, enabled)
+    renameProfile: (oldName, newName, options) => ipcRenderer.invoke('opencode:renameProfile', oldName, newName, options),
+    removeCredential: (name, kind) => ipcRenderer.invoke('opencode:removeCredential', name, kind),
+    moveCredential: (name, kind, targetName, options) => ipcRenderer.invoke('opencode:moveCredential', name, kind, targetName, options),
+    setProfileEnabled: (name, enabled) => ipcRenderer.invoke('opencode:setProfileEnabled', name, enabled),
+    setAmbientEnabled: (enabled) => ipcRenderer.invoke('opencode:setAmbientEnabled', enabled)
   },
   openrouter: {
     getProfiles: () => ipcRenderer.invoke('openrouter:getProfiles'),
@@ -126,6 +145,13 @@ contextBridge.exposeInMainWorld('tokenMonitor', {
     deleteProfile: (name) => ipcRenderer.invoke('openrouter:deleteProfile', name),
     renameProfile: (oldName, newName) => ipcRenderer.invoke('openrouter:renameProfile', oldName, newName),
     setProfileEnabled: (name, enabled) => ipcRenderer.invoke('openrouter:setProfileEnabled', name, enabled)
+  },
+  thirdparty: {
+    getProfiles: () => ipcRenderer.invoke('thirdparty:getProfiles'),
+    saveProfile: (profile) => ipcRenderer.invoke('thirdparty:saveProfile', profile),
+    deleteProfile: (name) => ipcRenderer.invoke('thirdparty:deleteProfile', name),
+    renameProfile: (oldName, newName) => ipcRenderer.invoke('thirdparty:renameProfile', oldName, newName),
+    setProfileEnabled: (name, enabled) => ipcRenderer.invoke('thirdparty:setProfileEnabled', name, enabled)
   },
   codex: {
     accounts: () => ipcRenderer.invoke('codex:accounts'),

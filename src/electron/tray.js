@@ -6,7 +6,8 @@ const {
   isBarsTrayIconMode,
   isGeneratedTrayIconMode,
   pickUsageProviderId,
-  pickWorstLimit
+  pickWorstLimit,
+  trayShowsTitle
 } = require('../shared/trayText');
 const { codexAccountDisplayLabel } = require('./renderer/accountIdentity');
 const { translate: translateMessage } = require('./renderer/i18n');
@@ -14,6 +15,77 @@ const { translate: translateMessage } = require('./renderer/i18n');
 const ICON_PATH = path.join(__dirname, '..', '..', 'assets', 'icon.png');
 const TRAY_ICON_PATH = path.join(__dirname, '..', '..', 'assets', 'icons', 'tray-token-monitor.png');
 const trayMenuRefreshers = new WeakMap();
+
+// Windows keeps the taskbar's theme in SystemUsesLightTheme, separate from the
+// AppsUseLightTheme that drives the app theme. Measured on Windows 11 with
+// Electron 43.3.0, a system-theme flip lands like this:
+//
+//   nativeTheme 'updated' fires -> AppsUseLightTheme and shouldUseDarkColors are
+//   already new, SystemUsesLightTheme is still the OLD value and only lands a
+//   moment later (~250ms), while Chromium's cached
+//   shouldUseDarkColorsForSystemIntegratedUI never catches up at all until the
+//   NEXT flip.
+//
+// So neither reading the cached property nor a single registry read at event
+// time can answer: both report the state before the flip, which is what left the
+// tray one theme change behind. Re-read until the value actually moves.
+// Returns true for a dark system surface, false for light, null if unreadable.
+function parseWindowsSystemUsesLightTheme(output) {
+  const match = /SystemUsesLightTheme\s+REG_DWORD\s+0x([0-9a-fA-F]+)/.exec(String(output || ''));
+  if (!match) return null;
+  const value = Number.parseInt(match[1], 16);
+  // Windows only ever writes 0 or 1 here. Anything else is a value we do not
+  // understand, and guessing "light" from it would repaint the tray on a reading
+  // we cannot justify.
+  if (value === 0) return true;
+  if (value === 1) return false;
+  return null;
+}
+
+// Delays BETWEEN reads, not deadlines measured from the event — so these sample
+// at 150, 300, 450, 700, 1100, 1700, 2600 and 4000ms. Tight while the write is
+// expected (measured at ~250ms, so the typical flip is answered by the third
+// read), then stretching out: the tail is there for a machine slower than the
+// one this was measured on, and polling it at 150ms throughout would spawn
+// reg.exe two dozen times for a flip that never touched the system surface.
+const SYSTEM_UI_THEME_SETTLE_MS = [150, 150, 150, 250, 400, 600, 900, 1400];
+
+// One extra read after the window closes. Without it a value first seen on the
+// last sample has nothing to confirm it, so the window would only really cover
+// writes landing by 2600ms — a boundary short of the four seconds it claims.
+const SYSTEM_UI_THEME_CONFIRM_MS = 150;
+
+// Publishes as soon as a reading looks settled, then keeps watching to the end
+// of the window instead of stopping there. Two readings that agree only prove
+// nothing moved between those two samples — they cannot prove Windows has no
+// write still to land, in either direction. The old value is stable before the
+// first write arrives, and an intermediate value is stable between the two
+// writes of a fast flip back. Stopping on either leaves the tray on a theme the
+// user has already left, with no further event coming to correct it.
+//
+// So publishing is not the end of the watch, it is the current best answer: the
+// measured shape is answered on the third read, keeping a flip under half a
+// second, and anything that lands afterwards corrects it. `held` tracks what the
+// renderer has been told so the same value is never published twice, which is
+// also what keeps an app-theme-only flip — the same event, no movement on the
+// system surface — from repainting anything at all.
+async function watchSystemDarkUi({ read, wait, publish, isCurrent = () => true, held, schedule = SYSTEM_UI_THEME_SETTLE_MS, confirmMs = SYSTEM_UI_THEME_CONFIRM_MS }) {
+  let current = held;
+  let candidate = null;
+  for (const ms of [...schedule, confirmMs]) {
+    await wait(ms);
+    if (!isCurrent()) return current;
+    const value = await read();
+    if (!isCurrent()) return current;
+    if (typeof value !== 'boolean') continue;
+    if (value === candidate && value !== current) {
+      current = value;
+      publish(value);
+    }
+    candidate = value;
+  }
+  return current;
+}
 
 function buildTrayIcon(options = {}) {
   const platform = options.platform || process.platform;
@@ -172,7 +244,19 @@ function buildTrayMenuTemplate(options = {}) {
   ];
 }
 
+async function runTrayMenuAction({ setInFlight, refreshContextMenu, action }) {
+  setInFlight(true);
+  try {
+    refreshContextMenu();
+    return await action();
+  } finally {
+    setInFlight(false);
+    refreshContextMenu();
+  }
+}
+
 function createTray({
+  electron = require('electron'),
   getMenuState,
   onOpenSettings,
   onOpenView,
@@ -182,21 +266,32 @@ function createTray({
   onSetWindowPresentation,
   onSwitchCodexAccount,
   onToggle,
-  translateMenu,
-  platform = process.platform
+  platform = process.platform,
+  translateMenu
 }) {
-  const { Tray, Menu } = require('electron');
-  const tray = new Tray(buildTrayIcon({ platform }));
+  const { Tray, Menu, nativeImage } = electron;
+  const tray = new Tray(buildTrayIcon({ platform, nativeImage }));
   tray.setToolTip('Token Monitor');
 
-  const buildMenu = () => Menu.buildFromTemplate(buildTrayMenuTemplate({
-    state: typeof getMenuState === 'function' ? getMenuState() : {},
+  const menuState = () => (typeof getMenuState === 'function' ? getMenuState() : {});
+  const buildMenu = (state = menuState()) => Menu.buildFromTemplate(buildTrayMenuTemplate({
+    state,
     onOpenSettings,
     onOpenView,
     onQuit,
     onRefresh,
     onSetTrayContent,
-    onSetWindowPresentation,
+    // Non-tray presentation changes can keep an existing Linux tray alive,
+    // so re-export the D-Bus menu after the callback mutates settings.
+    onSetWindowPresentation: (value) => {
+      try {
+        return typeof onSetWindowPresentation === 'function'
+          ? onSetWindowPresentation(value)
+          : undefined;
+      } finally {
+        refreshContextMenu();
+      }
+    },
     onSwitchCodexAccount,
     translate: translateMenu
   }));
@@ -206,15 +301,28 @@ function createTray({
     tray.setContextMenu(buildMenu());
   };
 
+  // Linux tray hosts (GNOME AppIndicator/KStatusNotifier, KDE Plasma) display
+  // the D-Bus menu exported via com.canonical.dbusmenu on right-click and never
+  // deliver a 'right-click' event, so the menu has to be attached with
+  // setContextMenu() to be reachable; popUpContextMenu() alone shows nothing.
+  let exportedMenuState = '';
+  const refreshContextMenu = () => {
+    if (platform !== 'linux' || tray.isDestroyed()) return;
+    const state = menuState();
+    const stateKey = JSON.stringify(state);
+    if (stateKey === exportedMenuState) return;
+    tray.setContextMenu(buildMenu(state));
+    exportedMenuState = stateKey;
+  };
+  refreshContextMenu();
+  trayMenuRefreshers.set(tray, platform === 'linux' ? refreshContextMenu : refreshMenu);
+
   tray.on('click', () => onToggle(tray));
-  if (platform === 'linux') {
-    // Linux tray implementations do not consistently emit Electron's
-    // right-click event. Binding the menu natively is the portable SNI path.
-    refreshMenu();
-    trayMenuRefreshers.set(tray, refreshMenu);
-  } else {
-    tray.on('right-click', () => tray.popUpContextMenu(buildMenu()));
-  }
+  tray.on('right-click', () => {
+    tray.popUpContextMenu(buildMenu());
+  });
+
+  tray.refreshContextMenu = refreshContextMenu;
 
   return tray;
 }
@@ -251,9 +359,13 @@ function popoverBounds(tray, popoverWidth, popoverHeight) {
 }
 
 module.exports = {
+  SYSTEM_UI_THEME_CONFIRM_MS,
+  SYSTEM_UI_THEME_SETTLE_MS,
   buildTrayIcon,
   buildTrayMenuTemplate,
   createTray,
+  parseWindowsSystemUsesLightTheme,
+  watchSystemDarkUi,
   formatTrayText,
   isBarsTrayIconMode,
   pickUsageTrayIconId,
@@ -261,6 +373,8 @@ module.exports = {
   popoverBounds,
   reconcileCodexAccountSelection,
   refreshTrayMenu,
+  runTrayMenuAction,
   shouldUseTemplateTrayIcon,
-  sortCodexAccountsForDisplay
+  sortCodexAccountsForDisplay,
+  trayShowsTitle
 };

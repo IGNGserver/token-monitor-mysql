@@ -1,11 +1,13 @@
 'use strict';
 
 const hasOwn = (value, key) => Object.prototype.hasOwnProperty.call(value || {}, key);
+const { filterReasonixSyntheticSessions } = require('./reasonixSessionGuard');
 
 const PARTIAL_USAGE_CARRY_FIELDS = Object.freeze([
   'month',
   'allTime',
   'clientStatus',
+  'clientHealth',
   'wslStatus',
   'periodWindows',
   'projectsEnabled',
@@ -13,6 +15,8 @@ const PARTIAL_USAGE_CARRY_FIELDS = Object.freeze([
   'allTimeProjectsIncomplete',
   'sessionDetailsOmitted',
   'periodProjectsOmitted',
+  'nativeSessions',
+  'nativeProjects',
   'syncUploadIntervalMs'
 ]);
 
@@ -39,8 +43,20 @@ function normalizedEnvelope(value) {
   return envelope;
 }
 
+function sanitizeUsagePeriods(value) {
+  const next = cloneValue(value || {});
+  const periods = next?.periods && typeof next.periods === 'object' ? next.periods : next;
+  for (const periodName of ['today', 'month', 'allTime']) {
+    const period = periods?.[periodName];
+    if (period && typeof period === 'object' && hasOwn(period, 'sessions')) {
+      period.sessions = filterReasonixSyntheticSessions(period.sessions);
+    }
+  }
+  return next;
+}
+
 function mergeUsagePart(previous, incoming) {
-  const next = cloneValue(incoming || {});
+  const next = sanitizeUsagePeriods(incoming || {});
   delete next.limits;
   if (!previous) return next;
 
@@ -52,7 +68,9 @@ function mergeUsagePart(previous, incoming) {
   if (partial) {
     for (const field of PARTIAL_USAGE_CARRY_FIELDS) {
       if (!hasOwn(next, field) && hasOwn(previous, field)) {
-        next[field] = cloneValue(previous[field]);
+        next[field] = field === 'month' || field === 'allTime'
+          ? sanitizeUsagePeriods(previous[field])
+          : cloneValue(previous[field]);
       }
     }
   }

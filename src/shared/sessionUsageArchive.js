@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { isDeepStrictEqual } = require('node:util');
 const { PERIODS, normalizePeriod } = require('./usage');
+const { filterReasonixSyntheticSessions, isReasonixSyntheticSession } = require('./reasonixSessionGuard');
 const { readJson, sharedDataDir, writeJsonAtomic } = require('./config');
 
 function numberValue(value) {
@@ -58,6 +59,7 @@ function periodFor(record, periodName) {
 }
 
 function normalizedSessionFrom(value, fallbackKey) {
+  if (isReasonixSyntheticSession(value, fallbackKey)) return null;
   const period = normalizePeriod({ sessions: { [fallbackKey || 'session']: value } });
   return Object.values(period.sessions)[0] || null;
 }
@@ -73,6 +75,7 @@ function normalizeSessionUsageArchive(value) {
 
   for (const [rawKey, rawEntry] of Object.entries(source)) {
     if (!rawEntry || typeof rawEntry !== 'object') continue;
+    if (isReasonixSyntheticSession(rawEntry, rawKey)) continue;
     const rawPeriods = rawEntry.periods && typeof rawEntry.periods === 'object'
       ? rawEntry.periods
       : rawEntry;
@@ -88,7 +91,7 @@ function normalizeSessionUsageArchive(value) {
 
     for (const periodName of PERIODS) {
       const session = normalizedSessionFrom(rawPeriods?.[periodName], rawKey);
-      if (!session || !hasSessionUsage(session)) continue;
+      if (!session || isReasonixSyntheticSession(session, rawKey) || !hasSessionUsage(session)) continue;
       const key = sessionKey(session.client, session.sessionId);
       if (!key) continue;
       entry.client = session.client;
@@ -117,7 +120,7 @@ function captureSessionUsageArchive(existingArchive, deviceRecord, capturedAt = 
   for (const periodName of PERIODS) {
     const period = periodFor(deviceRecord, periodName);
     for (const session of Object.values(period.sessions || {})) {
-      if (!hasSessionUsage(session)) continue;
+      if (isReasonixSyntheticSession(session) || !hasSessionUsage(session)) continue;
       const archiveKey = sessionKey(session.client, session.sessionId);
       if (!archiveKey) continue;
       const entry = archive.sessions[archiveKey] || {
@@ -255,6 +258,13 @@ function applySessionUsageArchive(summary, archive, options = {}) {
   const normalizedArchive = normalizeSessionUsageArchive(archive);
   const now = toDate(options.now);
   const next = clone(summary);
+  const periodContainer = next.periods && typeof next.periods === 'object' ? next.periods : next;
+  for (const periodName of PERIODS) {
+    const period = periodContainer?.[periodName];
+    if (period && typeof period === 'object' && Object.prototype.hasOwnProperty.call(period, 'sessions')) {
+      period.sessions = filterReasonixSyntheticSessions(period.sessions);
+    }
+  }
   const targetPeriods = new Map();
   const targetFor = (periodName) => {
     if (!targetPeriods.has(periodName)) targetPeriods.set(periodName, targetPeriod(next, periodName));
