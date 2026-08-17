@@ -561,5 +561,4 @@ jobs:
             artifacts/*.dmg
             artifacts/*.zip
             artifacts/*.blockmap
-            artifacts/Token-Monitor-Hub-Compose-*.zip
           body_path: release-body.md
