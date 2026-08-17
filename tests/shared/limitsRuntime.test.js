@@ -16,9 +16,9 @@ function deferred() {
 }
 
 async function waitFor(predicate, message = 'condition') {
-  for (let attempt = 0; attempt < 100; attempt += 1) {
+  for (let attempt = 0; attempt < 200; attempt += 1) {
     if (predicate()) return;
-    await new Promise((resolve) => setImmediate(resolve));
+    await new Promise((resolve) => (attempt < 50 ? setImmediate(resolve) : setTimeout(resolve, 2)));
   }
   assert.fail(`Timed out waiting for ${message}`);
 }

@@ -340,6 +340,12 @@ state.fixedPeriodHistoryPromise = null;
 state.fixedPeriodHistoryCoordinator = null;
 state.fixedPeriodSnapshot = null;
 state.periodMenuOpen = false;
+state.customRange = null;
+state.customRangeDraft = null;
+state.customRangeOpen = false;
+state.customRangeBusy = false;
+state.customRangeError = '';
+state.customRangeMonth = null;
 let directBreakdownOverride = null;
 state.projectSettingsExpanded = false;
 state.homeActivitySettingsExpanded = false;
@@ -357,7 +363,22 @@ Object.assign(els, {
   fixedPeriodMessage: document.getElementById('fixedPeriodMessage'),
   monthPeriodMenu: document.getElementById('monthPeriodMenu'),
   monthPeriodTab: document.getElementById('monthPeriodTab'),
-  periodMonthModeInput: document.getElementById('periodMonthModeInput')
+  periodMonthModeInput: document.getElementById('periodMonthModeInput'),
+  customRangeButton: document.getElementById('customRangeButton'),
+  customRangePopover: document.getElementById('customRangePopover'),
+  customRangeClose: document.getElementById('customRangeClose'),
+  customRangePrevMonth: document.getElementById('customRangePrevMonth'),
+  customRangeNextMonth: document.getElementById('customRangeNextMonth'),
+  customRangeMonthLabel: document.getElementById('customRangeMonthLabel'),
+  customRangeWeekdays: document.getElementById('customRangeWeekdays'),
+  customRangeGrid: document.getElementById('customRangeGrid'),
+  customRangeStartDate: document.getElementById('customRangeStartDate'),
+  customRangeEndDate: document.getElementById('customRangeEndDate'),
+  customRangeStartHour: document.getElementById('customRangeStartHour'),
+  customRangeEndHour: document.getElementById('customRangeEndHour'),
+  customRangeError: document.getElementById('customRangeError'),
+  customRangeApply: document.getElementById('customRangeApply'),
+  customRangeClear: document.getElementById('customRangeClear')
 });
 Object.assign(els, {
   appTitleMark: document.querySelector('.app-title-mark'),
@@ -7266,12 +7287,315 @@ async function refreshStatusViewManually() {
   }
 }
 
+const customRangePickerApi = window.TokenMonitorCustomRangePicker || (typeof require === 'function' ? require('./customRangePicker') : null);
+
+function ensureHourSelect(selectEl) {
+  if (!selectEl || selectEl.options.length > 0 || !customRangePickerApi) return;
+  for (const option of customRangePickerApi.hourOptions()) {
+    const node = document.createElement('option');
+    node.value = String(option.value);
+    node.textContent = option.label;
+    selectEl.append(node);
+  }
+}
+
+function currentCustomRangeDraft() {
+  if (state.customRangeDraft) return customRangePickerApi.normalizeDraft(state.customRangeDraft);
+  if (state.customRange) return customRangePickerApi.normalizeDraft(state.customRange);
+  return customRangePickerApi.normalizeDraft({
+    startDate: customRangePickerApi.localDayKey(),
+    endDate: customRangePickerApi.localDayKey(),
+    startHour: 0,
+    endHour: new Date().getHours()
+  });
+}
+
+function setCustomRangeError(message) {
+  state.customRangeError = message || '';
+  if (!els.customRangeError) return;
+  els.customRangeError.textContent = state.customRangeError;
+  els.customRangeError.classList.toggle('hidden', !state.customRangeError);
+}
+
+function syncCustomRangeFields() {
+  if (!customRangePickerApi || !els.customRangeStartDate) return;
+  ensureHourSelect(els.customRangeStartHour);
+  ensureHourSelect(els.customRangeEndHour);
+  const draft = currentCustomRangeDraft();
+  state.customRangeDraft = draft;
+  els.customRangeStartDate.value = draft.startDate;
+  els.customRangeEndDate.value = draft.endDate;
+  els.customRangeStartHour.value = String(draft.startHour);
+  els.customRangeEndHour.value = String(draft.endHour);
+  if (!state.customRangeMonth) {
+    const [y, m] = draft.startDate.split('-').map(Number);
+    state.customRangeMonth = { year: y, monthIndex: m - 1 };
+  }
+  const locale = currentLocale();
+  if (els.customRangeWeekdays) {
+    const labels = customRangePickerApi.weekdayLabels(locale);
+    const frag = document.createDocumentFragment();
+    for (const label of labels) {
+      const span = document.createElement('span');
+      span.textContent = label;
+      frag.append(span);
+    }
+    els.customRangeWeekdays.replaceChildren(frag);
+  }
+  if (els.customRangeMonthLabel) {
+    els.customRangeMonthLabel.textContent = customRangePickerApi.monthLabel(
+      state.customRangeMonth.year,
+      state.customRangeMonth.monthIndex,
+      locale
+    );
+  }
+  if (els.customRangeGrid) {
+    const cells = customRangePickerApi.buildMonthCells(
+      state.customRangeMonth.year,
+      state.customRangeMonth.monthIndex,
+      draft
+    );
+    const frag = document.createDocumentFragment();
+    for (const cell of cells) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'custom-range-day';
+      btn.textContent = String(cell.dayNumber);
+      btn.dataset.date = cell.date;
+      if (!cell.inMonth) btn.classList.add('outside');
+      if (cell.inRange) btn.classList.add('in-range');
+      if (cell.isEndpoint) btn.classList.add('range-endpoint');
+      btn.addEventListener('click', (event) => {
+        event.preventDefault();
+        state.customRangeDraft = customRangePickerApi.applyCalendarDayClick(state.customRangeDraft || draft, cell.date);
+        setCustomRangeError(state.customRangeDraft.ok ? '' : t('period.custom.invalid'));
+        syncCustomRangeFields();
+      });
+      frag.append(btn);
+    }
+    els.customRangeGrid.replaceChildren(frag);
+  }
+  if (els.customRangeApply) {
+    els.customRangeApply.disabled = !draft.ok || state.customRangeBusy;
+  }
+}
+
+function setCustomRangeOpen(open) {
+  state.customRangeOpen = Boolean(open);
+  els.shell?.classList.toggle('custom-range-open', state.customRangeOpen);
+  if (els.customRangePopover) {
+    els.customRangePopover.hidden = !state.customRangeOpen;
+    els.customRangePopover.classList.toggle('hidden', !state.customRangeOpen);
+    els.customRangePopover.setAttribute('aria-hidden', String(!state.customRangeOpen));
+  }
+  els.customRangeButton?.setAttribute('aria-expanded', String(state.customRangeOpen));
+  if (state.customRangeOpen) {
+    if (state.customRange) {
+      state.customRangeDraft = { ...state.customRange, ok: true, _pickPhase: 'done' };
+      const [y, m] = state.customRange.startDate.split('-').map(Number);
+      state.customRangeMonth = { year: y, monthIndex: m - 1 };
+    }
+    setCustomRangeError('');
+    syncCustomRangeFields();
+  }
+}
+
+function syncCustomRangeButton() {
+  const active = state.period === 'custom' && Boolean(state.customRange);
+  els.customRangeButton?.classList.toggle('active', active);
+  if (!els.customRangeButton) return;
+  if (active && state.customRange) {
+    const label = customRangePickerApi.formatRangeLabel(state.customRange, { compact: true });
+    els.customRangeButton.title = label || t('period.custom.button');
+    els.customRangeButton.setAttribute('aria-label', label || t('period.custom.button'));
+  } else {
+    els.customRangeButton.title = t('period.custom.button');
+    els.customRangeButton.setAttribute('aria-label', t('period.custom.button'));
+  }
+}
+
+function readCustomRangeDraftFromFields() {
+  return customRangePickerApi.normalizeDraft({
+    startDate: els.customRangeStartDate?.value,
+    endDate: els.customRangeEndDate?.value,
+    startHour: els.customRangeStartHour?.value,
+    endHour: els.customRangeEndHour?.value,
+    _pickPhase: state.customRangeDraft?._pickPhase
+  });
+}
+
+async function applyCustomRange(rangeInput) {
+  if (!window.tokenMonitor.getCustomRangeStats) {
+    setCustomRangeError(t('period.custom.unavailable'));
+    return false;
+  }
+  const draft = customRangePickerApi.normalizeDraft(rangeInput || readCustomRangeDraftFromFields());
+  if (!draft.ok) {
+    setCustomRangeError(t('period.custom.invalid'));
+    syncCustomRangeFields();
+    return false;
+  }
+  state.customRangeBusy = true;
+  state.customRangeError = '';
+  syncCustomRangeFields();
+  try {
+    const result = await window.tokenMonitor.getCustomRangeStats({
+      startDate: draft.startDate,
+      endDate: draft.endDate,
+      startHour: draft.startHour,
+      endHour: draft.endHour
+    });
+    if (!result?.ok || !result.period) {
+      setCustomRangeError(result?.message || t('period.custom.failed'));
+      return false;
+    }
+    state.customRange = {
+      startDate: result.range.startDate,
+      endDate: result.range.endDate,
+      startHour: result.range.startHour,
+      endHour: result.range.endHour
+    };
+    state.customRangeDraft = { ...state.customRange, ok: true, _pickPhase: 'done' };
+    if (state.stats) {
+      const existingDevices = Array.isArray(state.stats.devices) ? state.stats.devices : [];
+      const customDevices = Array.isArray(result.devices) ? result.devices : [];
+      const customById = new Map(customDevices.map((device) => [String(device?.deviceId || ''), device]));
+      const devices = existingDevices.map((device) => {
+        const custom = customById.get(String(device?.deviceId || ''));
+        if (!custom) return device;
+        return { ...device, periods: { ...(device.periods || {}), custom: custom.periods?.custom || {} } };
+      });
+      for (const custom of customDevices) {
+        if (!devices.some((device) => String(device?.deviceId || '') === String(custom?.deviceId || ''))) devices.push(custom);
+      }
+      state.stats = {
+        ...state.stats,
+        devices,
+        periods: {
+          ...(state.stats.periods || {}),
+          custom: result.period
+        }
+      };
+    } else {
+      state.stats = {
+        periods: { custom: result.period },
+        devices: Array.isArray(result.devices) ? result.devices : []
+      };
+    }
+    state.period = 'custom';
+    publishViewState();
+    syncPeriodTabs();
+    syncCustomRangeButton();
+    state.rowSignature = '';
+    state.periodMotionActive = true;
+    render();
+    state.periodMotionActive = false;
+    setCustomRangeOpen(false);
+    return true;
+  } catch (error) {
+    setCustomRangeError(error?.message || t('period.custom.failed'));
+    return false;
+  } finally {
+    state.customRangeBusy = false;
+    syncCustomRangeFields();
+    syncCustomRangeButton();
+  }
+}
+
+function clearCustomRangeSelection() {
+  state.customRange = null;
+  state.customRangeDraft = customRangePickerApi.normalizeDraft({
+    startDate: customRangePickerApi.localDayKey(),
+    endDate: customRangePickerApi.localDayKey(),
+    startHour: 0,
+    endHour: new Date().getHours()
+  });
+  state.customRangeError = '';
+  if (state.period === 'custom') {
+    state.period = 'today';
+    publishViewState();
+  }
+  if (state.stats?.periods?.custom) {
+    const periods = { ...state.stats.periods };
+    delete periods.custom;
+    state.stats = { ...state.stats, periods };
+  }
+  syncPeriodTabs();
+  syncCustomRangeButton();
+  syncCustomRangeFields();
+  state.rowSignature = '';
+  render();
+}
+
+function setupCustomRangeUI() {
+  if (!els.customRangeButton || !customRangePickerApi) return;
+  ensureHourSelect(els.customRangeStartHour);
+  ensureHourSelect(els.customRangeEndHour);
+  els.customRangeButton.addEventListener('click', (event) => {
+    event.stopPropagation();
+    setCustomRangeOpen(!state.customRangeOpen);
+  });
+  els.customRangeClose?.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setCustomRangeOpen(false);
+  });
+  els.customRangePopover?.addEventListener('pointerdown', (event) => {
+    event.stopPropagation();
+  });
+  els.customRangePrevMonth?.addEventListener('click', () => {
+    const base = state.customRangeMonth || { year: new Date().getFullYear(), monthIndex: new Date().getMonth() };
+    state.customRangeMonth = customRangePickerApi.shiftMonth(base.year, base.monthIndex, -1);
+    syncCustomRangeFields();
+  });
+  els.customRangeNextMonth?.addEventListener('click', () => {
+    const base = state.customRangeMonth || { year: new Date().getFullYear(), monthIndex: new Date().getMonth() };
+    state.customRangeMonth = customRangePickerApi.shiftMonth(base.year, base.monthIndex, 1);
+    syncCustomRangeFields();
+  });
+  const onFieldChange = () => {
+    state.customRangeDraft = readCustomRangeDraftFromFields();
+    if (state.customRangeDraft.startDate) {
+      const [y, m] = state.customRangeDraft.startDate.split('-').map(Number);
+      state.customRangeMonth = { year: y, monthIndex: m - 1 };
+    }
+    setCustomRangeError(state.customRangeDraft.ok ? '' : t('period.custom.invalid'));
+    syncCustomRangeFields();
+  };
+  els.customRangeStartDate?.addEventListener('change', onFieldChange);
+  els.customRangeEndDate?.addEventListener('change', onFieldChange);
+  els.customRangeStartHour?.addEventListener('change', onFieldChange);
+  els.customRangeEndHour?.addEventListener('change', onFieldChange);
+  els.customRangeApply?.addEventListener('click', async () => {
+    await applyCustomRange();
+  });
+  els.customRangeClear?.addEventListener('click', () => {
+    clearCustomRangeSelection();
+    setCustomRangeOpen(false);
+  });
+  document.addEventListener('pointerdown', (event) => {
+    if (!state.customRangeOpen) return;
+    const target = event.target;
+    if (!(target instanceof Node)) return;
+    if (els.customRangePopover?.contains(target) || els.customRangeButton?.contains(target)) return;
+    setCustomRangeOpen(false);
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && state.customRangeOpen) {
+      event.preventDefault();
+      setCustomRangeOpen(false);
+    }
+  });
+  setCustomRangeOpen(false);
+  syncCustomRangeButton();
+}
+
 function publishViewState() {
   window.tokenMonitor.setViewState?.({ period: state.period, breakdown: state.breakdown });
 }
 
 function setPeriod(period) {
-  const next = normalizeInitialViewValue(period, viewPeriodValues, state.period);
+  const next = period === 'custom' ? 'custom' : normalizeInitialViewValue(period, viewPeriodValues, state.period);
   if (next === state.period) {
     if (fixedPeriodRangesApi.isDerived(next) && state.fixedPeriodHistoryFailed) {
       void warmFixedPeriodHistory({ retryFailed: true, renderOnComplete: true });
@@ -7280,10 +7604,14 @@ function setPeriod(period) {
     return false;
   }
   state.period = next;
+  if (next !== 'custom') {
+    state.customRangeError = '';
+  }
   if (fixedPeriodRangesApi.isDerived(next) && state.fixedPeriodHistoryFailed) {
     void warmFixedPeriodHistory({ retryFailed: true, renderOnComplete: true });
   }
   publishViewState();
+  syncCustomRangeButton();
   return true;
 }
 
@@ -8299,11 +8627,14 @@ async function refreshHubBuildStatus() {
 
 function syncPeriodTabs() {
   const tabs = Array.from(document.querySelectorAll('.tab'));
-  const activeSlot = fixedPeriodRangesApi.slotForSelection(state.period);
-  const activeIndex = Math.max(0, tabs.findIndex((tab) => tab.dataset.periodSlot === activeSlot));
-  document.querySelector('.tabs')?.style.setProperty('--period-index', String(activeIndex));
+  const isCustom = state.period === 'custom' && Boolean(state.customRange);
+  const activeSlot = isCustom ? '' : fixedPeriodRangesApi.slotForSelection(state.period);
+  const activeIndex = tabs.findIndex((tab) => tab.dataset.periodSlot === activeSlot);
+  if (activeIndex >= 0) {
+    document.querySelector('.tabs')?.style.setProperty('--period-index', String(activeIndex));
+  }
   for (const tab of tabs) {
-    const active = tab.dataset.periodSlot === activeSlot;
+    const active = Boolean(activeSlot && tab.dataset.periodSlot === activeSlot);
     tab.classList.toggle('active', active);
     tab.setAttribute('aria-pressed', String(active));
   }
@@ -8315,6 +8646,7 @@ function syncPeriodTabs() {
     els.monthPeriodTab.dataset.period = mode;
   }
   syncPeriodMenu();
+  syncCustomRangeButton();
 }
 
 function applyInitialBreakdownPreference() {
@@ -16049,4 +16381,5 @@ initSettingsAnimationWrappers();
 setupSettingsSections();
 setupCursorAccountUI();
 setupCustomPricingUI();
+setupCustomRangeUI();
 init();
