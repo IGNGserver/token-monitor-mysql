@@ -858,7 +858,7 @@ function carryDeviceHistory(previous, incoming) {
 // History is durable device data, not live presence. Keep a stored device's
 // contributions in the aggregate while it is offline; explicit device deletion
 // is the boundary that removes them. Staleness still applies independently to
-// live limits and expired today/month period snapshots.
+// live limits, while expired today/month snapshots leave both live views.
 function aggregateHistory(devices) {
   const histories = [];
   for (const record of devices) {
@@ -950,6 +950,15 @@ function aggregateDevices(devices, staleAfterMs, nowMs = Date.now()) {
     const ageMs = now - Date.parse(normalized.receivedAt || normalized.updatedAt || 0);
     const deviceStaleAfterMs = staleAfterMsForSyncUpload(normalized.syncUploadIntervalMs, staleAfterMs);
     const stale = Number.isFinite(ageMs) && deviceStaleAfterMs > 0 ? ageMs > deviceStaleAfterMs : false;
+    // Keep the device snapshot aligned with the same wall-clock expiry used by
+    // the aggregate. A stale device may still be valid for the current day;
+    // only a window that has actually ended is cleared from its device view.
+    const periods = {};
+    for (const periodName of PERIODS) {
+      const expired = isPeriodExpired(normalized, periodName, now);
+      periods[periodName] = expired ? emptyPeriod() : normalized.periods[periodName];
+      if (!expired) addPeriodInto(aggregate.periods[periodName], normalized.periods[periodName]);
+    }
     aggregate.devices.push({
       deviceId: normalized.deviceId,
       hostname: normalized.hostname,
@@ -972,7 +981,7 @@ function aggregateDevices(devices, staleAfterMs, nowMs = Date.now()) {
       ...(hasOwn(normalized, 'periodProjectsOmitted') ? { periodProjectsOmitted: normalized.periodProjectsOmitted } : {}),
       ...(hasOwn(normalized, 'syncUploadIntervalMs') ? { syncUploadIntervalMs: normalized.syncUploadIntervalMs } : {}),
       ...(hasOwn(normalized, 'periodWindows') ? { periodWindows: normalized.periodWindows } : {}),
-      periods: normalized.periods,
+      periods,
       limits: normalized.limits
     });
     if (
@@ -987,10 +996,6 @@ function aggregateDevices(devices, staleAfterMs, nowMs = Date.now()) {
     for (const [periodName, count] of Object.entries(normalized.periodProjectsOmitted || {})) {
       if (isPeriodExpired(normalized, periodName, now)) continue;
       periodProjectsOmitted[periodName] = (periodProjectsOmitted[periodName] || 0) + count;
-    }
-    for (const periodName of PERIODS) {
-      if (isPeriodExpired(normalized, periodName, now)) continue;
-      addPeriodInto(aggregate.periods[periodName], normalizePeriod(normalized.periods[periodName]));
     }
   }
   aggregate.limits = aggregateLimits(aggregate.devices, staleAfterMs, now);

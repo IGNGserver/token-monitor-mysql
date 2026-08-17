@@ -1053,6 +1053,8 @@ test('aggregateDevices drops today usage once a device today window has ended', 
   const aggregate = aggregateDevices([staleSnapshotDevice()], 10 * 60 * 1000, Date.parse('2026-06-26T05:00:00.000Z'));
   assert.equal(aggregate.periods.today.totalTokens, 0);
   assert.equal(aggregate.periods.today.clients.codex, undefined);
+  assert.equal(aggregate.devices[0].periods.today.totalTokens, 0);
+  assert.equal(aggregate.devices[0].periods.month.totalTokens, 4029210);
   assert.deepEqual(aggregate.devices[0].periodWindows, staleSnapshotDevice().periodWindows);
 });
 
@@ -1077,7 +1079,10 @@ test('aggregateDevices drops month once the device month window has ended', () =
   });
   const aggregate = aggregateDevices([device], 10 * 60 * 1000, Date.parse('2026-06-15T05:00:00.000Z'));
   assert.equal(aggregate.periods.month.totalTokens, 0);
+  assert.equal(aggregate.devices[0].periods.today.totalTokens, 0);
+  assert.equal(aggregate.devices[0].periods.month.totalTokens, 0);
   assert.equal(aggregate.periods.allTime.totalTokens, 4029210);
+  assert.equal(aggregate.devices[0].periods.allTime.totalTokens, 4029210);
 });
 
 test('aggregateDevices keeps today for an offline-but-same-day device (window not stale flag)', () => {
@@ -1092,6 +1097,7 @@ test('aggregateDevices keeps today for an offline-but-same-day device (window no
   };
   const aggregate = aggregateDevices([device], 10 * 60 * 1000, now);
   assert.equal(aggregate.periods.today.totalTokens, 500);
+  assert.equal(aggregate.devices[0].periods.today.totalTokens, 500);
 });
 
 test('aggregateDevices keeps today across UTC midnight when device local day is unchanged', () => {

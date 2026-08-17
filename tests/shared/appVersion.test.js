@@ -14,13 +14,13 @@ test('shared app version matches the root package version', () => {
   const { appVersion } = require('../../src/shared/appVersion');
   assert.equal(appVersion(), rootPackage.version);
   assert.deepEqual(parseProjectVersion(rootPackage.version), {
-    version: '0.37.23-rev.1',
+    version: '0.37.23-rev.3',
     upstreamVersion: '0.37.23',
     channel: 'rev',
     major: 0,
     minor: 37,
     patch: 23,
-    revision: 1
+    revision: 3
   });
 });
 
