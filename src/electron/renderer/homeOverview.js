@@ -3,9 +3,6 @@
   if (root) root.TokenMonitorHomeOverview = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : null, function createHomeOverviewApi() {
-  const balanceDisplay = (typeof require === 'function')
-    ? require('../../shared/limitBalanceDisplay')
-    : (typeof window !== 'undefined' ? window.TokenMonitorLimitBalanceDisplay : null);
   const windowPriority = new Map([
     ['session', 0],
     ['weekly', 1],
@@ -42,6 +39,22 @@
     return remaining == null ? null : 100 - remaining;
   }
 
+  function balanceWindow(balance) {
+    if (!balance) return null;
+    const amount = Math.max(0, Number(balance?.amount || 0));
+    if (!Number.isFinite(amount)) return null;
+    const spend = Math.max(0, Number(balance?.monthSpend || 0));
+    const total = amount + spend;
+    const percent = total > 0 ? (amount / total) * 100 : 100;
+    return {
+      kind: 'balance',
+      label: '',
+      remainingPercent: clampPercent(percent),
+      amount,
+      currency: balance?.currency || ''
+    };
+  }
+
   function mimoPlanWindow(balance) {
     if (!balance || balance.planStatus === 'expired') return null;
     const used = finiteNumber(balance.planUsed);
@@ -59,25 +72,23 @@
     };
   }
 
-  // Balance quotas arrive from the collectors as `credits` windows, so the only
-  // thing left to synthesize here is MiMo's Token Plan placeholder.
-  function isPlanWindow(window) {
-    return String(window?.kind || '').trim().toLowerCase() === 'billing'
-      && !balanceDisplay.isCreditsWindow(window);
-  }
-
   function accountWindows(account) {
     const providerId = String(account?.providerId || '').trim().toLowerCase();
     const windows = Array.isArray(account?.windows) ? [...account.windows] : [];
     if (providerId === 'mimo' && account?.balance?.planStatus === 'expired') {
-      const withoutStalePlan = windows.filter((window) => !isPlanWindow(window));
-      // Keep the plan ahead of the balance, matching the live-plan ordering.
-      withoutStalePlan.unshift({ kind: 'billing', label: 'Token Plan', showMeter: false, planStatus: 'expired' });
+      const withoutStalePlan = windows.filter((window) => String(window?.kind || '').trim().toLowerCase() !== 'billing');
+      withoutStalePlan.push({ kind: 'billing', label: 'Token Plan', showMeter: false, planStatus: 'expired' });
+      const balance = balanceWindow(account.balance);
+      if (balance) withoutStalePlan.push(balance);
       return withoutStalePlan;
     }
-    if (providerId === 'mimo' && !windows.some(isPlanWindow)) {
+    if (providerId === 'mimo' && !windows.some((window) => String(window?.kind || '').trim().toLowerCase() === 'billing')) {
       const plan = mimoPlanWindow(account.balance);
-      if (plan) windows.unshift(plan);
+      if (plan) windows.push(plan);
+    }
+    if (providerId === 'deepseek' || providerId === 'mimo') {
+      const balance = balanceWindow(account.balance);
+      if (balance) windows.push(balance);
     }
     return windows;
   }
@@ -85,38 +96,21 @@
   function homeLimitAccounts(accounts, limit = 3, { sort = 'remaining' } = {}) {
     return (accounts || [])
       .map((account, index) => {
-        const providerId = String(account?.providerId || '').trim().toLowerCase();
         const windows = accountWindows(account)
-          .map((window, windowIndex) => {
-            const credits = balanceDisplay.isCreditsWindow(window);
-            return {
-              kind: String(window.kind || '').trim().toLowerCase(),
-              metric: window.metric || '',
-              label: window.label || window.kind || '',
-              // Credits windows carry money; their meter percentage is derived
-              // here rather than read off the wire.
-              remainingPercent: credits
-                ? balanceDisplay.creditsMeterPercent(account, window)
-                : remainingPercent(window),
-              remaining: credits
-                ? balanceDisplay.creditsAmount(account, window)
-                : finiteNumber(window.remaining),
-              currency: credits ? balanceDisplay.creditsCurrency(account, window) : '',
-              resetsAt: window.resetsAt,
-              resetDescription: window.resetDescription || '',
-              value: window.value || '',
-              planStatus: window.planStatus || '',
-              showMeter: window.showMeter !== false,
-              detail: window.detail || '',
-              index: windowIndex
-            };
-          })
-          .filter((window) => window.remainingPercent != null
-            || window.planStatus === 'expired'
-            || window.value
-            || (window.metric === 'credits' && (window.remaining != null || window.detail)))
+          .map((window, windowIndex) => ({
+            kind: String(window.kind || '').trim().toLowerCase(),
+            label: window.label || window.kind || '',
+            remainingPercent: remainingPercent(window),
+            resetsAt: window.resetsAt,
+            resetDescription: window.resetDescription || '',
+            value: window.value || '',
+            planStatus: window.planStatus || '',
+            amount: finiteNumber(window.amount),
+            currency: window.currency || '',
+            index: windowIndex
+          }))
+          .filter((window) => window.remainingPercent != null || window.planStatus === 'expired' || window.value)
           .sort((a, b) => {
-            if (providerId === 'antigravity') return a.index - b.index;
             const aPriority = windowPriority.get(a.kind) ?? 10;
             const bPriority = windowPriority.get(b.kind) ?? 10;
             return aPriority - bPriority || a.index - b.index;
@@ -143,9 +137,7 @@
   }
 
   function homeModelRows(rows, totalTokens, limit = 5) {
-    const visible = (rows || [])
-      .filter((row) => Math.max(0, Number(row?.value || 0)) > 0)
-      .slice(0, Math.max(0, Number(limit) || 0));
+    const visible = (rows || []).slice(0, Math.max(0, Number(limit) || 0));
     const suppliedTotal = finiteNumber(totalTokens);
     const total = suppliedTotal != null && suppliedTotal > 0
       ? suppliedTotal
@@ -261,13 +253,6 @@
     return { peak, dates };
   }
 
-  function longRangePeakDayTokens({ historySummary, daily } = {}) {
-    const summaryPeak = finiteNumber(historySummary?.peakDayTokens);
-    const dailyPeak = (Array.isArray(daily) ? daily : [])
-      .reduce((peak, row) => Math.max(peak, finiteNumber(row?.tokens) || 0), 0);
-    return Math.max(0, summaryPeak || 0, dailyPeak);
-  }
-
   function homeActivityHeatmapLayout() {
     return { cell: 9, gap: 3, radius: 2 };
   }
@@ -305,41 +290,6 @@
     }
     rows[idx] = Object.assign({}, rows[idx], { tokens, cost });
     return rows;
-  }
-
-  // The standalone Trends page keeps active time and peak aligned with the selected
-  // period. Home uses longRangePeakDayTokens instead, matching its long-range chart;
-  // active days and current streak remain the retained-history values users know.
-  function activityStatsForPeriod({ period, fixedSnapshot, daily, historySummary, todayKey } = {}) {
-    const history = historySummary && typeof historySummary === 'object' ? historySummary : {};
-    if (fixedSnapshot?.status === 'ready') {
-      return {
-        activeDays: finiteNumber(history.activeDays) || 0,
-        currentStreak: finiteNumber(history.currentStreak) || 0,
-        activeTimeMs: finiteNumber(fixedSnapshot.summary?.activeTimeMs) || 0,
-        peakDayTokens: finiteNumber(fixedSnapshot.summary?.peakDayTokens) || 0
-      };
-    }
-    if (period === 'allTime') {
-      return {
-        activeDays: finiteNumber(history.activeDays) || 0,
-        currentStreak: finiteNumber(history.currentStreak) || 0,
-        activeTimeMs: finiteNumber(history.activeTimeMs) || 0,
-        peakDayTokens: finiteNumber(history.peakDayTokens) || 0
-      };
-    }
-    const day = String(todayKey || '').slice(0, 10);
-    const month = day.slice(0, 7);
-    const selected = (Array.isArray(daily) ? daily : []).filter((row) => {
-      const key = String(row?.date || '').slice(0, 10);
-      return period === 'today' ? key === day : key.slice(0, 7) === month;
-    });
-    return {
-      activeDays: finiteNumber(history.activeDays) || 0,
-      currentStreak: finiteNumber(history.currentStreak) || 0,
-      activeTimeMs: selected.reduce((sum, row) => sum + (finiteNumber(row?.activeTimeMs) || 0), 0),
-      peakDayTokens: selected.reduce((peak, row) => Math.max(peak, finiteNumber(row?.tokens) || 0), 0)
-    };
   }
 
   // Stable signature of the preview's daily tail. Two previews with the same key
@@ -449,11 +399,9 @@
     homeLimitAccounts,
     homeLimitAccountsForProviders,
     homeModelRows,
-    longRangePeakDayTokens,
     homeToolRows,
     homeDeviceRows,
     homeTrendSummary,
-    activityStatsForPeriod,
     pickHomeHistory,
     patchDailyToday,
     historyPreviewKey,

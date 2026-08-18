@@ -4,9 +4,9 @@ const fs = require('node:fs');
 const crypto = require('node:crypto');
 const os = require('node:os');
 const path = require('node:path');
-const { app, BrowserWindow, clipboard, dialog, globalShortcut, ipcMain, nativeImage, nativeTheme, net, Notification, screen, session, shell } = require('electron');
+const { app, BrowserWindow, clipboard, dialog, globalShortcut, ipcMain, nativeImage, Notification, screen, session, shell } = require('electron');
 const { autoUpdater } = require('electron-updater');
-const { defaultDeviceId, generateHubSecret, lanIpv4Addresses, loadDotEnv, pidFilePath, readJson, sharedDataDir, normalizeHubUrl } = require('../shared/config');
+const { defaultDeviceId, generateHubSecret, lanIpv4Addresses, loadDotEnv, pidFilePath, sharedDataDir, normalizeHubUrl } = require('../shared/config');
 const {
   CredentialStore,
   credentialSettingsForRenderer,
@@ -18,77 +18,21 @@ const {
 } = require('../shared/credentialStore');
 const { installSafeStdout } = require('../shared/safeStdio');
 const { appVersion } = require('../shared/appVersion');
-const { macWidgetRuntimeSupport } = require('../shared/macSystemRequirements');
 const { exportFileSet, exportSignature, EXPORT_FILENAMES } = require('../shared/exporter');
 const { createDefaultTrayLayout, normalizeTrayLayout } = require('../shared/trayLayout');
-const fontSettingsApi = require('../shared/fontSettings');
 const motionPreferenceApi = require('./motionPreference');
-const { createClaudeWebFetch } = require('./claudeWebFetch');
-const { createElectronLimitsFetch } = require('./limitsFetch');
-const { probeHubBuild } = require('./hubBuildStatus');
-const {
-  expandedBoundsForCollapse,
-  normalWindowBounds,
-  persistWindowState,
-  rebuildWindowBounds,
-  restoreWindowMaximized,
-  restoreWindowMaximizedForReveal,
-  setWindowMaximizable,
-  shouldPersistWindowBounds,
-  shouldTrackWindowMaximized,
-  suspendWindowMaximized
-} = require('./windowState');
 
 // Install EPIPE suppression before anything that might log. Without this,
 // a closed parent pipe turns the next log call into an unhandled 'error'
 // event and Electron pops a "JavaScript error in the main process" dialog.
 installSafeStdout();
-const electronClaudeWebFetch = createClaudeWebFetch(net);
-
-function electronLimitsFetch() {
-  return createElectronLimitsFetch({ net, env: process.env });
-}
-
-function electronProviderDeps(deps = {}) {
-  return { ...deps, fetch: electronLimitsFetch() };
-}
-
-const OPENCODE_API_PROBE_TIMEOUT_MS = 15_000;
-
-function opencodeAmbientKeyActive(profiles) {
-  const ambientKey = opencodeGoApi.readGoApiKey(process.env);
-  if (!ambientKey) return false;
-  const ambientIdentity = opencodeGoApi.goApiIdentity(ambientKey);
-  return !opencodeProfiles.ambientKeyClaimed(profiles, ambientKey, ambientIdentity);
-}
-
-function refreshOpencodeAmbientOwnership(wasActive) {
-  if (opencodeAmbientKeyActive(settings?.opencodeProfiles || {}) === wasActive) return;
-  void queueLimitInvalidation({ provider: 'opencode' }, 'ambient-ownership', { clear: true });
-}
-
-async function probeOpenCodeApiKey(apiKey) {
-  try {
-    return await opencodeGoApi.fetchGoApi(apiKey, {
-      fetch: electronLimitsFetch(),
-      signal: AbortSignal.timeout(OPENCODE_API_PROBE_TIMEOUT_MS)
-    });
-  } catch (_) {
-    return { status: 'unavailable', windows: [] };
-  }
-}
 const { DEFAULT_CLIENTS, KNOWN_CLIENTS, clientsCsvForSetting, applyNewDefaultClientMigration } = require('../shared/clientTracking');
-const { clientDiagnosticRoots, collectCustomRangeOnce, lookupModelPricing, normalizeHistoryIntervalMs, visibleDiagnosticRoots } = require('../shared/collector');
-const { deviceRecordFromAnchor } = require('../shared/anchorSeed');
-const { sendWhenRendererReady } = require('./deferredWindowSend');
+const { collectCustomRangeOnce, lookupModelPricing, normalizeHistoryIntervalMs } = require('../shared/collector');
 const { createDeviceRuntime } = require('../shared/deviceRuntime');
-const { createDiagnosticJournal } = require('../shared/diagnosticJournal');
-const { createDiagnosticReportGenerator } = require('./diagnostics');
-const { createDiagnosticSnapshotBuilder, diagnosticStreamDetailCode, selectLocalDeviceRecord } = require('./diagnosticSnapshot');
 const { customPricingPath } = require('../shared/tokscaleConfig');
 const { applyCustomPricing, normalizeCustomPricingSetting } = require('../shared/tokscaleCustomPricing');
 const { createHub } = require('../hub/server');
-const { claudeWebCookie, deepseekToken, fetchClaudeLimits, normalizeClaudeWebCookieInput, normalizeLimitsRefreshMode, normalizeLimitsRefreshMs, parseBoolean, parseLimitProviders, runCodexLogin, minimaxToken, copilotToken, zaiToken, zaiRegion, zaiTeamToken, volcengineCredentials, qoderCookie, commandcodeCookie, kimiToken, kimiWebToken, ollamaSessionCookie } = require('../shared/limitCollector');
+const { deepseekToken, normalizeLimitsRefreshMs, parseBoolean, parseLimitProviders, runCodexLogin, minimaxToken, copilotToken, zaiToken, zaiRegion, zaiTeamToken, volcengineCredentials, qoderCookie, kimiToken, kimiWebToken, ollamaSessionCookie } = require('../shared/limitCollector');
 const { fetchOllamaLimits, rememberOllamaValidation } = require('../shared/ollamaLimits');
 const { copilotLoginErrorMessage, isAllowedVerificationUrl, runCopilotDeviceFlowLogin } = require('../shared/copilotDeviceFlow');
 const {
@@ -136,30 +80,20 @@ const {
 } = require('../shared/tokscaleUpdater');
 const {
   appUpdateInstallSupport,
-  classifyAppUpdateError,
   checkLatestRelease,
   deriveAppUpdateAvailability,
   downloadedAppUpdateMatchesLatest,
   GITHUB_REPO,
-  installFailureErrorKind,
   mergeLatestReleaseMetadata,
-  providerUpdateCheckAvailability,
-  resolveAppUpdateCheckError,
   shouldDownloadAutomaticAppUpdate,
-  shouldSkipAppUpdateCheck,
-  updateInstallQuitPolicy
+  shouldSkipAppUpdateCheck
 } = require('../shared/appUpdater');
 const cursorAuth = require('../shared/cursorAuth');
 const cursorProbe = require('../shared/cursorProbe');
 const opencodeWeb = require('../shared/opencodeWeb');
-const opencodeGoApi = require('../shared/opencodeGoApi');
-const opencodeProfiles = require('../shared/opencodeProfiles');
 const openrouterLimits = require('../shared/openrouterLimits');
-const thirdPartyLimits = require('../shared/thirdPartyLimits');
-const subscriptionDisplay = require('../shared/subscriptionDisplay');
 const semver = require('semver');
 const { normalizeCurrency, resolveEffectiveRates, configureRates } = require('../shared/currency');
-const { normalizeCompactTokenUnits } = require('../shared/compactTokens');
 const { fetchRates, isCacheStale } = require('../shared/exchangeRates');
 const {
   applyArchivedClientUsage,
@@ -173,7 +107,6 @@ const {
   clearSessionUsageArchive,
   normalizeSessionUsageArchive,
   readSessionUsageArchive,
-  sessionUsageArchivePath,
   sessionUsageArchiveDate,
   writeSessionUsageArchive
 } = require('../shared/sessionUsageArchive');
@@ -187,30 +120,8 @@ const {
   fetchMimoLimits,
   normalizeMimoCookieHeader
 } = require('../shared/mimoLimits');
-const { deviceHistoryRevision, historyPreview, historyRevision } = require('../shared/history');
-const { completeHistorySource, resolveCompleteHistory, resolveCompleteHistoryWithDevices } = require('./historySource');
-const { fixedPeriodHistoryMeta } = require('./fixedPeriodHistory');
-const { readSessionDetailForPlatform } = require('../shared/sessionDetailResolver');
-const { createMacWidgetSnapshotController } = require('./macWidgetSnapshotController');
-const {
-  commitMacWidgetSnapshot,
-  discardMacWidgetSnapshot,
-  prepareMacWidgetSnapshotUpdate,
-  resolveMacWidgetSnapshotPath,
-  syncMacWidgetSnapshotDirectory
-} = require('./macWidgetBridge');
-const { macWidgetHistorySourceKey, resolveMacWidgetHistory } = require('./macWidgetHistory');
-const {
-  macWidgetHistoryCachePath,
-  readMacWidgetHistoryCache,
-  writeMacWidgetHistoryCache
-} = require('./macWidgetHistoryStore');
-const { parseMacWidgetDeepLink } = require('./macWidgetDeepLink');
-const { createMacWidgetLaunchServicesRecovery } = require('./macWidgetLaunchServicesRecovery');
-const { projectLimitStatsForDisplay } = require('./limitStatsPresentation');
-const { normalizeWidgetURLScheme } = require('../shared/macWidgetConfig');
-const { DEFAULT_WIDGET_KIND, requestMacWidgetReload, resetMacWidgetReloadThrottle } = require('./macWidgetReloader');
-const { WIDGET_DEMAND_MARKER, WIDGET_DEMAND_PROVISIONAL_MARKER, createMacWidgetDemandState } = require('./macWidgetDemand');
+const { historyPreview, historyRevision } = require('../shared/history');
+const { readSessionDetail } = require('../shared/sessionDetail');
 const { startDiscordRpc, stopDiscordRpc, updateDiscordRpc } = require('./discordRpc');
 const linuxAutostart = require('./linuxAutostart');
 const { codexAccountIdForProvider, localLiveCodexProvider } = require('./renderer/accountIdentity');
@@ -219,16 +130,12 @@ const {
   createTray,
   formatTrayText,
   isBarsTrayIconMode,
-  parseWindowsSystemUsesLightTheme,
   pickUsageTrayIconId,
   popoverBounds,
   reconcileCodexAccountSelection,
-  runTrayMenuAction,
   refreshTrayMenu,
   sortCodexAccountsForDisplay,
-  shouldUseTemplateTrayIcon,
-  trayShowsTitle,
-  watchSystemDarkUi
+  shouldUseTemplateTrayIcon
 } = require('./tray');
 const {
   macActivationPolicyMode,
@@ -239,16 +146,15 @@ const {
 } = require('./trayModeSettings');
 const { SERVICE_STATUS_PROVIDERS, createServiceStatusClient } = require('./serviceStatus');
 const { classifyStreamFailure } = require('./syncConnection');
-const { attachLocalNativeViews, attachLocalPresentationNativeViews, composeLocalSyncStats } = require('./syncDisplayStats');
+const { composeLocalSyncStats } = require('./syncDisplayStats');
 const { createSyncUploadScheduler, normalizeSyncUploadIntervalMs } = require('./syncUploadScheduler');
 const {
   classifySettingsChange,
-  diagnosticConfigurationFromSettings,
   envelopeFromSettings,
   limitsConfigFromSettings,
   usageConfigFromSettings
 } = require('./runtimeConfig');
-const { canRefreshUsageRuntime, drainPendingUsageClientRefreshes: drainPendingUsageClientRefreshQueue, runLimitInvalidation, runManualDeviceRefresh, settingsLimitInvalidationPlan } = require('./deviceRuntimeCoordinator');
+const { runManualDeviceRefresh } = require('./deviceRuntimeCoordinator');
 const { describeWindowBehavior, normalizeWindowBehaviorSettings } = require('./windowBehavior');
 const {
   normalizeWindowToggleShortcut,
@@ -276,11 +182,9 @@ const { applyWindowsChrome } = require('./windowsChrome');
 const { applyMacosNativeWindowButtons } = require('./macosWindowChrome');
 const { setMoveToActiveSpace } = require('./macosSpaceBehavior');
 const {
-  windowsElectronBackgroundMaterial,
-  WINDOWS_BACKDROP_ACCENT,
   normalizeWindowsBackdropMode,
+  windowsElectronBackgroundMaterial
 } = require('./windowsBackdropMode');
-const { applyWindowsAccentBlur } = require('./windowsBackdrop');
 const {
   MACOS_GLASS_VIBRANCY,
   MACOS_GLASS_LIQUID,
@@ -294,7 +198,6 @@ const {
   macosLiquidGlassSupported
 } = require('./macosGlassNative');
 const { configureLinuxDisplayBackend } = require('./linuxDisplay');
-const { createUpdateInstallQuitGuard, observeUpdateInstallHandoff } = require('./updateInstallQuit');
 
 if (!app.isPackaged) loadDotEnv();
 configureLinuxDisplayBackend({ app, platform: process.platform, env: process.env, argv: process.argv });
@@ -324,15 +227,10 @@ const CSP_HEADER = [
 const TRAY_CONTENT_VALUES = new Set(['tokens', 'cost', 'both', 'tokensAll', 'costAll', 'bothAll', 'limitsAllSessions', 'bars', 'barsSession', 'barsWeekly', 'barsAllSessions', 'icon', 'custom']);
 const HUB_MODE_VALUES = new Set(['local', 'client', 'host']);
 const LANGUAGE_VALUES = new Set(LANGUAGE_OPTIONS.map((option) => option.value));
-const COLLECTION_MODE_VALUES = new Set(['live', 'smart', 'interval']);
+const COLLECTION_MODE_VALUES = new Set(['live', 'interval']);
 const COLLECTION_INTERVAL_OPTIONS = [5 * 60 * 1000, 15 * 60 * 1000, 30 * 60 * 1000];
-const SMART_COLLECTION_INTERVAL_MS = 10 * 60 * 1000;
 const DEFAULT_COLLECTION_INTERVAL_MS = 5 * 60 * 1000;
 const HUB_DEFAULT_PORT = 17321;
-// Preserve the pre-port desktop order for new widget settings. The shared
-// provider registry keeps the upstream protocol order; this is presentation
-// order only and existing custom orders remain untouched.
-const LEGACY_LIMIT_PROVIDER_ORDER = 'claude,codex,cursor,antigravity,opencode,openrouter,deepseek,minimax,mimo,grok,copilot,kiro,zai,zaiteam,volcengine,qoder,kimi,ollama,commandcode,thirdparty';
 const KNOWN_CLIENT_LIST = KNOWN_CLIENTS.split(',').map((id) => ({ id }));
 const DEFAULT_VIEW_LIST = ['home', 'tool', 'status', 'device', 'model', 'project', 'session', 'limits', 'trends'].map((id) => ({ id }));
 const DEFAULT_HOME_MODULE_LIST = ['limits', 'tool', 'device', 'model', 'trends'].map((id) => ({ id }));
@@ -346,16 +244,9 @@ let persistedSettingsSnapshot = null;
 let credentialStore = null;
 let credentialStorageErrorShown = false;
 let sessionUsageArchive = null;
-let lastSessionUsageArchiveUpdate = {
-  at: null,
-  durationMs: null,
-  failureCode: null
-};
 let rendererViewState = normalizeInitialRendererViewState();
 const serviceStatusClient = createServiceStatusClient();
 const STATUS_PAGE_HOSTS = new Set(SERVICE_STATUS_PROVIDERS.map((provider) => new URL(provider.pageUrl).hostname));
-const diagnosticJournal = createDiagnosticJournal();
-const recoverMacWidgetLaunchServicesRegistration = createMacWidgetLaunchServicesRecovery();
 
 app.setName(APP_NAME);
 if (process.platform === 'win32') app.setAppUserModelId('com.javis.tokenmonitor');
@@ -363,23 +254,8 @@ if (process.platform === 'win32') app.setAppUserModelId('com.javis.tokenmonitor'
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) app.exit(0);
 
-let pendingMacWidgetOpen = null;
-app.on('open-url', (event, url) => {
-  const urlScheme = macWidgetConfiguration()?.urlScheme || 'token-monitor';
-  const destination = parseMacWidgetDeepLink(url, urlScheme);
-  if (!destination) return;
-  event.preventDefault();
-  pendingMacWidgetOpen = destination;
-  if (app.isReady()) setImmediate(openMainWindowFromWidget);
-});
-
 const HOME_LIMIT_ACCOUNT_COUNT_DEFAULT = 3;
 const HOME_LIMIT_ACCOUNT_COUNT_MAX = 12;
-const PERIOD_MONTH_MODES = new Set(['month', 'week', 'last7', 'last30']);
-
-function normalizePeriodMonthMode(value) {
-  return PERIOD_MONTH_MODES.has(value) ? value : 'month';
-}
 
 function normalizeHomeLimitAccountCount(value) {
   const count = Math.trunc(Number(value));
@@ -415,15 +291,10 @@ function defaultSettings() {
     showToolIcons: true,
     titleIconOnly: true,
     showCompactTotalTokens: false,
-    compactTokenUnits: 'western',
-    tokenRateMode: 'speed',
     heatmapMetric: 'cost',
     homeActiveDaysWindow: 'all',
-    periodMonthMode: 'month',
     themeColors: {},
     vendorColors: {},
-    interfaceFontFamily: '',
-    displayFontFamily: fontSettingsApi.DEFAULT_DISPLAY_FONT,
     floatingBubbleEnabled: false,
     floatingBubbleTrigger: 'click',
     floatingBubbleContent: 'icon',
@@ -445,7 +316,6 @@ function defaultSettings() {
     showHomeLimitBars: false,
     showHomeLimitProviderNames: false,
     projectsEnabled: parseBoolean(process.env.TOKEN_MONITOR_PROJECTS_ENABLED, false),
-    reasonixNativeSessionsEnabled: settings?.reasonixNativeSessionsEnabled !== false,
     historyEnabled: true,
     historyIntervalMs: normalizeHistoryIntervalMs(process.env.TOKEN_MONITOR_HISTORY_INTERVAL_MS),
     sessionUsageArchiveEnabled: parseBoolean(process.env.TOKEN_MONITOR_SESSION_USAGE_ARCHIVE_ENABLED, true),
@@ -468,13 +338,11 @@ function defaultSettings() {
     homeLimitProviderOrder: '',
     hiddenHomeLimitProviders: '',
     homeLimitAccountCount: HOME_LIMIT_ACCOUNT_COUNT_DEFAULT,
-    limitsRefreshMode: normalizeLimitsRefreshMode(process.env.TOKEN_MONITOR_LIMITS_REFRESH_MODE),
     limitsRefreshMs: normalizeLimitsRefreshMs(process.env.TOKEN_MONITOR_LIMITS_REFRESH_MS),
     showLimitSource: parseBoolean(process.env.TOKEN_MONITOR_SHOW_LIMIT_SOURCE, false),
     maskLimitAccountEmails: false,
     showLimitUsed: parseBoolean(process.env.TOKEN_MONITOR_SHOW_LIMIT_USED, false),
     windowBounds: null,
-    windowMaximized: false,
     zoomFactor: 1,
     showTrayIcon: true,
     trayMode: false,
@@ -489,11 +357,7 @@ function defaultSettings() {
     startAtLogin: false,
     automaticAppUpdates: false,
     language: 'auto',
-    claudeWebCookie: '',
-    claudePrepaidBalanceEnabled: parseBoolean(process.env.TOKEN_MONITOR_CLAUDE_PREPAID_BALANCE, true),
     opencodeCookie: '',
-    opencodeLocalLimitsEnabled: false,
-    opencodeAmbientEnabled: parseBoolean(process.env.TOKEN_MONITOR_OPENCODE_AMBIENT, true),
     opencodeProfiles: {},
     openrouterProfiles: {},
     deepseekApiKey: '',
@@ -510,16 +374,11 @@ function defaultSettings() {
     volcengineRegion: '',
     qoderCookie: '',
     qoderSite: 'global',
-    commandcodeCookie: '',
     kimiApiKey: '',
     kimiWebAccessToken: '',
     ollamaCookie: '',
     codexManagedAccounts: [],
     mimoManagedAccounts: [],
-    thirdPartyProfiles: {},
-    subscriptions: [],
-    subscriptionsOrphaned: { hubUrl: '', records: [] },
-    subscriptionsCacheHub: '',
     appUpdate: {
       lastCheckedAt: null,
       lastKnownLatest: null,
@@ -540,10 +399,6 @@ function normalizeHeatmapMetric(value, fallback = 'cost') {
   return fallback === 'tokens' ? 'tokens' : 'cost';
 }
 
-function normalizeTokenRateMode(value) {
-  return value === 'burn' ? 'burn' : 'speed';
-}
-
 function normalizeHomeActiveDaysWindow(value, fallback = 'all') {
   const next = String(value || '').trim();
   if (next === 'year') return 'year';
@@ -559,21 +414,11 @@ function normalizeCollectionIntervalMs(value, fallback = DEFAULT_COLLECTION_INTE
 }
 
 function collectorIntervalMs() {
-  return normalizeCollectionMode(settings?.collectionMode) === 'smart'
-    ? SMART_COLLECTION_INTERVAL_MS
-    : normalizeCollectionIntervalMs(settings?.collectionIntervalMs);
+  return normalizeCollectionIntervalMs(settings?.collectionIntervalMs);
 }
 
 function collectorWatchEnabled() {
-  return normalizeCollectionMode(settings?.collectionMode) !== 'interval';
-}
-
-function collectorWatchTriggersCollection() {
   return normalizeCollectionMode(settings?.collectionMode) === 'live';
-}
-
-function collectorIntervalRequiresActivity() {
-  return normalizeCollectionMode(settings?.collectionMode) === 'smart';
 }
 
 function syncUploadIntervalMs() {
@@ -589,9 +434,6 @@ function electronUsageConfig(errorPrefix) {
     intervalMs: collectorIntervalMs(),
     historyIntervalMs: normalizeHistoryIntervalMs(settings.historyIntervalMs),
     watchEnabled: collectorWatchEnabled(),
-    watchTriggersCollection: collectorWatchTriggersCollection(),
-    intervalRequiresActivity: collectorIntervalRequiresActivity(),
-    reasonixNativeSessionsEnabled: settings.reasonixNativeSessionsEnabled !== false,
     watchDebounceMs: 1500,
     dailyHistoryArchiveWriteEnabled: () => !isExternalAgentActive(),
     onError: (error, reason) => console.log(`[${errorPrefix}] ${reason}: ${error.message}`),
@@ -621,42 +463,7 @@ function defaultLimitProviders() {
 }
 
 function defaultLimitProviderOrder() {
-  return parseLimitProviders(LEGACY_LIMIT_PROVIDER_ORDER).join(',');
-}
-
-function normalizeClaudeWebCookie(value) {
-  return normalizeClaudeWebCookieInput(value);
-}
-
-function currentClaudeWebCookie() {
-  return settings?.claudeWebCookie || claudeWebCookie(process.env);
-}
-
-function persistClaudeWebCookieRenewal({ previousCookie, cookie } = {}) {
-  if (!settings?.claudeWebCookie) return false;
-  let expected;
-  let renewed;
-  try {
-    expected = normalizeClaudeWebCookie(previousCookie);
-    renewed = normalizeClaudeWebCookie(cookie);
-  } catch (_) {
-    return false;
-  }
-  if (!renewed || normalizeClaudeWebCookie(settings.claudeWebCookie) !== expected) return false;
-  if (settings.claudeWebCookie === renewed) return true;
-  settings.claudeWebCookie = renewed;
-  saveSettings({ throwOnError: true });
-  return true;
-}
-
-function electronLimitsDeps() {
-  return {
-    ...electronProviderDeps(),
-    fetch: electronLimitsFetch(),
-    claudeWebFetch: electronClaudeWebFetch,
-    resolveConfigSnapshot: () => electronLimitsConfig(),
-    onClaudeWebCookieRenewed: persistClaudeWebCookieRenewal
-  };
+  return parseLimitProviders().join(',');
 }
 
 function normalizeDeepSeekApiKey(value) {
@@ -736,14 +543,6 @@ function normalizeQoderSite(value) {
 
 function currentQoderCookie() {
   return settings?.qoderCookie || qoderCookie(process.env);
-}
-
-function normalizeCommandcodeCookie(value) {
-  return commandcodeCookie({}, { commandcodeCookie: String(value || '') });
-}
-
-function currentCommandcodeCookie() {
-  return settings?.commandcodeCookie || commandcodeCookie(process.env);
 }
 
 function normalizeOllamaCookie(value) {
@@ -889,7 +688,7 @@ function hydrateCodexManagedWorkspaceLabels() {
           description: 'Managed Codex auth',
           encoding: 'utf8'
         }));
-        const workspaces = await listCodexWorkspaces(auth, electronProviderDeps({ env: process.env }));
+        const workspaces = await listCodexWorkspaces(auth, { env: process.env });
         const workspace = workspaces.find((entry) => entry.id === account.workspaceAccountId);
         return workspace
           ? {
@@ -1033,7 +832,7 @@ async function addMimoManagedAccount(cookieValue) {
   const accounts = normalizeMimoManagedAccounts(settings?.mimoManagedAccounts);
   const result = createMimoManagedAccount(cookieValue, accounts);
   if (!result.ok) return result;
-  const [validation] = await fetchMimoLimits({ mimoManagedAccounts: [result.account] }, electronProviderDeps());
+  const [validation] = await fetchMimoLimits({ mimoManagedAccounts: [result.account] });
   if (validation?.status !== 'ok') {
     const errorCode = validation?.status === 'unauthorized'
       ? 'invalidCookie'
@@ -1265,10 +1064,10 @@ async function resolveCodexWorkspaceAfterLogin(auth, homePath, options = {}) {
   const initialIdentity = codexAuthIdentity(auth);
   let workspaces;
   try {
-    workspaces = await listCodexWorkspaces(auth, electronProviderDeps({
+    workspaces = await listCodexWorkspaces(auth, {
       env: process.env,
       signal: options.signal
-    }));
+    });
   } catch (error) {
     if (options.signal?.aborted) return { cancelled: true };
     console.warn('Could not list Codex workspaces after sign-in:', error?.message || error);
@@ -1821,7 +1620,7 @@ function maybeCollapseFloatingBubble(bounds) {
   const display = displayForBounds(bounds);
   if (!display) return false;
   const collapsedArea = collapsedAreaForDisplay(display);
-  const plan = floatingBubbleCollapsePlan(expandedBoundsForCollapse(mainWindow, bounds), display.workArea, settings, {
+  const plan = floatingBubbleCollapsePlan(bounds, display.workArea, settings, {
     collapsed: floatingBubbleState.collapsed,
     suppressNextCollapse: floatingBubbleState.suppressNextCollapse,
     collapsedArea,
@@ -1872,7 +1671,6 @@ function expandFloatingBubble(options = {}) {
   sendFloatingBubbleState();
   if (options.focus !== false) {
     mainWindow.show();
-    restoreWindowMaximized(mainWindow, settings);
   }
   return true;
 }
@@ -1907,14 +1705,10 @@ function syncFloatingBubbleAvailability() {
 function persistBoundsSoon() {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   if (mainWindow.isMinimized() || mainWindow.isFullScreen()) return;
-  if (!shouldPersistWindowBounds(mainWindow)) {
-    stopPersistBoundsTimer();
-    return;
-  }
   stopPersistBoundsTimer();
   persistBoundsTimer = setTimeout(() => {
     persistBoundsTimer = null;
-    if (!mainWindow || mainWindow.isDestroyed() || !shouldPersistWindowBounds(mainWindow)) return;
+    if (!mainWindow || mainWindow.isDestroyed()) return;
     const next = mainWindow.getBounds();
     const prev = settings.windowBounds || {};
     if (settings?.trayMode) {
@@ -2114,19 +1908,9 @@ function readSettings() {
     }
     merged.collectionMode = normalizeCollectionMode(merged.collectionMode);
     merged.collectionIntervalMs = normalizeCollectionIntervalMs(merged.collectionIntervalMs);
-    merged.limitsRefreshMode = normalizeLimitsRefreshMode(merged.limitsRefreshMode);
-    merged.claudePrepaidBalanceEnabled = parseBoolean(merged.claudePrepaidBalanceEnabled, true);
-    merged.opencodeLocalLimitsEnabled = parseBoolean(merged.opencodeLocalLimitsEnabled, false);
-    merged.opencodeAmbientEnabled = parseBoolean(merged.opencodeAmbientEnabled, true);
-    merged.reasonixNativeSessionsEnabled = parseBoolean(merged.reasonixNativeSessionsEnabled, true);
     merged.syncUploadIntervalMs = normalizeSyncUploadIntervalMs(merged.syncUploadIntervalMs);
     merged.heatmapMetric = normalizeHeatmapMetric(merged.heatmapMetric);
     merged.homeActiveDaysWindow = normalizeHomeActiveDaysWindow(merged.homeActiveDaysWindow);
-    merged.periodMonthMode = normalizePeriodMonthMode(merged.periodMonthMode);
-    merged.compactTokenUnits = normalizeCompactTokenUnits(merged.compactTokenUnits);
-    merged.tokenRateMode = normalizeTokenRateMode(merged.tokenRateMode);
-    merged.interfaceFontFamily = fontSettingsApi.normalizeFontFamily(merged.interfaceFontFamily);
-    merged.displayFontFamily = fontSettingsApi.normalizeFontFamily(merged.displayFontFamily);
     merged.reduceMotion = motionPreferenceApi.normalize(merged.reduceMotion);
     if (saved.serviceProviderDisplayOrder !== undefined) {
       merged.serviceProviderDisplayOrder = String(saved.serviceProviderDisplayOrder || '');
@@ -2149,7 +1933,6 @@ function readSettings() {
     merged.language = normalizeLanguageSetting(merged.language);
     merged.currency = normalizeCurrency(merged.currency);
     merged.currencyRates = normalizeCurrencyOverrides(merged.currencyRates);
-    merged.windowMaximized = merged.windowMaximized === true;
     merged.hubHostPort = normalizeHubPort(merged.hubHostPort);
     merged.hubHostSecret = typeof merged.hubHostSecret === 'string' ? merged.hubHostSecret : '';
     merged.floatingBubbleEnabled = parseBoolean(merged.floatingBubbleEnabled ?? merged.edgeDrawerEnabled, false);
@@ -2190,7 +1973,6 @@ function saveSettings(options = {}) {
       previousSettings
     });
     persistedSettingsSnapshot = cloneSettingsSnapshot(settings);
-    refreshTrayContextMenu();
     return true;
   } catch (error) {
     settings = previousSettings;
@@ -2262,14 +2044,10 @@ function removedTrackedClients(previousClients, nextClients) {
 }
 
 function localArchiveSourceDevice() {
-  return selectLocalDeviceRecord({
-    deviceId: settings?.deviceId || defaultDeviceId(),
-    externalAgentActive: isExternalAgentActive(),
-    lastCollectedDevice,
-    localDevice,
-    latestHubStats: currentHubStatsCache(),
-    latestStats
-  });
+  const deviceId = settings?.deviceId || defaultDeviceId();
+  if (lastCollectedDevice?.deviceId === deviceId) return lastCollectedDevice;
+  if (localDevice?.deviceId === deviceId) return localDevice;
+  return (latestStats?.devices || []).find((device) => device?.deviceId === deviceId) || null;
 }
 
 function updateArchivedClientUsage(previousClients, nextClients) {
@@ -2293,20 +2071,14 @@ function ensureSessionUsageArchiveLoaded() {
 }
 
 function updateSessionUsageArchive(summary, now) {
-  const startedAt = Date.now();
   const previous = ensureSessionUsageArchiveLoaded();
   const next = captureSessionUsageArchive(previous, summary, now);
-  if (JSON.stringify(next) === JSON.stringify(previous)) {
-    lastSessionUsageArchiveUpdate = { at: new Date().toISOString(), durationMs: Date.now() - startedAt, failureCode: null };
-    return previous;
-  }
+  if (JSON.stringify(next) === JSON.stringify(previous)) return previous;
   try {
     writeSessionUsageArchive(next);
     sessionUsageArchive = next;
-    lastSessionUsageArchiveUpdate = { at: new Date().toISOString(), durationMs: Date.now() - startedAt, failureCode: null };
   } catch (error) {
     console.log(`[session-archive] write failed: ${error.message}`);
-    lastSessionUsageArchiveUpdate = { at: new Date().toISOString(), durationMs: Date.now() - startedAt, failureCode: error?.code || 'write-failed' };
   }
   return next;
 }
@@ -2482,16 +2254,8 @@ let streamConnected = false;
 let streamFailure = null;
 let lastCollectedDevice = null;
 let latestHubStats = null;
-let latestHubStatsReceivedAt = null;
-let latestHubStatsSource = 'none';
-let latestHubStatsGeneration = null;
-let latestHubStatsIdentity = null;
 let tray = null;
 let latestStats = null;
-let macWidgetSnapshotController = null;
-let macWidgetDemand = null;
-let macWidgetPublicationReady = false;
-let cachedMacWidgetConfiguration;
 let trayRefreshInFlight = false;
 let trayCodexActiveAccountId = '';
 let trayCodexPendingAccountId = '';
@@ -2522,8 +2286,6 @@ let embeddedHub = null;
 let embeddedHubError = null;
 let embeddedHubUnsub = null;
 let modeQueue = Promise.resolve();
-let hubModeGeneration = 0;
-let claudeWebCookieMutationRevision = 0;
 const pendingLimitInvalidations = new Map();
 const pendingUsageClientRefreshes = new Map();
 
@@ -2541,10 +2303,7 @@ function limitInvalidationKey(scope) {
   return account ? `${provider}:${account}` : `${provider}:*`;
 }
 
-function rememberPendingLimitInvalidation(scope, reason, clearOrOptions = false, refresh = true) {
-  const options = clearOrOptions && typeof clearOrOptions === 'object'
-    ? clearOrOptions
-    : { clear: clearOrOptions === true, refresh };
+function rememberPendingLimitInvalidation(scope, reason, clear = false, refresh = true) {
   const normalized = { ...scope, provider: String(scope?.provider || '').trim().toLowerCase() };
   const key = limitInvalidationKey(normalized);
   if (key.endsWith(':*')) {
@@ -2552,31 +2311,31 @@ function rememberPendingLimitInvalidation(scope, reason, clearOrOptions = false,
       if (pendingKey.startsWith(`${normalized.provider}:`)) pendingLimitInvalidations.delete(pendingKey);
     }
   }
-  pendingLimitInvalidations.set(key, {
-    scope: normalized,
-    reason,
-    clear: options.clear === true,
-    refresh: options.refresh !== false
-  });
+  pendingLimitInvalidations.set(key, { scope: normalized, reason, clear, refresh });
 }
 
 function queueLimitInvalidation(scope, reason = 'credential-change', options = {}) {
   const clear = options.clear === true;
   const refresh = options.refresh !== false;
   if (!deviceRuntimeHandle) {
-    rememberPendingLimitInvalidation(scope, reason, { clear, refresh });
+    rememberPendingLimitInvalidation(scope, reason, clear, refresh);
     return Promise.resolve({ queued: true });
   }
-  return runLimitInvalidation(deviceRuntimeHandle, scope, reason, { clear, refresh });
+  if (clear) deviceRuntimeHandle.clearLimits(scope, reason);
+  if (!refresh) return Promise.resolve({ cleared: true });
+  return Promise.resolve(deviceRuntimeHandle.refreshLimits(scope, reason));
 }
 
 function drainPendingLimitInvalidations(runtime) {
   const pending = [...pendingLimitInvalidations.values()];
   pendingLimitInvalidations.clear();
   for (const entry of pending) {
-    void runLimitInvalidation(runtime, entry.scope, entry.reason, entry).catch((error) => {
-      console.log(`[limits-runtime] pending refresh failed: ${error.message}`);
-    });
+    if (entry.clear) runtime.clearLimits(entry.scope, entry.reason);
+    if (entry.refresh) {
+      void Promise.resolve(runtime.refreshLimits(entry.scope, entry.reason)).catch((error) => {
+        console.log(`[limits-runtime] pending refresh failed: ${error.message}`);
+      });
+    }
   }
 }
 
@@ -2589,21 +2348,14 @@ function refreshUsageClient(clientId, options = {}) {
   return Promise.resolve(deviceRuntimeHandle.refreshClient(client, options));
 }
 
-function bestEffortTrackedUsageRefresh(clientId, options = {}) {
-  if (!canRefreshUsageRuntime(mode, isExternalAgentActive)) return false;
-  void refreshUsageClient(clientId, options).catch((error) => {
-    console.log(`[usage-runtime] best-effort refresh failed: ${error.message}`);
-  });
-  return true;
-}
-
 function drainPendingUsageClientRefreshes(runtime) {
-  drainPendingUsageClientRefreshQueue(
-    pendingUsageClientRefreshes,
-    runtime,
-    (error) => console.log(`[usage-runtime] pending client refresh failed: ${error.message}`),
-    { enabled: canRefreshUsageRuntime(mode, isExternalAgentActive) }
-  );
+  const pending = [...pendingUsageClientRefreshes.values()];
+  pendingUsageClientRefreshes.clear();
+  for (const entry of pending) {
+    void Promise.resolve(runtime.refreshClient(entry.clientId, entry.options)).catch((error) => {
+      console.log(`[usage-runtime] pending client refresh failed: ${error.message}`);
+    });
+  }
 }
 
 function drainPendingRuntimeActions(runtime) {
@@ -2695,126 +2447,6 @@ function isExternalAgentActive() {
   } catch (_) { return false; }
 }
 
-function ownsUsageRuntime() {
-  return Boolean(deviceRuntimeHandle && canRefreshUsageRuntime(mode, isExternalAgentActive));
-}
-
-function hubModeRequestIsCurrent(generation, expectedMode, expectedIdentity = null) {
-  return generation === hubModeGeneration
-    && settings?.hubMode === expectedMode
-    && (expectedIdentity === null || currentHubStatsIdentity(expectedMode) === expectedIdentity);
-}
-
-function currentHubStatsIdentity(expectedMode = settings?.hubMode) {
-  const { url } = effectiveHubConfig();
-  return `${String(expectedMode || 'none')}|${String(url || 'none').replace(/\/$/, '')}`;
-}
-
-function currentHubStatsCache() {
-  const hubMode = settings?.hubMode || 'local';
-  const expectedSource = hubMode === 'host' ? 'host' : hubMode === 'client' ? 'client' : 'none';
-  if (!latestHubStats
-    || latestHubStatsSource !== expectedSource
-    || latestHubStatsGeneration !== hubModeGeneration
-    || latestHubStatsIdentity !== currentHubStatsIdentity(hubMode)) return null;
-  return latestHubStats;
-}
-
-function clearLatestHubStatsCache() {
-  latestHubStats = null;
-  latestHubStatsReceivedAt = null;
-  latestHubStatsSource = 'none';
-  latestHubStatsGeneration = null;
-  latestHubStatsIdentity = null;
-}
-
-function setLatestHubStatsCache(stats, source, generation, identity) {
-  latestHubStats = stats;
-  latestHubStatsReceivedAt = new Date().toISOString();
-  latestHubStatsSource = source;
-  latestHubStatsGeneration = generation;
-  latestHubStatsIdentity = identity;
-}
-
-async function getHubBuildStatus() {
-  if (settings?.hubMode !== 'client') return { status: 'notConfigured', runtime: '', hubUrl: '' };
-  const hubUrl = String(settings.hubUrl || '').trim();
-  return probeHubBuild(hubUrl);
-}
-
-const diagnosticSnapshotBuilder = createDiagnosticSnapshotBuilder({
-  getSettings: () => settings,
-  getMode: () => mode,
-  getEffectiveHubConfig: effectiveHubConfig,
-  getExternalAgentActive: isExternalAgentActive,
-  getDeviceRuntime: () => deviceRuntimeHandle,
-  getEmbeddedHub: () => embeddedHub,
-  getStreamState: () => ({ connected: streamConnected, failure: streamFailure }),
-  getLatestHubStats: () => latestHubStats,
-  getLatestHubStatsReceivedAt: () => latestHubStatsReceivedAt,
-  getLatestHubStatsSource: () => latestHubStatsSource,
-  getLatestHubStatsGeneration: () => latestHubStatsGeneration,
-  getLatestHubStatsIdentity: () => latestHubStatsIdentity,
-  getHubModeGeneration: () => hubModeGeneration,
-  getCurrentHubStatsIdentity: (hubMode) => currentHubStatsIdentity(hubMode),
-  getLocalRecord: localArchiveSourceDevice,
-  getTokscaleStatus,
-  getConfiguration: () => diagnosticConfigurationFromSettings(settings || {}, {
-    usage: {
-      agentVersion: appVersion(),
-      agentRuntime: 'electron-widget',
-      commandTimeoutMs: 120 * 1000,
-      defaultDeviceId: defaultDeviceId(),
-      intervalMs: collectorIntervalMs(),
-      historyIntervalMs: normalizeHistoryIntervalMs(settings?.historyIntervalMs)
-    },
-    limits: { env: process.env, defaultLimitProviders: defaultLimitProviders() },
-    syncUploadIntervalMs: syncUploadIntervalMs()
-  }),
-  getJournalSnapshot: () => diagnosticJournal.getSnapshot(),
-  getArchiveState: () => {
-    const enabled = settings?.sessionUsageArchiveEnabled !== false;
-    const loaded = sessionUsageArchive !== null;
-    return {
-      enabled,
-      loaded,
-      sessionCount: loaded ? Object.keys(sessionUsageArchive?.sessions || {}).length : null,
-      countSource: loaded ? 'loaded-memory' : enabled ? 'not-loaded' : 'not-enabled',
-      lastUpdate: lastSessionUsageArchiveUpdate
-    };
-  },
-  getAppVersion: appVersion,
-  getDefaultDeviceId: defaultDeviceId,
-  canRefreshUsageRuntime,
-  getAppState: () => ({
-    packaged: app.isPackaged,
-    preferredLanguages: typeof app.getPreferredSystemLanguages === 'function'
-      ? app.getPreferredSystemLanguages()
-      : [app.getLocale?.() || 'en'],
-    locale: app.getLocale?.() || 'en'
-  })
-});
-
-const diagnosticReportGenerator = createDiagnosticReportGenerator({
-  getAppMetrics: () => app.getAppMetrics(),
-  getSystemMemory: () => ({ total: os.totalmem(), free: os.freemem() }),
-  privateMemorySupported: process.platform === 'win32',
-  getSnapshot: ({ generatedAt }) => diagnosticSnapshotBuilder.build(generatedAt),
-  getArchiveFileStat: async () => {
-    if (settings?.sessionUsageArchiveEnabled === false) return { ok: false, code: 'archive-not-enabled' };
-    try {
-      const stat = await fs.promises.stat(sessionUsageArchivePath());
-      return { ok: true, stat };
-    } catch (error) {
-      return { ok: false, code: error?.code === 'ENOENT' ? 'archive-not-present' : 'archive-stat-failed' };
-    }
-  }
-});
-
-function recordDiagnosticEvent(event) {
-  diagnosticJournal.record({ ...event, modeAtEvent: settings?.hubMode || 'local' });
-}
-
 async function deleteDeviceFromHub(deviceId) {
   const { url: hubUrl, secret } = effectiveHubConfig();
   if (!hubUrl) return;
@@ -2848,524 +2480,14 @@ async function postToHub(summary) {
   return response.json();
 }
 
-// ---------------------------------------------------------------------------
-// Shared subscriptions
-//
-// A subscription describes an account, not a machine, so devices that share a hub
-// share ONE list rather than each carrying a copy. settings.subscriptions stays
-// the local store in local mode, and doubles as the last-known cache in sync mode
-// so a hub that is unreachable at startup shows the records instead of an empty
-// list. The hub is the authority whenever it answers; writes made while it does
-// not answer are refused rather than written locally, because a local write would
-// fork the shared list with no way to tell later which side was right.
-// ---------------------------------------------------------------------------
-
-let hubSubscriptions = null;
-// Which hub the document in hand came from. Without it, switching to a hub that
-// cannot be reached kept showing the previous hub's records as though they were
-// this one's.
-let hubSubscriptionsHub = '';
-// One lane per hub for its reads and writes, the same way startMode() serializes
-// hub-side work. Discarding whichever answer came back last is not enough: a read
-// that STARTS after a write can still observe the state before it, come back
-// first, and leave the write invisible on screen and in settings.json. Only
-// ordering the operations themselves removes that.
-//
-// Ordering is not re-basing, though. A write queued behind another does NOT adopt
-// whatever version that one left: its list was built from a particular version,
-// and if what ran ahead of it pulled in another device's records, writing over
-// them under their own token is the silent erase this design exists to prevent.
-// Each write carries the version it was built from and is refused if that has
-// moved on.
-//
-// Per hub rather than one lane for all of them, because ordering is only worth
-// anything against a single shared document: two hubs hold two documents with no
-// ordering between them, and a hub that accepts the connection but answers
-// slowly would otherwise hold up the hub the user is actually looking at.
-const subscriptionQueues = new Map();
-// The last version this device tried to catch up to, and when. Only a failed
-// attempt is ever seen twice — a successful one leaves the document in hand
-// matching the stamp, which settles it before this is consulted.
-let lastSubscriptionCatchUp = { hub: '', version: '', at: 0 };
-const SUBSCRIPTION_RETRY_MS = 60000;
-
-function subscriptionsAreShared() {
-  return settings?.hubMode === 'client' || settings?.hubMode === 'host';
-}
-
-// The document in hand, but only when it is the one this hub answered with.
-// Everything that reads it has to ask, because the two are not kept in step: a
-// switch to another hub and back leaves that hub's document installed while the
-// first is in front of the user again, until its own refresh replaces it.
-// Neither the records in it nor the updatedAt on it describe the hub being asked
-// about, and both are load-bearing — one is what gets written, the other is what
-// the hub checks it against.
-function subscriptionsDocumentFor(hub) {
-  return hubSubscriptionsHub === hub ? hubSubscriptions : null;
-}
-
-function effectiveSubscriptions() {
-  if (!subscriptionsAreShared()) return settings.subscriptions || [];
-  const hub = currentHubIdentity();
-  const doc = subscriptionsDocumentFor(hub);
-  if (doc) return doc.subscriptions;
-  // The on-disk copy only answers for this hub, or for no hub at all — in which
-  // case it is this device's own list, waiting to be seeded. Another hub's
-  // records are not an answer to "what is on this one", so nothing is shown
-  // rather than something wrong.
-  const cacheHub = String(settings.subscriptionsCacheHub || '');
-  return cacheHub === hub || cacheHub === '' ? (settings.subscriptions || []) : [];
-}
-
-// Returns whether anything actually changed. Callers use that to decide whether
-// to push settings at the renderer: a push re-renders the whole settings form,
-// which would fight whatever the user is typing in it.
-function cacheSharedSubscriptions(doc, hub) {
-  // Identity counts as a change on its own: two hubs can hold the same
-  // updatedAt — an empty one, most obviously, when neither has been written to —
-  // and comparing timestamps alone left the marker pointing at the previous hub,
-  // so an offline restart came back showing its records.
-  const changed = (hubSubscriptions?.updatedAt || '') !== (doc.updatedAt || '')
-    || String(settings.subscriptionsCacheHub || '') !== hub;
-  hubSubscriptions = doc;
-  hubSubscriptionsHub = hub;
-  if (changed) {
-    settings.subscriptions = doc.subscriptions;
-    settings.subscriptionsCacheHub = hub;
-    persistSubscriptionState();
-  }
-  return changed;
-}
-
-// saveSettings() rolls the WHOLE settings object back to its last persisted
-// snapshot when the file cannot be written, so a failed write here would discard
-// the set-aside records this refresh just computed along with the cache — and
-// their notice would vanish until the next restart, with nothing on screen
-// saying anything went wrong. Re-apply both: disk is behind, but what the user
-// still has to decide about stays in front of them.
-function persistSubscriptionState() {
-  const subscriptions = settings.subscriptions;
-  const orphaned = settings.subscriptionsOrphaned;
-  const cacheHub = settings.subscriptionsCacheHub;
-  if (saveSettings()) return true;
-  settings.subscriptions = subscriptions;
-  settings.subscriptionsOrphaned = orphaned;
-  settings.subscriptionsCacheHub = cacheHub;
-  console.log('[sync] subscription state could not be written to disk');
-  return false;
-}
-
-function queueSubscriptionOp(run) {
-  // Captured on the way in, not when the operation runs: it was decided against
-  // the hub in front of the user now, and a switch before it starts turns it
-  // into work about a hub they have left. Each operation is handed the identity
-  // it was queued for so it can say what to do about that.
-  const hub = currentHubIdentity();
-  const previous = subscriptionQueues.get(hub) || Promise.resolve();
-  const result = previous.then(() => run(hub), () => run(hub));
-  // The lane has to survive a failed operation; the caller still sees the error.
-  const lane = result.then(() => {}, () => {});
-  subscriptionQueues.set(hub, lane);
-  // Dropped once idle, so the map holds the hub in use and, briefly, whichever
-  // one is still draining — not an entry per hub the user has ever typed.
-  lane.then(() => { if (subscriptionQueues.get(hub) === lane) subscriptionQueues.delete(hub); });
-  return result;
-}
-
-// The user can switch hubs while an operation is queued or in flight, and an
-// answer about the hub they left is not an answer about the one they are on.
-function subscriptionOpIsCurrent(hub) {
-  return hub === currentHubIdentity();
-}
-
-// Reported rather than dropped: whatever the user was acting on is still on
-// screen, and silence would read as done.
-function hubChangedError() {
-  return Object.assign(new Error('hub changed'), { code: 'hub_changed' });
-}
-
-function subscriptionsEndpoint() {
-  const { url: hubUrl, secret } = effectiveHubConfig();
-  if (!hubUrl) return null;
-  return {
-    url: `${hubUrl.replace(/\/$/, '')}/api/subscriptions`,
-    headers: secret ? { authorization: `Bearer ${secret}` } : {}
-  };
-}
-
-async function fetchSharedSubscriptions() {
-  // A host-mode widget is the hub, so it reads its own store rather than looping
-  // back over HTTP to itself — the same shortcut fetchHubStats() takes.
-  if (settings.hubMode === 'host' && embeddedHub) return embeddedHub.hub.getSubscriptions();
-  const endpoint = subscriptionsEndpoint();
-  if (!endpoint) return null;
-  // A hub that accepts the connection and then never answers would hold this
-  // lane open for the rest of the session, and every later read and save for that
-  // hub behind it. fetch() has no deadline of its own, so it gets the same 15s
-  // the other hub requests use.
-  const response = await fetch(endpoint.url, { headers: endpoint.headers, signal: AbortSignal.timeout(15_000) });
-  if (!response.ok) throw new Error(`Hub ${response.status}: ${(await response.text()).slice(0, 200)}`);
-  return response.json();
-}
-
-// The 409 body is the hub's current list, worth caching — but only while this is
-// still the newest operation. A late rejection carrying an older document would
-// otherwise overwrite a write that has already landed.
-function staleSubscriptionWriteError(current, hub) {
-  const error = new Error('stale_write');
-  error.code = 'stale_write';
-  if (current && subscriptionOpIsCurrent(hub)) cacheSharedSubscriptions(current, hub);
-  return error;
-}
-
-function writeSharedSubscriptions(list, baseUpdatedAt) {
-  return queueSubscriptionOp((hub) => {
-    // Queued against one hub, reached the front of the lane after the user moved
-    // to another. The list in hand is the one they were editing on the hub they
-    // left, and hubSubscriptions now holds the new hub's updatedAt to base on, so
-    // sending it would write one hub's records into another against a base that
-    // was never read from it.
-    if (!subscriptionOpIsCurrent(hub)) throw hubChangedError();
-    return writeSharedSubscriptionsNow(list, hub, baseUpdatedAt);
-  });
-}
-
-// Takes the hub and the base rather than reading either. The identity is the one
-// this write was queued against; the base is the version the list was built from,
-// which is the whole meaning of the token. Reading it here instead would answer
-// "the newest version this process knows of", and pairing that with a list made
-// from an older one is a write the hub has no way to refuse: the token is
-// current, so it accepts, and whatever arrived in between is gone.
-async function writeSharedSubscriptionsNow(list, hub, baseUpdatedAt) {
-  // Which makes the base worth checking, not just carrying. A list built on a
-  // version this process has already moved past is stale for exactly the reason
-  // another device's write is, and the answer is the same one the hub would give:
-  // re-read and redo. Held nothing for this hub and the caller claims a version,
-  // and they read it somewhere else — another hub, before a switch back to this
-  // one — which is not a version of this list at all.
-  if (baseUpdatedAt !== (subscriptionsDocumentFor(hub)?.updatedAt || '')) {
-    throw Object.assign(new Error('stale_write'), { code: 'stale_write' });
-  }
-  if (settings.hubMode === 'host' && embeddedHub) {
-    try {
-      const stored = await embeddedHub.hub.setSubscriptions(list, baseUpdatedAt);
-      if (subscriptionOpIsCurrent(hub)) cacheSharedSubscriptions(stored, hub);
-      return;
-    } catch (error) {
-      if (error.code === 'stale_write') throw staleSubscriptionWriteError(error.current, hub);
-      throw error;
-    }
-  }
-  const endpoint = subscriptionsEndpoint();
-  if (!endpoint) throw new Error('hub not configured');
-  const response = await fetch(endpoint.url, {
-    method: 'PUT',
-    headers: { 'content-type': 'application/json', ...endpoint.headers },
-    body: JSON.stringify({ subscriptions: list, baseUpdatedAt }),
-    signal: AbortSignal.timeout(15_000)
-  });
-  // Someone else wrote the list since this device last read it. Overwriting would
-  // erase their records silently, and they exist nowhere else.
-  if (response.status === 409) throw staleSubscriptionWriteError(await response.json().catch(() => null), hub);
-  if (!response.ok) {
-    // The hub answered, so it is reachable — a 401 is the wrong secret and a 400
-    // is a bad payload. Reporting either as "could not reach the hub" sends the
-    // user looking at their network instead of their settings.
-    const rejected = new Error(`Hub ${response.status}: ${(await response.text()).slice(0, 200)}`);
-    rejected.code = 'rejected';
-    rejected.status = response.status;
-    throw rejected;
-  }
-  const stored = await response.json();
-  // The write succeeded, but if the user moved to another hub while it was in
-  // flight this answer no longer describes what is in front of them.
-  if (!subscriptionOpIsCurrent(hub)) return;
-  cacheSharedSubscriptions(stored, hub);
-}
-
-// Records this device holds that the shared list does not have, or has
-// differently. Comparing ids alone is not enough: a record edited here while the
-// device was in local mode keeps its id, so the shared copy would silently win
-// and the edit would be gone. Neither is folding them in automatically — the
-// same plan entered separately on two machines has two ids, and merging those
-// would double the monthly total. So both cases are set aside for the one person
-// who can tell them apart.
-function rememberOrphanedSubscriptions(local, doc) {
-  const shared = new Map((doc.subscriptions || []).map((entry) => [entry.id, entry]));
-  const orphans = (local || []).filter((entry) => {
-    if (!entry?.id) return false;
-    const match = shared.get(entry.id);
-    return !match || JSON.stringify(match) !== JSON.stringify(entry);
-  });
-  const next = orphans.length > 0
-    ? { hubUrl: currentHubIdentity(), records: orphans }
-    : { hubUrl: '', records: [] };
-  if (JSON.stringify(next) === JSON.stringify(orphanedSubscriptions())) return false;
-  settings.subscriptionsOrphaned = next;
-  return true;
-}
-
-// Which hub the set-aside records were held back from. Offering them to a
-// different hub would file this device's records somewhere they never belonged.
-// Trimmed the same way subscriptionsEndpoint() trims it, so a trailing slash the
-// user typed does not read as a different hub and strand them.
-function currentHubIdentity() {
-  return String(effectiveHubConfig().url || '').replace(/\/$/, '');
-}
-
-function orphanedSubscriptions() {
-  const stored = settings.subscriptionsOrphaned;
-  // Tolerates the bare array this field held before it carried a hub.
-  if (Array.isArray(stored)) return { hubUrl: '', records: stored };
-  return { hubUrl: String(stored?.hubUrl || ''), records: Array.isArray(stored?.records) ? stored.records : [] };
-}
-
-// Empty unless they belong to the hub in front of the user right now: a set held
-// back from another hub, or from before a switch to local mode, has nowhere to
-// go, and offering to adopt it promises something that cannot happen.
-function pendingOrphanedSubscriptions() {
-  const { hubUrl, records } = orphanedSubscriptions();
-  if (!subscriptionsAreShared() || hubUrl !== currentHubIdentity()) return [];
-  return records;
-}
-
-async function adoptOrphanedSubscriptions() {
-  // Nothing to decide about; the answer that counts is taken inside the lane.
-  if (pendingOrphanedSubscriptions().length === 0) return settingsForRenderer();
-  // Reading, merging and writing is one operation, so all three happen in one
-  // turn of the lane. Merging outside it took the document as it stood before
-  // whatever was already queued, and the write that followed then carried the
-  // base that operation left behind — a pairing the hub has no way to refuse,
-  // because the token is current. It accepts the write, and the records the other
-  // operation added in between are gone with nothing to say they were dropped.
-  await queueSubscriptionOp(async (hub) => {
-    if (!subscriptionOpIsCurrent(hub)) throw hubChangedError();
-    const orphans = pendingOrphanedSubscriptions();
-    if (orphans.length === 0) return;
-    // Same-id records replace rather than append: two entries sharing an id would
-    // collapse on normalization anyway, and the local edit is the one being
-    // adopted. Merging into another hub's document would carry its records into
-    // this one as though they had been entered here; with none in hand the write
-    // goes out claiming no base, which the hub answers with 409 rather than an
-    // overwrite.
-    const held = subscriptionsDocumentFor(hub);
-    const merged = new Map((held?.subscriptions || []).map((entry) => [entry.id, entry]));
-    for (const orphan of orphans) merged.set(orphan.id, orphan);
-    await writeSharedSubscriptionsNow([...merged.values()], hub, held?.updatedAt || '');
-    // Cleared in the same turn: between the write landing and this, the records
-    // are on the hub and still marked as waiting for a decision here.
-    settings.subscriptionsOrphaned = { hubUrl: '', records: [] };
-    if (!saveSettings()) throw Object.assign(new Error('settings write failed'), { code: 'write_failed' });
-  });
-  return settingsForRenderer();
-}
-
-// Only the message survives the IPC boundary, so the outcome goes in it. The
-// renderer needs these apart: another device winning means re-read and redo, a
-// rejected write means fix the secret, and an unreachable hub means try later.
-function subscriptionWriteFailureCode(error) {
-  if (error?.code === 'stale_write') return 'stale_write';
-  if (error?.code === 'rejected') return 'hub_rejected';
-  if (error?.code === 'write_failed') return 'write_failed';
-  if (error?.code === 'hub_changed') return 'hub_changed';
-  return 'hub_unreachable';
-}
-
-function discardOrphanedSubscriptions() {
-  settings.subscriptionsOrphaned = { hubUrl: '', records: [] };
-  if (!saveSettings()) throw Object.assign(new Error('settings write failed'), { code: 'write_failed' });
-  return settingsForRenderer();
-}
-
-function refreshSharedSubscriptions(options = {}) {
-  // Nothing left to answer for a hub the user has moved off: the switch enqueues
-  // its own refresh for the hub they moved to, and this one would only spend a
-  // request to be discarded on arrival.
-  return queueSubscriptionOp((hub) => (subscriptionOpIsCurrent(hub) ? refreshSharedSubscriptionsNow(options) : false));
-}
-
-async function refreshSharedSubscriptionsNow({ seedFromLocal = false } = {}) {
-  if (!subscriptionsAreShared()) {
-    const had = Boolean(hubSubscriptions);
-    hubSubscriptions = null;
-    hubSubscriptionsHub = '';
-    return had;
-  }
-  // A document fetched from another hub is not an answer about this one, and
-  // holding on to it is what made an unreachable new hub show the old one's list.
-  const hub = currentHubIdentity();
-  if (hubSubscriptions && hubSubscriptionsHub !== hub) {
-    hubSubscriptions = null;
-    hubSubscriptionsHub = '';
-  }
-
-  try {
-    // Only records this device actually owns may be seeded or set aside. Once
-    // settings.subscriptions is a cache of some hub it is that hub's data, and
-    // carrying it into the next hub would file one hub's records on another —
-    // duplicating accounts that were never entered here. Switching to local mode
-    // and editing hands ownership back, which is what clears the marker.
-    // A marked cache is some hub's data, never this device's — including the hub
-    // in front of us, whose own list is exactly what the cache holds. Only an
-    // unmarked list is owned here and eligible to be seeded or set aside.
-    const local = settings.subscriptionsCacheHub ? [] : (settings.subscriptions || []);
-    const doc = await fetchSharedSubscriptions();
-    if (!doc) return false;
-    // Nothing else can have run against the hub in the meantime — the lane saw to
-    // that — but the user may have switched hubs while this request was waiting,
-    // and applying it would show one hub's records under another's name.
-    if (!subscriptionOpIsCurrent(hub)) return false;
-    // A hub nobody has ever written to: adopt this device's records rather than
-    // replacing them with nothing. Keyed on updatedAt rather than on the list
-    // being empty — an empty list WITH a timestamp is somebody's delete, and
-    // re-uploading a stale cache over it resurrects what they removed.
-    if (seedFromLocal && !doc.updatedAt && local.length > 0) {
-      const previous = hubSubscriptions;
-      const previousHub = hubSubscriptionsHub;
-      hubSubscriptions = doc;
-      hubSubscriptionsHub = hub;
-      try {
-        // The document just fetched is the base by definition: it is what this
-        // hub answered a moment ago, and an unwritten hub answers with no token.
-        await writeSharedSubscriptionsNow(local, hub, doc.updatedAt || '');
-        return true;
-      } catch (error) {
-        // The seed failed, so the empty document must not stay installed: in
-        // shared mode it is what the UI reads, and the user would watch every
-        // record they entered vanish with only a console line to explain it.
-        hubSubscriptions = previous;
-        hubSubscriptionsHub = previousHub;
-        throw error;
-      }
-    }
-    // Joining a hub that already holds records. Until this moment the local list
-    // was this device's own data, not a cache of the hub's, so anything missing
-    // from the shared list is set aside for the user rather than overwritten.
-    // Only recompute while there is something owned here to compare. Running it
-    // against an empty list would answer "no differences" and quietly clear a set
-    // of records the user has not decided about yet — which is what a second
-    // reconcile against the same hub used to do.
-    const orphansChanged = seedFromLocal && local.length > 0
-      ? rememberOrphanedSubscriptions(local, doc)
-      : false;
-    const changed = cacheSharedSubscriptions(doc, hub);
-    if (orphansChanged && !changed) persistSubscriptionState();
-    return changed || orphansChanged;
-  } catch (error) {
-    console.log(`[sync] subscriptions unavailable: ${error.message}`);
-    return false;
-  }
-}
-
-// Every hub stamps its stats with the version of the list it holds, so an edit
-// made on another device announces itself on the frames this one already
-// receives instead of being polled for. Both paths carry it — the stream while
-// it is up, and the widget's own stats read when it is not — and nothing is
-// fetched unless the versions disagree, so the steady state costs no requests at
-// all. This is the whole mechanism; there is no periodic subscription read
-// behind it.
-//
-// A missing stamp means no news rather than an empty list: it is also what a
-// local collector's own stats look like. Reading it as "the hub has nothing"
-// would throw away the records on screen.
-//
-// The stamp is not compared against an operation already in flight for this hub,
-// because what that operation will leave behind is not known yet. It is carried
-// into the lane and compared there instead — see runSubscriptionCatchUp().
-function maybeAdoptSharedSubscriptionRevision(stats) {
-  if (!subscriptionsAreShared()) return;
-  const revision = stats?.subscriptionsUpdatedAt;
-  if (typeof revision !== 'string') return;
-  const hub = currentHubIdentity();
-  if (revision === (subscriptionsDocumentFor(hub)?.updatedAt || '')) return;
-  // Getting this far twice for the same version means the last attempt did not
-  // land it. Frames arrive on every ingest from every device, so retrying on each
-  // one would turn a hub that serves /api/stats but not /api/subscriptions into a
-  // request loop. A version that moves is news again and is tried at once — the
-  // wait is a floor on retries, not a polling interval. Paired with its hub for
-  // the reason every version here is: on its own it cannot say which list it
-  // describes.
-  const now = Date.now();
-  if (hub === lastSubscriptionCatchUp.hub
-    && revision === lastSubscriptionCatchUp.version
-    && now - lastSubscriptionCatchUp.at < SUBSCRIPTION_RETRY_MS) return;
-  lastSubscriptionCatchUp = { hub, version: revision, at: now };
-  runSubscriptionCatchUp(revision);
-}
-
-// Queued rather than run, and the version is compared again once it is this
-// operation's turn. By then whatever was in flight has finished and cached its
-// result, which is the only thing that can tell the two cases apart: this
-// device's own write leaves the document at exactly the version the hub
-// broadcast, so there is nothing left to fetch, while a read that was already in
-// flight when the broadcast landed leaves an older one and the fetch happens.
-// Comparing before queueing cannot distinguish them — it would either re-fetch
-// every write this device makes, or discard the only notice of another device's.
-//
-// refreshSharedSubscriptionsNow() rather than refreshSharedSubscriptions(): the
-// lane is held by this operation, so the queueing wrapper would wait on itself.
-//
-// Deliberately not seeded from local: seeding and setting records aside belong
-// to joining a hub, and doing either here would re-answer a question the user
-// has already been asked.
-function runSubscriptionCatchUp(revision) {
-  return queueSubscriptionOp((hub) => {
-    if (!subscriptionOpIsCurrent(hub)) return false;
-    if (revision === (subscriptionsDocumentFor(hub)?.updatedAt || '')) return false;
-    return refreshSharedSubscriptionsNow();
-  })
-    .then((changed) => { if (changed) pushSettingsToRenderer(); })
-    .catch(() => {});
-}
-
-// base is the version the renderer's list was built from AND the hub that issued
-// it, sent back together. The alternative is to read the current version here,
-// which would let an edit made against the list on screen go out claiming a
-// version that arrived after it — the hub accepts that, and whatever the newer
-// version added is lost.
-async function saveSubscriptions(list, base) {
-  // Before the modes divide, because the answer applies to both. Local mode has
-  // no hub, so its identity is the empty one — which makes it a context of its
-  // own rather than a continuation of whichever hub was last configured, and an
-  // edit composed against a hub's list is not an edit to this device's own. The
-  // check below could not do this on its own: it only runs once a hub is
-  // configured, and the write it guards is the one that never reaches a hub.
-  if (String(base?.hub || '') !== currentHubIdentity()) throw hubChangedError();
-  if (!subscriptionsAreShared()) {
-    settings.subscriptions = subscriptionDisplay.normalizeSubscriptions(list, { currencyApi: { normalizeCurrency } });
-    // Editing here makes the list this device's own again, so a later hub join
-    // offers these records instead of treating them as some other hub's cache.
-    settings.subscriptionsCacheHub = '';
-    // saveSettings() rolls the whole object back when the file cannot be
-    // written, so reporting success here would tell the user their record was
-    // stored while it was being discarded.
-    if (!saveSettings()) {
-      const error = new Error('settings write failed');
-      error.code = 'write_failed';
-      throw error;
-    }
-    return settingsForRenderer();
-  }
-  // The hub is checked at all — rather than left to the version — because a
-  // version cannot answer for it: two hubs that have never been written to both
-  // report no version, so an edit made against one would pass a version check
-  // against the other and be written into a list it was never meant for.
-  await writeSharedSubscriptions(list, String(base?.updatedAt || ''));
-  return settingsForRenderer();
-}
-
-// Re-read on every mode change because the visible list may belong to the
-// previous hub (or to local mode). The request is intentionally detached from
-// the mode queue so a slow hub cannot delay collection startup.
-function stopSyncCollector(options = {}) {
-  if (deviceRuntimeHandle) { try { deviceRuntimeHandle.stop(options); } catch (_) {} }
+function stopSyncCollector() {
+  if (deviceRuntimeHandle) { try { deviceRuntimeHandle.stop(); } catch (_) {} }
   deviceRuntimeHandle = null;
 }
 
 function startSyncCollector() {
   stopSyncCollector();
   if (!effectiveHubConfig().url) return;
-  const widgetProducerOwner = captureMacWidgetProducerOwner();
   const syncUploadScheduler = createSyncUploadScheduler({
     intervalMs: syncUploadIntervalMs(),
     upload: postToHub,
@@ -3381,8 +2503,8 @@ function startSyncCollector() {
       lastCollectedDevice = { ...visibleSummary, receivedAt: new Date().toISOString() };
       const displayStats = composeLocalSyncStats(latestHubStats, lastCollectedDevice);
       if (displayStats) {
-        updateDiscordRpcDisplay(displayStats);
-        sendPush({ event: 'stats', data: { type: 'stats', reason: 'local', stats: displayStats, at: new Date().toISOString() } }, { widgetProducerOwner });
+        updateDiscordRpc(displayStats, settings.currency);
+        sendPush({ event: 'stats', data: { type: 'stats', reason: 'local', stats: displayStats, at: new Date().toISOString() } });
       }
       await syncUploadScheduler.enqueue(visibleSummary, revision);
     },
@@ -3396,10 +2518,9 @@ function startSyncCollector() {
     transformUsage: summaryWithArchivedClientUsage,
     usageOptions: electronUsageConfig('sync-collector'),
     sink,
-    onDiagnosticEvent: recordDiagnosticEvent,
     onError: (error, reason) => console.log(`[sync-collector] ${reason}: ${error.message}`)
   }, {
-    limitsDeps: electronLimitsDeps()
+    limitsDeps: { resolveConfigSnapshot: () => electronLimitsConfig() }
   });
   drainPendingRuntimeActions(deviceRuntimeHandle);
 }
@@ -3441,10 +2562,9 @@ function startHostCollector() {
     transformUsage: summaryWithArchivedClientUsage,
     usageOptions: electronUsageConfig('host-collector'),
     sink,
-    onDiagnosticEvent: recordDiagnosticEvent,
     onError: (error, reason) => console.log(`[host-collector] ${reason}: ${error.message}`)
   }, {
-    limitsDeps: electronLimitsDeps()
+    limitsDeps: { resolveConfigSnapshot: () => electronLimitsConfig() }
   });
   drainPendingRuntimeActions(deviceRuntimeHandle);
 }
@@ -3457,25 +2577,19 @@ function stopHostStats() {
 async function startHostStats() {
   stopHostStats();
   if (!embeddedHub) return;
-  const widgetProducerOwner = captureMacWidgetProducerOwner();
   // Host mode presents the same multi-device hub aggregate as connecting to a
   // remote hub, so it reuses the renderer's 'sync' status path (Live / synced
   // data). The in-process vs loopback distinction is internal to fetchStats.
   mode = 'sync';
   sendStatus(true);
   const emit = (stats, reason = 'hub') => {
-    updateDiscordRpcDisplay(stats);
-    sendPush({ event: 'stats', data: { type: 'stats', reason, stats, at: new Date().toISOString() } }, { widgetProducerOwner });
+    updateDiscordRpc(stats, settings.currency);
+    sendPush({ event: 'stats', data: { type: 'stats', reason, stats, at: new Date().toISOString() } });
   };
-  embeddedHubUnsub = embeddedHub.hub.onStats((stats, reason) => {
-    setLatestHubStatsCache(stats, 'host', hubModeGeneration, currentHubStatsIdentity('host'));
-    emit(stats, reason || 'hub');
-  });
+  embeddedHubUnsub = embeddedHub.hub.onStats((stats, reason) => emit(stats, reason || 'hub'));
   // Prime the renderer with the current snapshot so it isn't blank until the
   // first collector tick lands.
-  const stats = await embeddedHub.hub.getStats();
-  setLatestHubStatsCache(stats, 'host', hubModeGeneration, currentHubStatsIdentity('host'));
-  emit(stats, 'snapshot');
+  emit(await embeddedHub.hub.getStats(), 'snapshot');
 }
 
 // Detection status is about this machine's local files, so stamp the freshly
@@ -3485,16 +2599,10 @@ async function startHostStats() {
 // redeployed to preserve these fields.
 function injectLocalDeviceStatus(stats) {
   if (!stats || !Array.isArray(stats.devices)) return stats;
-  attachLocalPresentationNativeViews(stats, {
-    lastCollectedDevice,
-    seededLocalDevice: localDevice,
-    mode
-  });
   if (lastCollectedDevice) {
     const device = stats.devices.find((entry) => entry.deviceId === lastCollectedDevice.deviceId);
     if (device) {
       if (lastCollectedDevice.clientStatus) device.clientStatus = lastCollectedDevice.clientStatus;
-      if (lastCollectedDevice.clientHealth) device.clientHealth = lastCollectedDevice.clientHealth;
       if (lastCollectedDevice.wslStatus) device.wslStatus = lastCollectedDevice.wslStatus;
     }
   }
@@ -3514,229 +2622,27 @@ function injectLocalDeviceStatus(stats) {
   return stats;
 }
 
-function macWidgetConfiguration() {
-  if (!macWidgetRuntimeSupported()) return null;
-  if (cachedMacWidgetConfiguration !== undefined) return cachedMacWidgetConfiguration;
-
-  let appGroup = String(process.env.TOKEN_MONITOR_APP_GROUP || '').trim();
-  let urlScheme = String(process.env.TOKEN_MONITOR_WIDGET_URL_SCHEME || 'token-monitor').trim();
-  let snapshotFileName = 'snapshot.json';
-  let widgetKind = DEFAULT_WIDGET_KIND;
-  const configCandidates = [
-    path.join(process.resourcesPath, 'token-monitor-widget.json'),
-    path.resolve(__dirname, '..', '..', 'build', 'macos-widget', 'widget-config.json')
-  ];
-  if (!appGroup) {
-    for (const configPath of configCandidates) {
-      try {
-        const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-        appGroup = String(config.appGroup || '').trim();
-        urlScheme = String(config.urlScheme || urlScheme).trim();
-        widgetKind = String(config.widgetKind || widgetKind).trim();
-        snapshotFileName = String(config.snapshotFileName || snapshotFileName).trim();
-        if (appGroup) break;
-      } catch (_) {}
-    }
-  }
-  const snapshotPath = resolveMacWidgetSnapshotPath({
-    appGroup,
-    home: app.getPath('home'),
-    snapshotFileName
-  });
-  if (!snapshotPath) {
-    cachedMacWidgetConfiguration = null;
-    return cachedMacWidgetConfiguration;
-  }
-  cachedMacWidgetConfiguration = {
-    appGroup,
-    snapshotPath,
-    widgetKind,
-    urlScheme: (() => {
-      try { return normalizeWidgetURLScheme(urlScheme); } catch (_) { return 'token-monitor'; }
-    })()
-  };
-  return cachedMacWidgetConfiguration;
-}
-
-function macWidgetRuntimeSupported(
-  platform = process.platform,
-  osRelease = platform === 'darwin' ? os.release() : ''
-) {
-  return macWidgetRuntimeSupport({ platform, osRelease }).supported;
-}
-
-function historyResolverOptions() {
-  const { url: hubUrl, secret } = effectiveHubConfig();
-  return {
-    aggregateHistory,
-    embeddedHub,
-    historyEnabled: settings?.historyEnabled !== false,
-    hubMode: settings?.hubMode,
-    hubUrl,
-    localDevice: ownsUsageRuntime() ? (lastCollectedDevice || localDevice) : null,
-    mode,
-    secret
-  };
-}
-
-function getCompleteHistory() {
-  return resolveCompleteHistory(historyResolverOptions());
-}
-
-function macWidgetPresentation() {
-  return Object.freeze({
-    currencyCode: settings?.currency,
-    currencyRate: effectiveRates?.[normalizeCurrency(settings?.currency)] || 1,
-    compactNumbers: settings?.showCompactTotalTokens !== false,
-    compactTokenUnits: settings?.compactTokenUnits,
-    showCost: true,
-    locale: settings?.language,
-    theme: Object.keys(settings?.themeColors || {}).length ? 'custom' : 'system'
-  });
-}
-
-function ensureMacWidgetDemand() {
-  if (process.platform !== 'darwin') return null;
-  if (macWidgetDemand) return macWidgetDemand;
-  const widget = macWidgetConfiguration();
-  if (!widget) return null;
-  const markerDirectory = path.dirname(widget.snapshotPath);
-  macWidgetDemand = createMacWidgetDemandState({
-    markerPath: path.join(markerDirectory, WIDGET_DEMAND_MARKER),
-    provisionalMarkerPath: path.join(markerDirectory, WIDGET_DEMAND_PROVISIONAL_MARKER),
-    onActivation: () => {
-      const visibleStats = electronPresentationStats(latestStats);
-      scheduleMacWidgetSnapshot(visibleStats, captureMacWidgetProducerOwner());
-    },
-    logger: (message) => console.warn(message)
-  });
-  macWidgetDemand.start();
-  return macWidgetDemand;
-}
-
-function captureMacWidgetWork({ stats, owner }) {
-  const widget = macWidgetConfiguration();
-  if (!widget) return null;
-  if (macWidgetDemand && !macWidgetDemand.isInstalled()) return null;
-  const resolverConfig = Object.freeze({ ...historyResolverOptions() });
-  const sourceKey = macWidgetHistorySourceKey(resolverConfig);
-  return {
-    stats,
-    owner: Object.freeze({ epoch: owner.epoch, sourceKey }),
-    resolverConfig,
-    historyCachePath: completeHistorySource(resolverConfig) === 'remote'
-      ? macWidgetHistoryCachePath(app.getPath('userData'), sourceKey)
-      : null,
-    presentation: macWidgetPresentation(),
-    snapshotPath: widget.snapshotPath,
-    widgetKind: widget.widgetKind
-  };
-}
-
-function ensureMacWidgetSnapshotController() {
-  if (!macWidgetRuntimeSupported()) return null;
-  if (macWidgetSnapshotController) return macWidgetSnapshotController;
-  macWidgetSnapshotController = createMacWidgetSnapshotController({
-    startPaused: !macWidgetPublicationReady,
-    captureWork: captureMacWidgetWork,
-    resolveHistory: (work) => resolveMacWidgetHistory({
-      generation: work.owner.epoch,
-      sourceKey: work.owner.sourceKey,
-      revision: work.stats?.historyRevision,
-      fetchHistory: () => resolveCompleteHistory(work.resolverConfig),
-      ...(work.historyCachePath ? {
-        loadCachedHistory: () => readMacWidgetHistoryCache(work.historyCachePath, work.owner.sourceKey, { logger: (message) => console.warn(message) }),
-        saveCachedHistory: (history) => writeMacWidgetHistoryCache(work.historyCachePath, work.owner.sourceKey, history, { logger: (message) => console.warn(message) })
-      } : {}),
-      minIntervalMs: completeHistorySource(work.resolverConfig) === 'remote' ? undefined : 0,
-      logger: (message) => console.warn(message)
-    }),
-    prepareSnapshot: (work, history) => prepareMacWidgetSnapshotUpdate(work.stats, {
-      snapshotPath: work.snapshotPath,
-      snapshotOptions: { presentation: work.presentation, history },
-      logger: (message) => console.warn(message)
-    }),
-    commitSnapshot: (prepared, options) => commitMacWidgetSnapshot(prepared, {
-      isCurrent: options.isCurrent,
-      logger: (message) => console.warn(message)
-    }),
-    syncSnapshot: (_work, committed, prepared) => syncMacWidgetSnapshotDirectory({
-      ...committed,
-      fs: prepared?.fs
-    }),
-    discardSnapshot: discardMacWidgetSnapshot,
-    reloadSnapshot: (work, options) => requestMacWidgetReload({
-      widgetKind: work.widgetKind,
-      isCurrent: options.isCurrent,
-      runtimeSupported: macWidgetRuntimeSupported(),
-      logger: (message) => console.warn(message)
-    }),
-    logger: (message) => console.warn(message)
-  });
-  return macWidgetSnapshotController;
-}
-
-function captureMacWidgetProducerOwner() {
-  return ensureMacWidgetSnapshotController()?.captureProducerOwner() || null;
-}
-
-function advanceMacWidgetProducerAndSourceEpoch() {
-  ensureMacWidgetSnapshotController()?.advanceProducerAndSourceEpoch();
-}
-
-function advanceMacWidgetSourceEpoch() {
-  ensureMacWidgetSnapshotController()?.advanceSourceEpoch();
-}
-
-function refreshMacWidgetHistorySource() {
-  advanceMacWidgetSourceEpoch();
-  scheduleMacWidgetSnapshot(electronPresentationStats(latestStats), captureMacWidgetProducerOwner());
-}
-
-function scheduleMacWidgetSnapshot(stats, producerOwner) {
-  if (!macWidgetRuntimeSupported() || !stats) return false;
-  return ensureMacWidgetSnapshotController()?.enqueue({ stats, producerOwner }) || false;
-}
-
-function electronPresentationStats(stats) {
-  return projectLimitStatsForDisplay(stats, {
-    localDeviceId: settings?.deviceId,
-    syncActive: mode === 'sync' || Boolean(String(settings?.hubUrl || '').trim()),
-    opencodeLocalLimitsEnabled: settings?.opencodeLocalLimitsEnabled === true
-  });
-}
-
-function sendPush(payload, options = {}) {
+function sendPush(payload) {
   const previousHistoryRevision = statsHistoryRevision(latestStats);
-  let rendererPayload = payload;
   if (payload?.data?.stats) {
     injectLocalDeviceStatus(payload.data.stats);
     latestStats = payload.data.stats;
-    const visibleStats = electronPresentationStats(latestStats);
-    rendererPayload = { ...payload, data: { ...payload.data, stats: visibleStats } };
-    scheduleMacWidgetSnapshot(visibleStats, options.widgetProducerOwner);
     syncTrayCodexActiveAccount();
     updateTrayDisplay();
-    if (!options.skipExport && settings.exportAutoEnabled && settings.exportDir && Date.now() - lastExportAt >= exportIntervalMs()) {
+    if (settings.exportAutoEnabled && settings.exportDir && Date.now() - lastExportAt >= exportIntervalMs()) {
       lastExportAt = Date.now();
       writeExportTo(settings.exportDir, payload.data.stats.periods, { skipUnchanged: true })
         .catch((err) => console.warn(`[export] auto-export failed: ${err.message}`));
     }
   }
-  if (options.deferToRenderer) {
-    const deferred = payload?.data?.stats;
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      sendWhenRendererReady(mainWindow.webContents, 'stats:push', rendererPayload, () => !deferred || latestStats === deferred);
-    }
-  } else if (mainWindow && !mainWindow.isDestroyed()) {
-    try { mainWindow.webContents.send('stats:push', rendererPayload); } catch (_) {}
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    try { mainWindow.webContents.send('stats:push', payload); } catch (_) {}
   }
   if (payload?.data?.stats) {
     const nextHistoryRevision = statsHistoryRevision(payload.data.stats);
     if (nextHistoryRevision !== previousHistoryRevision && dashboardWindow && !dashboardWindow.isDestroyed()) {
       try { dashboardWindow.webContents.send('dashboard:historyChanged'); } catch (_) {}
     }
-    maybeAdoptSharedSubscriptionRevision(payload.data.stats);
   }
 }
 
@@ -3782,38 +2688,18 @@ async function refreshExchangeRates({ force = false } = {}) {
   }
   applyEffectiveRates();
   updateTrayDisplay();
-  if (settings?.discordRpcEnabled && latestStats) updateDiscordRpcDisplay(latestStats);
+  if (settings?.discordRpcEnabled && latestStats) updateDiscordRpc(latestStats, settings.currency);
   pushSettingsToRenderer();
-}
-
-function compactTokenDisplayOptions() {
-  return {
-    compactTokenUnits: settings?.compactTokenUnits,
-    locale: trayMenuLocale()
-  };
-}
-
-function updateDiscordRpcDisplay(stats) {
-  updateDiscordRpc(stats, settings?.currency, compactTokenDisplayOptions());
-}
-
-function refreshTrayContextMenu() {
-  if (!tray || tray.isDestroyed()) return;
-  if (typeof tray.refreshContextMenu === 'function') tray.refreshContextMenu();
-  else refreshTrayMenu(tray);
 }
 
 function updateTrayDisplay() {
   if (!tray || tray.isDestroyed()) return;
   const mode = settings?.trayContent || 'tokens';
   const currency = normalizeCurrency(settings?.currency);
-  const compactOptions = compactTokenDisplayOptions();
-  const visibleStats = electronPresentationStats(latestStats);
-  const limitText = formatTrayText(visibleStats, mode, currency, {
+  const limitText = formatTrayText(latestStats, mode, currency, {
     limitProviderOrder: settings?.limitProviderOrder,
     limitProviders: settings?.limitProviders,
-    showLimitUsed: settings?.showLimitUsed,
-    ...compactOptions
+    showLimitUsed: settings?.showLimitUsed
   });
   const barsImageMode = isBarsTrayIconMode(mode) && !limitText && providerTrayIcons[mode];
   // A renderer-generated icon is cached in the main process. Only reuse it
@@ -3822,9 +2708,9 @@ function updateTrayDisplay() {
   const trayImageMode = mode === 'limitsAllSessions' && Boolean(limitText) && providerTrayIcons[mode];
   const customImageMode = mode === 'custom' && providerTrayIcons.custom;
   const text = trayImageMode || customImageMode ? '' : limitText;
-  if (trayShowsTitle(process.platform)) tray.setTitle(text);
+  if (process.platform === 'darwin') tray.setTitle(text);
   // Tooltip always shows a useful summary, even in icon-only mode where setTitle is blank.
-  const tip = formatTrayText(visibleStats, 'both', currency, compactOptions);
+  const tip = formatTrayText(latestStats, 'both', currency);
   tray.setToolTip(`Token Monitor - ${tip}`);
   // Icon: rendered bars image in bar modes, otherwise the app icon.
   let icon = null;
@@ -3835,67 +2721,26 @@ function updateTrayDisplay() {
     if (usageIconId) icon = providerTrayIcons[usageIconId];
   }
   tray.setImage(icon || getDefaultTrayIcon());
-  refreshTrayContextMenu();
+  refreshTrayMenu(tray);
 }
 
 function sendStatus(connected, extra) {
-  const previous = streamConnected;
   streamConnected = Boolean(connected);
   streamFailure = streamConnected ? null : ((extra && extra.reason) ? { reason: extra.reason, detail: extra.detail ?? null } : streamFailure);
-  if (mode === 'sync') {
-    if (streamConnected && !previous) {
-      recordDiagnosticEvent({ subsystem: 'stream', code: 'stream-reconnected' });
-    } else if (!streamConnected && (previous || extra?.reason)) {
-      recordDiagnosticEvent({
-        subsystem: 'stream',
-        code: 'stream-disconnected',
-        detailCode: diagnosticStreamDetailCode(extra || streamFailure || {})
-      });
-    }
-  }
   sendPush({ event: 'status', data: { connected: streamConnected, mode, ...(extra || {}) } });
 }
 
-function stopLocalCollector(options = {}) {
-  if (deviceRuntimeHandle) { try { deviceRuntimeHandle.stop(options); } catch (_) {} }
+function stopLocalCollector() {
+  if (deviceRuntimeHandle) { try { deviceRuntimeHandle.stop(); } catch (_) {} }
   deviceRuntimeHandle = null;
   localDevice = null;
   localStats = null;
 }
 
-function primeLocalStatsFromAnchor(usageOptions, widgetProducerOwner) {
-  if (lastCollectedDevice) return;
-  const deviceRecord = deviceRecordFromAnchor(
-    readJson(path.join(sharedDataDir(), 'collector-anchor.json'), null),
-    {
-      envelope: electronDeviceEnvelope(),
-      clients: usageOptions.clients,
-      allTimeSince: usageOptions.allTimeSince,
-      projectsEnabled: usageOptions.projectsEnabled,
-      wslScanEnabled: usageOptions.wslScanEnabled,
-      wslSupported: process.platform === 'win32',
-      hostname: os.hostname(),
-      platform: `${process.platform}-${process.arch}`
-    }
-  );
-  if (!deviceRecord) return;
-  const visible = summaryWithArchivedClientUsage(deviceRecord);
-  localDevice = visible;
-  localStats = withHistoryPreview(aggregateDevices([visible], 0), [visible]);
-  attachLocalNativeViews(localStats, localDevice);
-  sendPush({
-    event: 'stats',
-    data: { type: 'stats', reason: 'anchor', stats: localStats, at: deviceRecord.receivedAt }
-  }, { skipExport: true, deferToRenderer: true, widgetProducerOwner });
-}
-
 function startLocalCollector() {
   stopLocalCollector();
-  const widgetProducerOwner = captureMacWidgetProducerOwner();
   mode = 'local';
   sendStatus(false, { reason: 'collecting' });
-  const usageOptions = electronUsageConfig('collector');
-  primeLocalStatsFromAnchor(usageOptions, widgetProducerOwner);
   deviceRuntimeHandle = createDeviceRuntime({
     envelope: electronDeviceEnvelope(),
     initialLimits: lastCollectedDevice?.limits,
@@ -3909,15 +2754,13 @@ function startLocalCollector() {
       localDevice = { ...visibleSummary, receivedAt: new Date().toISOString() };
       lastCollectedDevice = localDevice;
       localStats = withHistoryPreview(aggregateDevices([localDevice], 0), [localDevice]);
-      attachLocalNativeViews(localStats, localDevice);
-      updateDiscordRpcDisplay(localStats);
-      sendPush({ event: 'stats', data: { type: 'stats', reason, stats: localStats, at: new Date().toISOString() } }, { widgetProducerOwner });
+      updateDiscordRpc(localStats, settings.currency);
+      sendPush({ event: 'stats', data: { type: 'stats', reason, stats: localStats, at: new Date().toISOString() } });
       sendStatus(true, { reason });
     },
-    onDiagnosticEvent: recordDiagnosticEvent,
     onError: (error, reason) => sendStatus(false, { reason: `${reason}:${error.message}` })
   }, {
-    limitsDeps: electronLimitsDeps()
+    limitsDeps: { resolveConfigSnapshot: () => electronLimitsConfig() }
   });
   drainPendingRuntimeActions(deviceRuntimeHandle);
 }
@@ -3947,10 +2790,7 @@ function parseSseChunk(chunk) {
 
 async function startStatsStream(options = {}) {
   stopStatsStream();
-  const generation = hubModeGeneration;
-  const widgetProducerOwner = captureMacWidgetProducerOwner();
-  const cacheIdentity = currentHubStatsIdentity('client');
-  if (options.resetSnapshot) clearLatestHubStatsCache();
+  if (options.resetSnapshot) latestHubStats = null;
   const { url: hubUrl, secret } = effectiveHubConfig();
   if (!hubUrl) return;
   mode = 'sync';
@@ -3962,7 +2802,6 @@ async function startStatsStream(options = {}) {
       headers: { accept: 'text/event-stream', ...(secret ? { authorization: `Bearer ${secret}` } : {}) },
       signal: controller.signal
     });
-    if (!hubModeRequestIsCurrent(generation, 'client', cacheIdentity)) return;
     if (!response.ok || !response.body) {
       sendStatus(false, classifyStreamFailure({ status: response.status }));
       scheduleStreamRetry();
@@ -3973,9 +2812,7 @@ async function startStatsStream(options = {}) {
     const decoder = new TextDecoder();
     let buffer = '';
     for (;;) {
-      if (!hubModeRequestIsCurrent(generation, 'client', cacheIdentity)) return;
       const { value, done } = await reader.read();
-      if (!hubModeRequestIsCurrent(generation, 'client', cacheIdentity)) return;
       if (done) break;
       buffer += decoder.decode(value, { stream: true });
       let idx;
@@ -3985,20 +2822,19 @@ async function startStatsStream(options = {}) {
         let parsed = parseSseChunk(chunk);
         if (parsed) {
           if (parsed.event === 'stats' && parsed.data?.stats) {
-            setLatestHubStatsCache(parsed.data.stats, 'client', generation, cacheIdentity);
-            const displayStats = composeLocalSyncStats(parsed.data.stats, lastCollectedDevice);
+            latestHubStats = parsed.data.stats;
+            const displayStats = composeLocalSyncStats(latestHubStats, lastCollectedDevice);
             parsed = { ...parsed, data: { ...parsed.data, stats: displayStats } };
-            updateDiscordRpcDisplay(displayStats);
+            updateDiscordRpc(displayStats, settings.currency);
           }
-          sendPush(parsed, { widgetProducerOwner });
+          sendPush(parsed);
         }
       }
     }
-    if (!hubModeRequestIsCurrent(generation, 'client', cacheIdentity)) return;
     sendStatus(false, classifyStreamFailure({ eof: true }));
     scheduleStreamRetry();
   } catch (error) {
-    if (controller.signal.aborted || !hubModeRequestIsCurrent(generation, 'client', cacheIdentity)) return;
+    if (controller.signal.aborted) return;
     sendStatus(false, classifyStreamFailure({ errorCode: error?.cause?.code || error?.code, message: error?.message }));
     scheduleStreamRetry();
   }
@@ -4018,31 +2854,6 @@ function showPopover() {
   // case where macOS fires blur immediately after show because the click that
   // opened us still has the menu bar as the focused element.
   setTimeout(() => { suppressNextBlurHide = false; }, 250);
-}
-
-function openMainWindowFromWidget() {
-  if (!app.isReady()) return;
-  const destination = pendingMacWidgetOpen || { page: 'overview', view: 'home', settings: false };
-  pendingMacWidgetOpen = null;
-  updateRendererViewState({ breakdown: destination.view });
-  applyMacActivationPolicy({ mainWindowVisible: true });
-  if (!mainWindow || mainWindow.isDestroyed()) createWindow();
-  if (!mainWindow || mainWindow.isDestroyed()) return;
-  const sendDestination = () => {
-    if (!mainWindow || mainWindow.isDestroyed()) return;
-    if (destination.settings) mainWindow.webContents.send('settings:open');
-    else mainWindow.webContents.send('view:open', destination.view);
-  };
-  if (mainWindow.webContents.isLoadingMainFrame?.()) mainWindow.webContents.once('did-finish-load', sendDestination);
-  else sendDestination();
-  if (settings?.trayMode && tray) {
-    showPopover();
-    return;
-  }
-  if (mainWindow.isMinimized()) mainWindow.restore();
-  applyMacSpaceBehavior(false);
-  if (floatingBubbleState.collapsed) expandFloatingBubble();
-  else mainWindow.show();
 }
 
 function hidePopover() {
@@ -4083,14 +2894,7 @@ function redactOpencodeProfilesForRenderer(profiles) {
   if (!profiles || typeof profiles !== 'object') return profiles;
   const out = {};
   for (const [name, profile] of Object.entries(profiles)) {
-    out[name] = {
-      enabled: profile?.enabled !== false,
-      cookie: profile?.cookie ? 'set' : '',
-      apiKey: profile?.apiKey ? 'set' : '',
-      accountKey: profile?.accountKey || '',
-      accountLabel: profile?.accountLabel || '',
-      credentialKinds: Array.isArray(profile?.credentialKinds) ? profile.credentialKinds.slice() : []
-    };
+    out[name] = { ...profile, cookie: profile && profile.cookie ? 'set' : '' };
   }
   return out;
 }
@@ -4104,40 +2908,7 @@ function redactOpenRouterProfilesForRenderer(profiles) {
   return out;
 }
 
-function redactThirdPartyProfilesForRenderer(profiles) {
-  if (!profiles || typeof profiles !== 'object') return profiles;
-  const out = Object.create(null);
-  for (const [name, profile] of Object.entries(profiles)) {
-    const adapter = thirdPartyLimits.normalizeAdapterId(profile?.adapter);
-    out[name] = {
-      enabled: profile?.enabled !== false,
-      adapter,
-      baseUrl: thirdPartyLimits.normalizeThirdPartyBaseUrl(profile?.baseUrl, {
-        stripTerminalV1: adapter !== thirdPartyLimits.CUSTOM_BALANCE_ADAPTER
-      }),
-      userId: String(profile?.userId || '').trim(),
-      ...(adapter === thirdPartyLimits.CUSTOM_BALANCE_ADAPTER ? {
-        endpointPath: thirdPartyLimits.normalizeCustomEndpointPath(profile?.endpointPath),
-        authMode: thirdPartyLimits.normalizeCustomAuthMode(profile?.authMode),
-        remainingPath: thirdPartyLimits.normalizeCustomJsonPath(profile?.remainingPath),
-        usedPath: thirdPartyLimits.normalizeCustomJsonPath(profile?.usedPath),
-        totalPath: thirdPartyLimits.normalizeCustomJsonPath(profile?.totalPath),
-        currency: thirdPartyLimits.normalizeCustomCurrency(profile?.currency),
-        divisor: thirdPartyLimits.normalizeCustomDivisor(profile?.divisor)
-      } : {}),
-      accessToken: profile?.accessToken ? 'set' : '',
-      apiKey: profile?.apiKey ? 'set' : ''
-    };
-  }
-  return out;
-}
-
 function settingsForRenderer() {
-  const claudeWebCookieSource = settings?.claudeWebCookie
-    ? 'settings'
-    : claudeWebCookie(process.env)
-      ? 'env'
-      : '';
   const deepseekApiKeySource = settings?.deepseekApiKey
     ? 'settings'
     : deepseekToken(process.env)
@@ -4173,11 +2944,6 @@ function settingsForRenderer() {
     : qoderCookie(process.env)
       ? 'env'
       : '';
-  const commandcodeCookieSource = settings?.commandcodeCookie
-    ? 'settings'
-    : commandcodeCookie(process.env)
-      ? 'env'
-      : '';
   const ollamaCookieSource = settings?.ollamaCookie
     ? 'settings'
     : ollamaSessionCookie(process.env)
@@ -4201,20 +2967,12 @@ function settingsForRenderer() {
   });
   return {
     ...settings,
-    locale: trayMenuLocale(),
     ...redactedCredentials,
-    subscriptions: effectiveSubscriptions(),
-    subscriptionsShared: subscriptionsAreShared(),
-    subscriptionsHub: currentHubIdentity(),
-    subscriptionsUpdatedAt: subscriptionsDocumentFor(currentHubIdentity())?.updatedAt || '',
-    subscriptionsOrphaned: pendingOrphanedSubscriptions(),
     zaiApiRegion: normalizeZaiApiRegion(settings?.zaiApiRegion || 'global'),
     zaiTeamOrganizationId: settings?.zaiTeamOrganizationId ? 'set' : '',
     zaiTeamProjectId: settings?.zaiTeamProjectId ? 'set' : '',
     volcengineAccessKeyId: settings?.volcengineAccessKeyId ? 'set' : '',
-    claudeWebCookie: settings?.claudeWebCookie ? 'set' : '',
     qoderCookie: settings?.qoderCookie ? 'set' : '',
-    commandcodeCookie: settings?.commandcodeCookie ? 'set' : '',
     ollamaCookie: settings?.ollamaCookie ? 'set' : '',
     // Never ship OpenCode session cookies to the renderer; the UI only needs to
     // know whether a cookie is configured, not its value.
@@ -4225,15 +2983,9 @@ function settingsForRenderer() {
     ...(settings?.openrouterProfiles
       ? { openrouterProfiles: redactOpenRouterProfilesForRenderer(settings.openrouterProfiles) }
       : {}),
-    ...(settings?.thirdPartyProfiles
-      ? { thirdPartyProfiles: redactThirdPartyProfilesForRenderer(settings.thirdPartyProfiles) }
-      : {}),
     openrouterEnvConfigured: Boolean(openrouterLimits.openrouterToken(process.env)),
-    thirdPartyEnvConfigured: thirdPartyLimits.configuredAccounts({}, { env: process.env }).length > 0,
     codexManagedAccounts: codexAccountsForRenderer(),
     mimoManagedAccounts: mimoAccountsForRenderer(),
-    claudeWebCookieConfigured: Boolean(currentClaudeWebCookie()),
-    claudeWebCookieSource,
     deepseekApiKeyConfigured: Boolean(currentDeepSeekApiKey()),
     deepseekApiKeySource,
     minimaxApiKeyConfigured: Boolean(currentMinimaxApiKey()),
@@ -4248,8 +3000,6 @@ function settingsForRenderer() {
     volcengineCredentialsSource,
     qoderCookieConfigured: Boolean(currentQoderCookie()),
     qoderCookieSource,
-    commandcodeCookieConfigured: Boolean(currentCommandcodeCookie()),
-    commandcodeCookieSource,
     ollamaCookieConfigured: Boolean(currentOllamaCookie()),
     ollamaCookieSource,
     kimiApiKeyConfigured: Boolean(currentKimiApiKey()),
@@ -4266,67 +3016,6 @@ function settingsForRenderer() {
   };
 }
 
-// The system tray can follow a different theme from the app window.
-function systemDarkTrayUi() {
-  try {
-    if (process.platform === 'darwin' || process.platform === 'win32') {
-      const systemIntegrated = nativeTheme.shouldUseDarkColorsForSystemIntegratedUI;
-      if (typeof systemIntegrated === 'boolean') return systemIntegrated;
-    }
-    return nativeTheme.shouldUseDarkColors === true;
-  } catch (_) {
-    return false;
-  }
-}
-
-const WINDOWS_PERSONALIZE_KEY = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize';
-
-function readWindowsSystemDarkUi() {
-  return new Promise((resolve) => {
-    try {
-      require('node:child_process').execFile(
-        'reg',
-        ['query', WINDOWS_PERSONALIZE_KEY, '/v', 'SystemUsesLightTheme'],
-        { windowsHide: true, timeout: 5000 },
-        (error, stdout) => resolve(error ? null : parseWindowsSystemUsesLightTheme(stdout))
-      );
-    } catch (_) {
-      resolve(null);
-    }
-  });
-}
-
-let currentSystemDarkUi = null;
-
-function currentSystemDarkTrayUi() {
-  if (currentSystemDarkUi === null) currentSystemDarkUi = systemDarkTrayUi();
-  return currentSystemDarkUi;
-}
-
-function pushSystemUiThemeToRenderer(dark) {
-  const value = typeof dark === 'boolean' ? dark : currentSystemDarkTrayUi();
-  currentSystemDarkUi = value;
-  if (!mainWindow || mainWindow.isDestroyed()) return;
-  try { mainWindow.webContents.send('theme:systemUi', { dark: value }); } catch (_) {}
-}
-
-let systemUiThemeRevision = 0;
-
-async function pushSystemUiThemeAfterChange() {
-  if (process.platform !== 'win32') {
-    pushSystemUiThemeToRenderer(systemDarkTrayUi());
-    return;
-  }
-  const revision = ++systemUiThemeRevision;
-  await watchSystemDarkUi({
-    read: readWindowsSystemDarkUi,
-    wait: (ms) => new Promise((resolve) => { setTimeout(resolve, ms); }),
-    isCurrent: () => revision === systemUiThemeRevision,
-    held: currentSystemDarkTrayUi(),
-    publish: (dark) => pushSystemUiThemeToRenderer(dark)
-  });
-}
-
 function pushSettingsToRenderer() {
   const payload = settingsForRenderer();
   if (mainWindow && !mainWindow.isDestroyed()) {
@@ -4338,21 +3027,6 @@ function pushSettingsToRenderer() {
   // refresh or manual override until it is reopened.
   if (dashboardWindow && !dashboardWindow.isDestroyed()) {
     try { dashboardWindow.webContents.send('settings:push', payload); } catch (_) {}
-  }
-}
-
-function refreshLimitStatsPresentation() {
-  if (!latestStats) return;
-  const visibleStats = electronPresentationStats(latestStats);
-  scheduleMacWidgetSnapshot(visibleStats, captureMacWidgetProducerOwner());
-  updateTrayDisplay();
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    try {
-      mainWindow.webContents.send('stats:push', {
-        event: 'stats',
-        data: { type: 'stats', reason: 'presentation', mode, stats: visibleStats }
-      });
-    } catch (_) {}
   }
 }
 
@@ -4396,32 +3070,35 @@ function trayMenuLocale() {
   return resolveLocale(settings?.language || 'auto', preferredLanguages);
 }
 
-function sendMainWindowEvent(channel, payload, isStillCurrent) {
+function sendMainWindowEvent(channel, payload) {
   if (!mainWindow || mainWindow.isDestroyed()) return;
-  sendWhenRendererReady(mainWindow.webContents, channel, payload, isStillCurrent);
+  const send = () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    try { mainWindow.webContents.send(channel, payload); } catch (_) {}
+  };
+  if (mainWindow.webContents.isLoading()) mainWindow.webContents.once('did-finish-load', send);
+  else send();
 }
 
 async function refreshFromTray() {
   if (trayRefreshInFlight) return;
-  const widgetProducerOwner = captureMacWidgetProducerOwner();
-  return runTrayMenuAction({
-    setInFlight: (value) => { trayRefreshInFlight = value; },
-    refreshContextMenu: refreshTrayContextMenu,
-    action: async () => {
-      try {
-        const stats = await fetchStats({ force: true });
-        // Collector ticks normally publish their own final snapshot. Only bridge the
-        // result when fetchStats returned a different object (for example, a remote hub
-        // fetch while an external headless agent owns collection).
-        if (stats && stats !== latestStats) {
-          sendPush({ event: 'stats', data: { stats, mode, reason: 'manual' } }, { widgetProducerOwner });
-        }
-      } catch (error) {
-        console.warn(`[tray] refresh failed: ${error.message}`);
-        showTrayRefreshError(error?.message || error);
-      }
+  trayRefreshInFlight = true;
+  updateTrayDisplay();
+  try {
+    const stats = await fetchStats({ force: true });
+    // Collector ticks normally publish their own final snapshot. Only bridge the
+    // result when fetchStats returned a different object (for example, a remote hub
+    // fetch while an external headless agent owns collection).
+    if (stats && stats !== latestStats) {
+      sendPush({ event: 'stats', data: { stats, mode, reason: 'manual' } });
     }
-  });
+  } catch (error) {
+    console.warn(`[tray] refresh failed: ${error.message}`);
+    showTrayRefreshError(error?.message || error);
+  } finally {
+    trayRefreshInFlight = false;
+    updateTrayDisplay();
+  }
 }
 
 function setTrayContentFromMenu(value) {
@@ -4527,25 +3204,22 @@ async function switchCodexAccountFromTray(accountId) {
   if (trayCodexSwitchInFlight || !accountId) return;
   const currentId = trayCodexPendingAccountId || trayCodexActiveAccountId;
   if (accountId === currentId) return;
-  return runTrayMenuAction({
-    setInFlight: (value) => { trayCodexSwitchInFlight = value; },
-    refreshContextMenu: refreshTrayContextMenu,
-    action: async () => {
-      try {
-        const result = await switchCodexSystemAccount(accountId);
-        if (!result?.ok) {
-          showTrayCodexSwitchError(result?.error);
-          return;
-        }
-        trayCodexActiveAccountId = result.activeAccountId || accountId;
-        trayCodexPendingAccountId = trayCodexActiveAccountId;
-        trayCodexPendingSince = Date.now();
-        pushSettingsToRenderer();
-      } catch (error) {
-        showTrayCodexSwitchError(error?.message || error);
-      }
+  trayCodexSwitchInFlight = true;
+  try {
+    const result = await switchCodexSystemAccount(accountId);
+    if (!result?.ok) {
+      showTrayCodexSwitchError(result?.error);
+      return;
     }
-  });
+    trayCodexActiveAccountId = result.activeAccountId || accountId;
+    trayCodexPendingAccountId = trayCodexActiveAccountId;
+    trayCodexPendingSince = Date.now();
+    pushSettingsToRenderer();
+  } catch (error) {
+    showTrayCodexSwitchError(error?.message || error);
+  } finally {
+    trayCodexSwitchInFlight = false;
+  }
 }
 
 function configureWindowToggleShortcut() {
@@ -4620,8 +3294,6 @@ function enterTrayMode() {
   applyMacActivationPolicy();
   if (mainWindow && !mainWindow.isDestroyed()) {
     if (typeof mainWindow.setSkipTaskbar === 'function') mainWindow.setSkipTaskbar(true);
-    suspendWindowMaximized(mainWindow);
-    setWindowMaximizable(mainWindow, false);
     applyMacSpaceBehavior(true);
     mainWindow.hide();
   }
@@ -4631,7 +3303,6 @@ function exitTrayMode() {
   applyMacActivationPolicy({ mainWindowVisible: true });
   if (mainWindow && !mainWindow.isDestroyed()) {
     if (typeof mainWindow.setSkipTaskbar === 'function') mainWindow.setSkipTaskbar(false);
-    setWindowMaximizable(mainWindow, true);
     applyMacSpaceBehavior(false);
     const restore = restoredBounds() || DEFAULT_WINDOW;
     mainWindow.setBounds({
@@ -4641,16 +3312,12 @@ function exitTrayMode() {
     });
     applyWindowSettings();
     mainWindow.show();
-    restoreWindowMaximized(mainWindow, settings);
   }
   if (!shouldCreateTray(settings)) destroyTray();
   else ensureTray();
 }
 
 function startMode() {
-  hubModeGeneration += 1;
-  advanceMacWidgetProducerAndSourceEpoch();
-  clearLatestHubStatsCache();
   // Tear down collectors synchronously so they can't double-run while the
   // async reconciliation below is queued.
   stopLocalCollector();
@@ -4678,34 +3345,18 @@ function startMode() {
       }
       await startHostStats();
       startHostCollector();
-      void reconcileSharedSubscriptions();
       return;
     }
     await stopEmbeddedHub();
     if (effectiveHubConfig().url) {
       startStatsStream({ resetSnapshot: true });
       startSyncCollector();
-      void reconcileSharedSubscriptions();
     } else {
       startLocalCollector();
-      void reconcileSharedSubscriptions();
     }
   }).catch((err) => {
     console.log(`[mode] reconciliation failed: ${err?.message || err}`);
   });
-}
-
-// Reconciled on every mode change, because switching into a hub adopts a
-// different list and switching out of one falls back to the local cache.
-// This lane is deliberately detached from modeQueue: a slow hub request must
-// not delay the next hub's stream and collector startup.
-async function reconcileSharedSubscriptions() {
-  try {
-    await refreshSharedSubscriptions({ seedFromLocal: true });
-    pushSettingsToRenderer();
-  } catch (error) {
-    console.log(`[sync] subscription reconcile failed: ${error?.message || error}`);
-  }
 }
 
 function restartDeviceRuntimeForMode() {
@@ -4723,15 +3374,10 @@ function restartDeviceRuntimeForMode() {
 
 function stopAll() {
   stopPersistBoundsTimer();
-  stopLocalCollector({ skipCloseWatchers: true });
+  stopLocalCollector();
   stopStatsStream();
   stopHostStats();
-  stopSyncCollector({ skipCloseWatchers: true });
-  macWidgetSnapshotController?.stop();
-  if (macWidgetDemand) {
-    macWidgetDemand.stop();
-    macWidgetDemand = null;
-  }
+  stopSyncCollector();
   void stopEmbeddedHub();
   stopDiscordRpc();
   if (tray && !tray.isDestroyed()) tray.destroy();
@@ -4739,41 +3385,12 @@ function stopAll() {
 }
 
 let quitRequested = false;
-let quitInProgress = false;
-let skipForcedQuit = false;
-let updateHandoffObserved = false;
-
-const updateInstallQuit = createUpdateInstallQuitGuard({
-  ...updateInstallQuitPolicy(),
-  watchdogEnabled: () => updateHandoffObserved,
-  claim: () => { quitRequested = true; skipForcedQuit = true; },
-  release: () => { quitRequested = false; skipForcedQuit = false; },
-  onStalled: () => {
-    setNativeAppUpdateState({
-      phase: 'error',
-      progress: null,
-      error: 'Update installer did not start',
-      errorKind: installFailureErrorKind({ spent: updateInstallQuit.isSpent(), stalled: true })
-    });
-  },
-  onHandoff: (afterStalledReport) => {
-    if (!afterStalledReport) return;
-    setNativeAppUpdateState({ phase: 'downloaded', progress: 100, error: null });
-  }
-});
-
-function performQuit() {
-  if (quitInProgress) return;
-  quitInProgress = true;
-  try { stopAll(); }
-  catch (error) { console.log(`[quit] stopAll failed: ${error?.message || error}`); }
-  app.exit(0);
-}
-
 function requestAppQuit() {
   if (quitRequested) return;
   quitRequested = true;
-  performQuit();
+  stopAll();
+  if (app.isReady()) app.quit();
+  else app.exit(0);
 }
 
 // Write the export file set (JSON + CSVs) into `dir`, atomically (temp + rename)
@@ -4826,8 +3443,6 @@ async function writeExportTo(dir, periods, options = {}) {
 }
 
 async function fetchStats(options = {}) {
-  const requestGeneration = hubModeGeneration;
-  const requestHubIdentity = currentHubStatsIdentity('client');
   const force = Boolean(options?.force);
   // forceHistory stays independent of `force` on purpose: tool settings, account
   // sign-ins and limits actions all refresh with { force: true }, so folding the
@@ -4837,7 +3452,6 @@ async function fetchStats(options = {}) {
   if (force && deviceRuntimeHandle && canRefreshRuntime) {
     await runManualDeviceRefresh(deviceRuntimeHandle, {
       forceHistory: Boolean(options?.forceHistory),
-      forceSelfSync: Boolean(options?.forceSelfSync),
       onLimitsError: (error) => console.log(`[limits-runtime] manual refresh failed: ${error.message}`)
     });
   }
@@ -4846,22 +3460,15 @@ async function fetchStats(options = {}) {
     return withHistoryPreview(aggregateDevices(localDevice ? [localDevice] : [], 0), localDevice ? [localDevice] : []);
   }
   if (settings.hubMode === 'host' && embeddedHub) {
-    const stats = await embeddedHub.hub.getStats();
-    setLatestHubStatsCache(stats, 'host', hubModeGeneration, currentHubStatsIdentity('host'));
-    return injectLocalDeviceStatus(stats);
+    return injectLocalDeviceStatus(await embeddedHub.hub.getStats());
   }
   const { url: hubUrl, secret } = effectiveHubConfig();
   if (!hubUrl) return withHistoryPreview(aggregateDevices([], 0), []);
   const url = `${hubUrl.replace(/\/$/, '')}/api/stats`;
   const response = await fetch(url, { headers: secret ? { authorization: `Bearer ${secret}` } : {} });
   if (!response.ok) throw new Error(`Hub ${response.status}: ${(await response.text()).slice(0, 200)}`);
-  const stats = await response.json();
-  if (!hubModeRequestIsCurrent(requestGeneration, 'client', requestHubIdentity)) {
-    await modeQueue;
-    return fetchStats({ ...options, force: false, forceHistory: false, forceSelfSync: false });
-  }
-  setLatestHubStatsCache(stats, 'client', requestGeneration, requestHubIdentity);
-  return injectLocalDeviceStatus(composeLocalSyncStats(stats, lastCollectedDevice));
+  latestHubStats = await response.json();
+  return injectLocalDeviceStatus(composeLocalSyncStats(latestHubStats, lastCollectedDevice));
 }
 
 function managedPricingSidecarPath() {
@@ -4939,7 +3546,6 @@ async function downloadTokscaleFromNpm() {
 let appUpdateCheckInFlight = false;
 let appUpdateCheckPromise = null;
 let appUpdateLastError = null;
-let appUpdateLastAttemptAt = null;
 let appUpdateBackgroundTimer = null;
 let appUpdateNativeBusy = false;
 let appUpdateNativeConfigured = false;
@@ -4947,8 +3553,7 @@ let appUpdateNativeState = {
   phase: 'idle',
   version: null,
   progress: null,
-  error: null,
-  errorKind: null
+  error: null
 };
 
 function latestFromUpdaterInfo(info) {
@@ -4976,22 +3581,6 @@ function rememberLatestAppUpdate(latest, checkedAt = new Date().toISOString()) {
   return merged;
 }
 
-function rememberSuccessfulAppUpdateCheck(latest, checkedAt = new Date().toISOString(), { clearLatest = false } = {}) {
-  if (!latest && !clearLatest) return null;
-  const remembered = latest
-    ? mergeLatestReleaseMetadata(settings?.appUpdate?.lastKnownLatest, latest)
-    : null;
-  settings.appUpdate = {
-    ...(settings.appUpdate || {}),
-    lastCheckedAt: checkedAt,
-    lastKnownLatest: remembered
-  };
-  saveSettings();
-  appUpdateLastAttemptAt = checkedAt;
-  appUpdateLastError = null;
-  return remembered;
-}
-
 function linuxPackageType() {
   if (process.platform !== 'linux' || !app.isPackaged) return '';
   try {
@@ -5009,9 +3598,7 @@ function nativeAppUpdateInstallSupport() {
 }
 
 function setNativeAppUpdateState(patch = {}) {
-  const next = { ...appUpdateNativeState, ...patch };
-  if ('error' in patch && !('errorKind' in patch)) next.errorKind = null;
-  appUpdateNativeState = next;
+  appUpdateNativeState = { ...appUpdateNativeState, ...patch };
   sendAppUpdatePush();
 }
 
@@ -5045,58 +3632,10 @@ function configureNativeAppUpdater() {
     const latest = latestFromUpdaterInfo(info);
     setNativeAppUpdateState({ phase: 'downloaded', version: latest?.version || info?.version || appUpdateNativeState.version || null, progress: 100, error: null });
   });
-  try {
-    updateHandoffObserved = observeUpdateInstallHandoff(
-      require('electron').autoUpdater,
-      () => updateInstallQuit.noteHandoff()
-    );
-  } catch (error) {
-    updateHandoffObserved = false;
-    console.log(`[update] cannot observe the install hand-off: ${error?.message || error}`);
-  }
-  if (!updateHandoffObserved) console.log('[update] no install hand-off signal; quit recovery disabled');
   autoUpdater.on('error', (error) => {
-    // Release the guard before checking the busy flag: update-downloaded clears
-    // that flag before an install failure can arrive.
-    const wasInstalling = updateInstallQuit.abort();
-    if (!appUpdateNativeBusy && !wasInstalling) return;
     appUpdateNativeBusy = false;
-    setNativeAppUpdateState({
-      phase: 'error',
-      progress: null,
-      error: error?.message || String(error || 'Update failed'),
-      errorKind: wasInstalling
-        ? installFailureErrorKind({ spent: updateInstallQuit.isSpent() })
-        : null
-    });
+    setNativeAppUpdateState({ phase: 'error', progress: null, error: error?.message || String(error || 'Update failed') });
   });
-}
-
-async function checkAppUpdateProvider() {
-  if (!app.isPackaged) return checkLatestRelease(app.getVersion());
-  const checkedAt = new Date().toISOString();
-  configureNativeAppUpdater();
-  const result = await autoUpdater.checkForUpdates();
-  const availability = providerUpdateCheckAvailability(result, app.getVersion());
-  if (!availability.valid) {
-    return {
-      ok: false,
-      newer: false,
-      latest: null,
-      error: 'Update metadata missing or invalid',
-      errorKind: 'metadata',
-      checkedAt
-    };
-  }
-  return {
-    ok: true,
-    newer: availability.newer,
-    latest: availability.latest,
-    clearLatest: availability.clearLatest,
-    error: null,
-    errorKind: null,
-    checkedAt
-  };
 }
 
 function deriveAppUpdateState() {
@@ -5119,24 +3658,16 @@ function deriveAppUpdateState() {
     showUpdateNotice: availability.showUpdateNotice,
     dismissedVersion,
     lastCheckedAt: block.lastCheckedAt || null,
-    lastAttemptAt: appUpdateLastAttemptAt,
     checking: appUpdateCheckInFlight,
-    lastError: appUpdateLastError?.message || null,
-    lastErrorKind: appUpdateLastError?.kind || null,
+    lastError: appUpdateLastError,
     installSupported: installSupport.supported,
     installSupportReason: installSupport.reason,
     installPhase: appUpdateNativeState.phase,
     installProgress: appUpdateNativeState.progress,
     installVersion: appUpdateNativeState.version,
     installError: appUpdateNativeState.error,
-    installErrorKind: appUpdateNativeState.errorKind || null,
-    installStarting: updateInstallQuit.isInstalling(),
-    installRetryBlocked: updateInstallQuit.isSpent(),
     downloaded: availability.downloaded,
-    installBusy: appUpdateNativeBusy
-      || updateInstallQuit.isInstalling()
-      || appUpdateNativeState.phase === 'checking'
-      || appUpdateNativeState.phase === 'downloading'
+    installBusy: appUpdateNativeBusy || appUpdateNativeState.phase === 'checking' || appUpdateNativeState.phase === 'downloading'
   };
 }
 
@@ -5157,16 +3688,15 @@ function sendAppUpdatePush() {
 }
 
 async function runAppUpdateCheck({ force = false, bypassCooldown = false } = {}) {
-  // An outstanding install owns the updater until the guard is idle again.
-  if (updateInstallQuit.isOutstanding()) return deriveAppUpdateState();
   if (appUpdateCheckPromise) {
     if (force) sendAppUpdatePush();
     const activeResult = await appUpdateCheckPromise;
     if (force) {
-      appUpdateLastAttemptAt = activeResult?.checkedAt || new Date().toISOString();
-      appUpdateLastError = resolveAppUpdateCheckError(appUpdateLastError, activeResult, { force: true });
       if (activeResult?.ok) {
         if (activeResult.newer) restoreDismissedAppUpdate(activeResult.latest?.version);
+        appUpdateLastError = null;
+      } else {
+        appUpdateLastError = activeResult?.error || 'Update check failed';
       }
       sendAppUpdatePush();
     }
@@ -5184,28 +3714,24 @@ async function runAppUpdateCheck({ force = false, bypassCooldown = false } = {})
   }
   const checkTask = (async () => {
     appUpdateCheckInFlight = true;
-    appUpdateLastAttemptAt = new Date().toISOString();
+    appUpdateLastError = null;
     if (force) sendAppUpdatePush();
     let result;
     try {
-      result = await checkAppUpdateProvider();
-      appUpdateLastAttemptAt = result.checkedAt || appUpdateLastAttemptAt;
+      result = await checkLatestRelease(app.getVersion());
       if (result.ok) {
-        rememberSuccessfulAppUpdateCheck(result.latest, result.checkedAt, { clearLatest: result.clearLatest });
+        rememberLatestAppUpdate(result.latest, result.checkedAt);
         if (force && result.newer) restoreDismissedAppUpdate(result.latest?.version);
+        appUpdateLastError = null;
       } else {
-        appUpdateLastError = resolveAppUpdateCheckError(appUpdateLastError, result, { force });
+        appUpdateLastError = force ? (result.error || 'Update check failed') : null;
         if (!force) console.warn('App update check failed:', result.error);
       }
     } catch (error) {
-      const classified = classifyAppUpdateError(error);
-      appUpdateLastError = resolveAppUpdateCheckError(appUpdateLastError, {
-        ok: false,
-        error: classified.message,
-        errorKind: classified.kind
-      }, { force });
+      const message = error.message || String(error);
+      appUpdateLastError = force ? message : null;
       if (!force) console.warn('App update check threw:', error);
-      return { ok: false, newer: false, latest: null, error: classified.message, errorKind: classified.kind, checkedAt: appUpdateLastAttemptAt };
+      return { ok: false, newer: false, latest: null, error: message };
     } finally {
       appUpdateCheckInFlight = false;
       sendAppUpdatePush();
@@ -5256,8 +3782,6 @@ async function downloadAndPrepareAppUpdate() {
     setNativeAppUpdateState({ phase: 'error', error: support.reason || 'unsupported-platform', progress: null });
     return deriveAppUpdateState();
   }
-  if (updateInstallQuit.isOutstanding()) return deriveAppUpdateState();
-  if (appUpdateCheckPromise) await appUpdateCheckPromise;
   if (appUpdateNativeBusy) return deriveAppUpdateState();
   const latest = settings?.appUpdate?.lastKnownLatest || null;
   if (downloadedAppUpdateMatchesLatest({
@@ -5265,26 +3789,19 @@ async function downloadAndPrepareAppUpdate() {
     downloadedVersion: appUpdateNativeState.version,
     latest
   })) return deriveAppUpdateState();
+  restoreDismissedAppUpdate(latest?.version);
   configureNativeAppUpdater();
   appUpdateNativeBusy = true;
   setNativeAppUpdateState({ phase: 'checking', progress: null, error: null });
   try {
     const result = await autoUpdater.checkForUpdates();
-    const availability = providerUpdateCheckAvailability(result, app.getVersion());
-    if (!availability.valid) throw new Error('Update metadata missing or invalid');
-    const checkedAt = new Date().toISOString();
-    const latestFromCheck = rememberSuccessfulAppUpdateCheck(
-      availability.latest,
-      checkedAt,
-      { clearLatest: availability.clearLatest }
-    );
-    const version = latestFromCheck?.version || null;
-    if (!availability.newer || !version) {
+    const info = result?.updateInfo || null;
+    const version = semver.valid(info?.version) || null;
+    if (!version || !semver.gt(version, app.getVersion())) {
       appUpdateNativeBusy = false;
       setNativeAppUpdateState({ phase: 'idle', version, progress: null, error: null });
       return deriveAppUpdateState();
     }
-    restoreDismissedAppUpdate(version);
     setNativeAppUpdateState({ phase: 'downloading', version, progress: 0, error: null });
     await autoUpdater.downloadUpdate();
   } catch (error) {
@@ -5294,38 +3811,17 @@ async function downloadAndPrepareAppUpdate() {
   return deriveAppUpdateState();
 }
 
-async function installDownloadedAppUpdate() {
-  if (appUpdateCheckPromise) await appUpdateCheckPromise;
+function installDownloadedAppUpdate() {
   const latest = settings?.appUpdate?.lastKnownLatest || null;
   if (!downloadedAppUpdateMatchesLatest({
     phase: appUpdateNativeState.phase,
     downloadedVersion: appUpdateNativeState.version,
     latest
   })) return deriveAppUpdateState();
-  if (!updateInstallQuit.request()) {
-    if (updateInstallQuit.phase() === 'spent') {
-      setNativeAppUpdateState({
-        phase: 'error',
-        progress: null,
-        error: 'Update install was already attempted',
-        errorKind: 'attempt-spent'
-      });
-    }
-    return deriveAppUpdateState();
-  }
-  try {
-    // isSilent: skip the NSIS installer UI on Windows so the update feels seamless
-    // (per-user install needs no elevation); isForceRunAfter relaunches the app.
-    autoUpdater.quitAndInstall(true, true);
-  } catch (error) {
-    updateInstallQuit.abort();
-    setNativeAppUpdateState({
-      phase: 'error',
-      progress: null,
-      error: error?.message || String(error),
-      errorKind: installFailureErrorKind({ spent: updateInstallQuit.isSpent() })
-    });
-  }
+  quitRequested = true;
+  // isSilent: skip the NSIS installer UI on Windows so the update feels seamless
+  // (per-user install needs no elevation); isForceRunAfter relaunches the app.
+  autoUpdater.quitAndInstall(true, true);
   return deriveAppUpdateState();
 }
 
@@ -5340,7 +3836,6 @@ function isAllowedExternalUrl(value) {
   if (parsed.hostname === 'github.com' && parsed.pathname.startsWith('/junhoyeo/tokscale')) return true;
   if (parsed.hostname === 'www.npmjs.com' && parsed.pathname.startsWith('/package/@tokscale/')) return true;
   if (parsed.hostname === 'github.com' && parsed.pathname.startsWith('/IGNGserver/token-monitor-suite')) return true;
-  if (parsed.hostname === 'claude.ai' && parsed.pathname.startsWith('/settings')) return true;
   if ((parsed.hostname === 'cursor.com' || parsed.hostname === 'www.cursor.com') && parsed.pathname.startsWith('/settings')) return true;
   if (parsed.hostname === 'opencode.ai' || parsed.hostname === 'www.opencode.ai') return true;
   if (parsed.hostname === 'openrouter.ai' && parsed.pathname.startsWith('/settings/keys')) return true;
@@ -5351,7 +3846,6 @@ function isAllowedExternalUrl(value) {
   if (parsed.hostname === 'bigmodel.cn' || parsed.hostname === 'www.bigmodel.cn') return true;
   if (parsed.hostname === 'www.volcengine.com' || parsed.hostname === 'console.volcengine.com') return true;
   if (parsed.hostname === 'qoder.com' || parsed.hostname === 'www.qoder.com' || parsed.hostname === 'qoder.com.cn' || parsed.hostname === 'www.qoder.com.cn') return true;
-  if (parsed.hostname === 'commandcode.ai' || parsed.hostname === 'www.commandcode.ai') return true;
   if ((parsed.hostname === 'ollama.com' || parsed.hostname === 'www.ollama.com') && (parsed.pathname === '/settings' || parsed.pathname === '/signin')) return true;
   if ((parsed.hostname === 'kimi.com' || parsed.hostname === 'www.kimi.com') && parsed.pathname.startsWith('/code')) return true;
   if (STATUS_PAGE_HOSTS.has(parsed.hostname) && (parsed.pathname === '' || parsed.pathname === '/')) return true;
@@ -5374,11 +3868,6 @@ function loadWindowFile(target, options = {}) {
     if (revealed) return;
     revealed = true;
     if (settings?.trayMode) return; // stay hidden until tray click
-    if (restoreWindowMaximizedForReveal(target, settings, {
-      restoreMaximized: options.restoreMaximized === true,
-      inactive: options.inactive === true,
-      collapsedFloatingBubble: options.collapsedFloatingBubble === true
-    })) return;
     revealWindow(target, { inactive: options.inactive === true });
   };
   const waitForContent = options.waitForContent === true;
@@ -5421,9 +3910,10 @@ function createWindow(boundsOverride, options = {}) {
   ensureSettingsLoaded();
   const collapsedFloatingBubble = options.collapsedFloatingBubble === true;
   const glass = nativeBlurEnabled();
+  const macosGlassStyle = macosGlassStyleFor(settings);
   const windowsBackdrop = normalizeWindowsBackdropMode(settings?.windowsBackdrop);
+  const windowsMaterial = windowsElectronBackgroundMaterial(windowsBackdrop);
   const nativeWindowsBackdrop = glass && windowsNativeBackdropSupported();
-  const windowsAccent = process.platform === 'win32' && nativeWindowsBackdrop && windowsBackdrop === WINDOWS_BACKDROP_ACCENT;
   const bounds = boundsOverride || restoredBounds() || DEFAULT_WINDOW;
   const collapsedSizeLimits = {
     minWidth: bounds.width,
@@ -5444,12 +3934,11 @@ function createWindow(boundsOverride, options = {}) {
     icon: APP_ICON_PATH,
     skipTaskbar: collapsedFloatingBubble || Boolean(settings?.trayMode),
     ...(collapsedFloatingBubble ? { fullscreenable: false, maximizable: false, minimizable: false } : {}),
-    ...(settings?.trayMode ? { maximizable: false } : {}),
     ...floatingBubbleWindowChrome(process.platform, collapsedFloatingBubble),
-    ...(process.platform === 'darwin' && glass ? { vibrancy: 'hud', visualEffectState: 'active' } : {}),
-    ...(process.platform === 'win32' && nativeWindowsBackdrop && !windowsAccent
-      ? { backgroundMaterial: windowsElectronBackgroundMaterial(windowsBackdrop) }
+    ...(process.platform === 'darwin' && glass && macosGlassStyle === MACOS_GLASS_VIBRANCY
+      ? { vibrancy: 'hud', visualEffectState: 'active' }
       : {}),
+    ...(process.platform === 'win32' && nativeWindowsBackdrop ? { backgroundMaterial: windowsMaterial } : {}),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -5461,25 +3950,6 @@ function createWindow(boundsOverride, options = {}) {
   applyMacosNativeWindowButtons(win, { visible: !collapsedFloatingBubble });
   applyMacSpaceBehavior();
   applyWindowsChrome(win, { round: true });
-  let windowsAccentFallback = false;
-  if (windowsAccent && !applyWindowsAccentBlur(win)) {
-    windowsAccentFallback = true;
-    console.warn('[window] AccentBlurBehind unavailable; falling back to Acrylic');
-    try { win.setBackgroundMaterial('acrylic'); } catch (_) {}
-  }
-  win.on('maximize', () => {
-    if (!shouldTrackWindowMaximized(settings, floatingBubbleState)) {
-      if (settings?.trayMode) suspendWindowMaximized(win);
-      return;
-    }
-    stopPersistBoundsTimer();
-    persistWindowState(settings, saveSettings, normalWindowBounds(win), true);
-  });
-  win.on('unmaximize', () => {
-    if (!shouldTrackWindowMaximized(settings, floatingBubbleState)) return;
-    persistWindowState(settings, saveSettings, normalWindowBounds(win), false);
-    persistBoundsSoon();
-  });
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (isAllowedExternalUrl(url)) shell.openExternal(url);
     return { action: 'deny' };
@@ -5519,8 +3989,6 @@ function createWindow(boundsOverride, options = {}) {
   loadWindowFile(win, {
     waitForContent: options.waitForContent === true,
     inactive: options.inactive === true,
-    collapsedFloatingBubble,
-    restoreMaximized: !collapsedFloatingBubble,
     query: {
       ...floatingBubbleInitialRendererQuery(floatingBubbleState, {
         collapsedWindow: collapsedFloatingBubble,
@@ -5528,8 +3996,7 @@ function createWindow(boundsOverride, options = {}) {
         viewState: rendererViewState
       }),
       ...(settings?.systemGlass === false ? { systemGlassDisabled: '1' } : {}),
-      ...(process.platform === 'win32' && glass && !nativeWindowsBackdrop ? { windowsBackdropUnsupported: '1' } : {}),
-      ...(windowsAccentFallback ? { windowsBackdropFallback: '1' } : {})
+      ...(process.platform === 'win32' && glass && !nativeWindowsBackdrop ? { windowsBackdropUnsupported: '1' } : {})
     }
   });
 }
@@ -5584,9 +4051,8 @@ function createDashboardWindow() {
     return dashboardWindow;
   }
   const glass = nativeBlurEnabled();
-  const windowsBackdrop = normalizeWindowsBackdropMode(settings?.windowsBackdrop);
+  const macosGlassStyle = macosGlassStyleFor(settings);
   const nativeWindowsBackdrop = glass && windowsNativeBackdropSupported();
-  const windowsAccent = process.platform === 'win32' && nativeWindowsBackdrop && windowsBackdrop === WINDOWS_BACKDROP_ACCENT;
   const win = new BrowserWindow({
     width: 920,
     height: 620,
@@ -5598,10 +4064,10 @@ function createDashboardWindow() {
     backgroundColor: '#00000000',
     icon: APP_ICON_PATH,
     skipTaskbar: false,
-    ...(process.platform === 'darwin' && glass ? { vibrancy: 'hud', visualEffectState: 'active' } : {}),
-    ...(process.platform === 'win32' && nativeWindowsBackdrop && !windowsAccent
-      ? { backgroundMaterial: windowsElectronBackgroundMaterial(windowsBackdrop) }
+    ...(process.platform === 'darwin' && glass && macosGlassStyle === MACOS_GLASS_VIBRANCY
+      ? { vibrancy: 'hud', visualEffectState: 'active' }
       : {}),
+    ...(process.platform === 'win32' && nativeWindowsBackdrop ? { backgroundMaterial: windowsElectronBackgroundMaterial(settings?.windowsBackdrop) } : {}),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -5611,12 +4077,6 @@ function createDashboardWindow() {
   dashboardWindow = win;
   applyMacosNativeWindowButtons(win);
   applyWindowsChrome(win, { round: true });
-  let windowsAccentFallback = false;
-  if (windowsAccent && !applyWindowsAccentBlur(win)) {
-    windowsAccentFallback = true;
-    console.warn('[dashboard] AccentBlurBehind unavailable; falling back to Acrylic');
-    try { win.setBackgroundMaterial('acrylic'); } catch (_) {}
-  }
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (isAllowedExternalUrl(url)) shell.openExternal(url);
     return { action: 'deny' };
@@ -5639,14 +4099,12 @@ function createDashboardWindow() {
     if (!win.isVisible()) discardFailedDashboardWindow(win, 'renderer became unresponsive while opening');
   });
   win.on('closed', () => { dashboardWindow = null; });
-  const dashboardQuery = {
-    ...(process.platform === 'win32' && glass && !nativeWindowsBackdrop ? { windowsBackdropUnsupported: '1' } : {}),
-    ...(windowsAccentFallback ? { windowsBackdropFallback: '1' } : {})
-  };
-  const dashboardLoadQuery = Object.keys(dashboardQuery).length ? dashboardQuery : undefined;
+  const dashboardQuery = process.platform === 'win32' && glass && !nativeWindowsBackdrop
+    ? { windowsBackdropUnsupported: '1' }
+    : undefined;
   win.loadFile(
     path.join(__dirname, 'renderer', 'dashboard.html'),
-    dashboardLoadQuery ? { query: dashboardLoadQuery } : undefined
+    dashboardQuery ? { query: dashboardQuery } : undefined
   )
     .catch((error) => discardFailedDashboardWindow(win, `load failed: ${error.message}`));
   return win;
@@ -5669,20 +4127,36 @@ function rebuildDashboardWindow() {
   });
 }
 
-async function getDashboardHistory(options = {}) {
-  const includeDevices = options?.includeDevices === true;
-  const resolved = includeDevices
-    ? await resolveCompleteHistoryWithDevices(historyResolverOptions())
-    : { history: await getCompleteHistory(), deviceHistories: undefined };
-  const source = completeHistorySource(historyResolverOptions());
-  const history = resolved.history;
-  return {
-    ...history,
-    ...(includeDevices ? { deviceHistories: resolved.deviceHistories } : {}),
-    fixedPeriods: fixedPeriodHistoryMeta({ source }),
-    historyRevision: historyRevision(history),
-    ...(includeDevices ? { deviceHistoryRevision: deviceHistoryRevision(resolved.deviceHistories) } : {})
-  };
+async function getDashboardHistory() {
+  if (settings?.historyEnabled === false) return aggregateHistory([]);
+  if (mode === 'local') {
+    // The local collector keeps localDevice.history current (watch + interval
+    // ticks, with carry-forward), so read it directly — exactly as the hub
+    // branch reads /api/history. Forcing a full collection tick here made the
+    // fetch take seconds; on a quick close/reopen the response outlived the
+    // renderer and was dropped, stranding the dashboard on its empty state.
+    return aggregateHistory(localDevice ? [localDevice] : []);
+  }
+  if (settings.hubMode === 'host' && embeddedHub) {
+    // Host mode reads its own hub store in-process, so the dashboard history
+    // doesn't depend on a loopback fetch the local firewall/proxy might block.
+    return embeddedHub.hub.getHistory();
+  }
+  const { url: hubUrl, secret } = effectiveHubConfig();
+  if (!hubUrl) return aggregateHistory([]);
+  const url = `${hubUrl.replace(/\/$/, '')}/api/history`;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000);
+  try {
+    const response = await fetch(url, {
+      headers: secret ? { authorization: `Bearer ${secret}` } : {},
+      signal: controller.signal
+    });
+    if (!response.ok) throw new Error(`Hub ${response.status}: ${(await response.text()).slice(0, 200)}`);
+    return response.json();
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 let cursorStatusCache = { value: null, at: 0 };
@@ -5703,7 +4177,9 @@ function normalizeManualCookie(input) {
 
 function rebuildWindow() {
   if (!mainWindow) return;
-  const bounds = rebuildWindowBounds(mainWindow, floatingBubbleState);
+  const bounds = floatingBubbleState.collapsed && floatingBubbleState.expandedBounds
+    ? floatingBubbleState.expandedBounds
+    : mainWindow.getBounds();
   const wasFocused = mainWindow.isFocused();
   const old = mainWindow;
   floatingBubbleState.collapsed = false;
@@ -5725,26 +4201,6 @@ function rebuildWindow() {
 app.whenReady().then(() => {
   if (process.platform === 'darwin' && app.dock) app.dock.setIcon(APP_ICON_PATH);
   ensureSettingsLoaded();
-  nativeTheme.on('updated', () => { void pushSystemUiThemeAfterChange(); });
-  const widgetRuntime = macWidgetRuntimeSupport({
-    platform: process.platform,
-    osRelease: process.platform === 'darwin' ? os.release() : ''
-  });
-  const widgetRuntimeSupported = widgetRuntime.supported;
-  const widgetRecoveryAbort = widgetRuntimeSupported ? new AbortController() : null;
-  const abortWidgetRecovery = () => widgetRecoveryAbort?.abort();
-  if (widgetRecoveryAbort) app.once('before-quit', abortWidgetRecovery);
-  const widgetRecovery = widgetRuntimeSupported
-    ? recoverMacWidgetLaunchServicesRegistration({
-      platform: process.platform,
-      runtimeSupported: true,
-      isPackaged: app.isPackaged,
-      resourcesPath: process.resourcesPath,
-      userDataPath: app.getPath('userData'),
-      signal: widgetRecoveryAbort.signal,
-      logger: (message) => console.warn(message)
-    })
-    : Promise.resolve({ status: 'skipped', reason: widgetRuntime.reason });
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
     callback({
       responseHeaders: {
@@ -5771,18 +4227,9 @@ app.whenReady().then(() => {
   configureWindowToggleShortcut();
   cleanupStaleStaging().catch((error) => console.log(`[tokscale] staging cleanup failed: ${error.message}`));
   ensureTray();
-  if (pendingMacWidgetOpen) setImmediate(openMainWindowFromWidget);
   if (settings.trayMode) enterTrayMode();
   regenerateTokscalePricing();
-  ensureMacWidgetDemand();
   startMode();
-  void widgetRecovery.finally(() => {
-    if (widgetRecoveryAbort) app.removeListener('before-quit', abortWidgetRecovery);
-    if (!widgetRecoveryAbort?.signal.aborted) {
-      macWidgetPublicationReady = true;
-      macWidgetSnapshotController?.resume();
-    }
-  });
   void hydrateCodexManagedWorkspaceLabels();
   if (settings.discordRpcEnabled) startDiscordRpc();
   rateCache = readRateCache();
@@ -5791,21 +4238,6 @@ app.whenReady().then(() => {
   rateRefreshTimer = setInterval(() => { refreshExchangeRates(); }, 6 * 60 * 60 * 1000);
   setTimeout(() => { checkTokscaleNpm({ silent: true }); }, 2000);
   ipcMain.handle('settings:get', () => settingsForRenderer());
-  ipcMain.handle('subscriptions:adoptOrphans', async () => {
-    try {
-      return await adoptOrphanedSubscriptions();
-    } catch (error) {
-      throw new Error(subscriptionWriteFailureCode(error), { cause: error });
-    }
-  });
-  ipcMain.handle('subscriptions:discardOrphans', () => discardOrphanedSubscriptions());
-  ipcMain.handle('subscriptions:save', async (_event, subscriptions, base) => {
-    try {
-      return await saveSubscriptions(subscriptions, base);
-    } catch (error) {
-      throw new Error(subscriptionWriteFailureCode(error), { cause: error });
-    }
-  });
   ipcMain.handle('sessionUsageArchive:clear', () => {
     if (isExternalAgentActive()) return { ok: false, error: 'agentActive' };
     try {
@@ -5828,7 +4260,6 @@ app.whenReady().then(() => {
     }
   });
   ipcMain.handle('settings:update', (_event, patch) => {
-    if (patch?.claudeWebCookie !== undefined) claudeWebCookieMutationRevision += 1;
     const previousSettingsState = settings;
     const previousRuntimeSettings = JSON.parse(JSON.stringify(settings));
     const previousNativeMaterial = nativeBlurEnabled();
@@ -5841,27 +4272,17 @@ app.whenReady().then(() => {
     const previousTrayCustomLayout = JSON.stringify(settings.trayCustomLayout || {});
     const previousFloatingBubbleCustomLayout = JSON.stringify(settings.floatingBubbleCustomLayout || {});
     const previousShowTrayProviderBadge = settings.showTrayProviderBadge;
-    const previousOpenCodeLocalLimitsEnabled = settings.opencodeLocalLimitsEnabled === true;
     const previousCurrency = settings.currency;
-    const previousCompactTokenUnits = settings.compactTokenUnits;
-    const previousLanguage = settings.language;
     const previousStartAtLogin = settings.startAtLogin;
     const previousStartInTray = settings.startInTray;
     const previousAutomaticAppUpdates = settings.automaticAppUpdates;
     const previousCustomModelPricing = JSON.stringify(settings.customModelPricing || []);
     const normalizedCurrency = patch.currency !== undefined ? normalizeCurrency(patch.currency, settings.currency) : normalizeCurrency(settings.currency);
     const normalizedPatch = { ...patch, currency: normalizedCurrency };
-    delete normalizedPatch.windowMaximized;
     delete normalizedPatch.codexManagedAccounts;
     delete normalizedPatch.mimoManagedAccounts;
     delete normalizedPatch.openrouterProfiles;
     delete normalizedPatch.customModelPricing;
-    delete normalizedPatch.subscriptions;
-    delete normalizedPatch.subscriptionsOrphaned;
-    delete normalizedPatch.subscriptionsCacheHub;
-    delete normalizedPatch.subscriptionsShared;
-    delete normalizedPatch.subscriptionsHub;
-    delete normalizedPatch.subscriptionsUpdatedAt;
     if (patch.clients !== undefined) normalizedPatch.clients = clientsCsvForSetting(patch.clients, '');
     if (patch.hubUrl !== undefined) normalizedPatch.hubUrl = normalizeHubUrl(patch.hubUrl);
     if (patch.deepseekApiKey !== undefined) normalizedPatch.deepseekApiKey = normalizeDeepSeekApiKey(patch.deepseekApiKey);
@@ -5878,9 +4299,6 @@ app.whenReady().then(() => {
     if (patch.volcengineRegion !== undefined) normalizedPatch.volcengineRegion = normalizeVolcengineRegion(patch.volcengineRegion);
     if (patch.qoderCookie !== undefined) normalizedPatch.qoderCookie = normalizeQoderCookie(patch.qoderCookie);
     if (patch.qoderSite !== undefined) normalizedPatch.qoderSite = normalizeQoderSite(patch.qoderSite);
-    if (patch.claudeWebCookie !== undefined) normalizedPatch.claudeWebCookie = normalizeClaudeWebCookie(patch.claudeWebCookie);
-    if (patch.commandcodeCookie !== undefined) normalizedPatch.commandcodeCookie = normalizeCommandcodeCookie(patch.commandcodeCookie);
-    if (patch.thirdPartyProfiles !== undefined) delete normalizedPatch.thirdPartyProfiles;
     if (patch.kimiApiKey !== undefined) normalizedPatch.kimiApiKey = normalizeKimiApiKey(patch.kimiApiKey);
     if (patch.kimiWebAccessToken !== undefined) normalizedPatch.kimiWebAccessToken = normalizeKimiWebAccessToken(patch.kimiWebAccessToken);
     if (patch.ollamaCookie !== undefined) normalizedPatch.ollamaCookie = normalizeOllamaCookie(patch.ollamaCookie);
@@ -5908,15 +4326,10 @@ app.whenReady().then(() => {
       showToolIcons: patch.showToolIcons ?? settings.showToolIcons ?? true,
       titleIconOnly: parseBoolean(patch.titleIconOnly ?? settings.titleIconOnly, false),
       showCompactTotalTokens: parseBoolean(patch.showCompactTotalTokens ?? settings.showCompactTotalTokens, false),
-      compactTokenUnits: normalizeCompactTokenUnits(patch.compactTokenUnits ?? settings.compactTokenUnits),
-      interfaceFontFamily: fontSettingsApi.normalizeFontFamily(patch.interfaceFontFamily ?? settings.interfaceFontFamily),
-      displayFontFamily: fontSettingsApi.normalizeFontFamily(patch.displayFontFamily ?? settings.displayFontFamily),
-      tokenRateMode: normalizeTokenRateMode(patch.tokenRateMode ?? settings.tokenRateMode),
       floatingBubbleEnabled: parseBoolean(patch.floatingBubbleEnabled ?? settings.floatingBubbleEnabled, false),
       discordRpcEnabled: patch.discordRpcEnabled ?? settings.discordRpcEnabled ?? false,
       limitsEnabled: parseBoolean(patch.limitsEnabled ?? settings.limitsEnabled, true),
       limitProviders: patch.limitProviders !== undefined ? parseLimitProviders(patch.limitProviders).join(',') : settings.limitProviders,
-      limitsRefreshMode: normalizeLimitsRefreshMode(patch.limitsRefreshMode ?? settings.limitsRefreshMode),
       limitProviderOrder: patch.limitProviderOrder !== undefined ? migrateLimitProviderOrder(patch.limitProviderOrder) : settings.limitProviderOrder,
       clientDisplayOrder: patch.clientDisplayOrder !== undefined ? migrateClientDisplayOrder(patch.clientDisplayOrder) : (settings.clientDisplayOrder || ''),
       hiddenClients: patch.hiddenClients !== undefined ? normalizeHiddenClients(patch.hiddenClients, KNOWN_CLIENT_LIST) : normalizeHiddenClients(settings.hiddenClients, KNOWN_CLIENT_LIST),
@@ -5930,10 +4343,8 @@ app.whenReady().then(() => {
       homeLimitProviderOrder: patch.homeLimitProviderOrder !== undefined ? migrateHomeLimitProviderOrder(patch.homeLimitProviderOrder) : (settings.homeLimitProviderOrder || ''),
       hiddenHomeLimitProviders: patch.hiddenHomeLimitProviders !== undefined ? normalizeHiddenLimitProviders(patch.hiddenHomeLimitProviders) : normalizeHiddenLimitProviders(settings.hiddenHomeLimitProviders),
       homeLimitAccountCount: normalizeHomeLimitAccountCount(patch.homeLimitAccountCount ?? settings.homeLimitAccountCount),
-      periodMonthMode: normalizePeriodMonthMode(patch.periodMonthMode ?? settings.periodMonthMode),
       historyEnabled: parseBoolean(patch.historyEnabled ?? settings.historyEnabled, false),
       projectsEnabled: parseBoolean(patch.projectsEnabled ?? settings.projectsEnabled, true),
-      reasonixNativeSessionsEnabled: parseBoolean(patch.reasonixNativeSessionsEnabled ?? settings.reasonixNativeSessionsEnabled, true),
       historyIntervalMs: normalizeHistoryIntervalMs(patch.historyIntervalMs ?? settings.historyIntervalMs),
       sessionUsageArchiveEnabled: parseBoolean(patch.sessionUsageArchiveEnabled ?? settings.sessionUsageArchiveEnabled, true),
       wslScanEnabled: parseBoolean(patch.wslScanEnabled ?? settings.wslScanEnabled, true),
@@ -5946,11 +4357,7 @@ app.whenReady().then(() => {
       limitsRefreshMs: normalizeLimitsRefreshMs(patch.limitsRefreshMs ?? settings.limitsRefreshMs),
       showLimitSource: parseBoolean(patch.showLimitSource ?? settings.showLimitSource, false),
       maskLimitAccountEmails: parseBoolean(patch.maskLimitAccountEmails ?? settings.maskLimitAccountEmails, false),
-      claudePrepaidBalanceEnabled: parseBoolean(patch.claudePrepaidBalanceEnabled ?? settings.claudePrepaidBalanceEnabled, true),
-      opencodeAmbientEnabled: parseBoolean(patch.opencodeAmbientEnabled ?? settings.opencodeAmbientEnabled, true),
-      opencodeLocalLimitsEnabled: parseBoolean(patch.opencodeLocalLimitsEnabled ?? settings.opencodeLocalLimitsEnabled, false),
       showLimitUsed: parseBoolean(patch.showLimitUsed ?? settings.showLimitUsed, false),
-      windowMaximized: parseBoolean(settings.windowMaximized, false),
       zoomFactor: clampZoom(patch.zoomFactor ?? settings.zoomFactor),
       ...normalizeTrayModeSettings({
         showTrayIcon: patch.showTrayIcon ?? settings.showTrayIcon,
@@ -5986,8 +4393,7 @@ app.whenReady().then(() => {
       ollamaCookie: patch.ollamaCookie !== undefined ? normalizeOllamaCookie(patch.ollamaCookie) : (settings.ollamaCookie || ''),
       customModelPricing: patch.customModelPricing !== undefined
         ? normalizeCustomPricingSetting(patch.customModelPricing)
-        : normalizeCustomPricingSetting(settings.customModelPricing),
-      subscriptions: subscriptionDisplay.normalizeSubscriptions(settings.subscriptions, { currencyApi: { normalizeCurrency } })
+        : normalizeCustomPricingSetting(settings.customModelPricing)
     }, normalizedPatch);
     settings.archivedClientUsage = normalizeArchivedClientUsage(settings.archivedClientUsage);
     if (settings.clients !== previousClients) updateArchivedClientUsage(previousClients, settings.clients);
@@ -6015,14 +4421,10 @@ app.whenReady().then(() => {
     if (patch.zoomFactor !== undefined) applyZoomFactor();
     if (settings.discordRpcEnabled && !previousDiscordRpcEnabled) {
       startDiscordRpc();
-      if (latestStats) updateDiscordRpcDisplay(latestStats);
+      if (latestStats) updateDiscordRpc(latestStats, settings.currency);
     }
     else if (!settings.discordRpcEnabled && previousDiscordRpcEnabled) stopDiscordRpc();
-    else if (settings.discordRpcEnabled && (
-      settings.currency !== previousCurrency
-      || settings.compactTokenUnits !== previousCompactTokenUnits
-      || settings.language !== previousLanguage
-    ) && latestStats) updateDiscordRpcDisplay(latestStats);
+    else if (settings.discordRpcEnabled && settings.currency !== previousCurrency && latestStats) updateDiscordRpc(latestStats, settings.currency);
     applyWindowSettings();
     syncFloatingBubbleAvailability();
     const nextNativeMaterial = nativeBlurEnabled();
@@ -6036,27 +4438,22 @@ app.whenReady().then(() => {
       applyNativeMaterial();
     }
     const runtimeChange = classifySettingsChange(previousRuntimeSettings, settings);
-    const widgetHistorySourceChanged = previousRuntimeSettings.historyEnabled !== settings.historyEnabled;
-    if (widgetHistorySourceChanged && !runtimeChange.modeStructural) {
-      refreshMacWidgetHistorySource();
-    }
-    const limitInvalidations = settingsLimitInvalidationPlan(runtimeChange);
     if (runtimeChange.modeStructural) {
-      for (const { scope, reason, options } of limitInvalidations) {
-        rememberPendingLimitInvalidation(scope, reason, options);
+      for (const scope of runtimeChange.limitScopes) {
+        rememberPendingLimitInvalidation(scope, 'settings-change');
       }
       startMode();
     } else if (runtimeChange.usageStructural || runtimeChange.sinkStructural) {
-      for (const { scope, reason, options } of limitInvalidations) {
-        rememberPendingLimitInvalidation(scope, reason, options);
+      for (const scope of runtimeChange.limitScopes) {
+        rememberPendingLimitInvalidation(scope, 'settings-change');
       }
       restartDeviceRuntimeForMode();
     } else {
       if (runtimeChange.limitsReconfigure && deviceRuntimeHandle) {
         deviceRuntimeHandle.reconfigureLimits(electronLimitsConfig());
       }
-      for (const { scope, reason, options } of limitInvalidations) {
-        void queueLimitInvalidation(scope, reason, options).catch((error) => {
+      for (const scope of runtimeChange.limitScopes) {
+        void queueLimitInvalidation(scope, 'settings-change').catch((error) => {
           console.log(`[limits-runtime] settings refresh failed: ${error.message}`);
         });
       }
@@ -6073,20 +4470,15 @@ app.whenReady().then(() => {
       JSON.stringify(settings.trayCustomLayout || {}) !== previousTrayCustomLayout ||
       JSON.stringify(settings.floatingBubbleCustomLayout || {}) !== previousFloatingBubbleCustomLayout ||
       settings.showTrayProviderBadge !== previousShowTrayProviderBadge ||
-      settings.currency !== previousCurrency ||
-      settings.compactTokenUnits !== previousCompactTokenUnits ||
-      settings.language !== previousLanguage
+      settings.currency !== previousCurrency
     ) {
       updateTrayDisplay();
     }
     if (patch.currency !== undefined || patch.currencyRates !== undefined) {
       applyEffectiveRates();               // sync: settingsForRenderer() below sees fresh effective map
       updateTrayDisplay();
-      if (settings.discordRpcEnabled && latestStats) updateDiscordRpcDisplay(latestStats);
+      if (settings.discordRpcEnabled && latestStats) updateDiscordRpc(latestStats, settings.currency);
       refreshExchangeRates();              // async: fetch if stale, then re-push
-    }
-    if ((settings.opencodeLocalLimitsEnabled === true) !== previousOpenCodeLocalLimitsEnabled) {
-      refreshLimitStatsPresentation();
     }
     pushSettingsToRenderer();
     return settingsForRenderer();
@@ -6197,11 +4589,7 @@ app.whenReady().then(() => {
     updateTrayDisplay();
     return true;
   });
-  ipcMain.handle('stats:get', async (_event, options) => {
-    const stats = await fetchStats(options);
-    maybeAdoptSharedSubscriptionRevision(stats);
-    return electronPresentationStats(stats);
-  });
+  ipcMain.handle('stats:get', (_event, options) => fetchStats(options));
   ipcMain.handle('stats:getCustomRange', async (_event, rangeInput) => {
     const { normalizeCustomRange } = require('../shared/customRange');
     const range = normalizeCustomRange(rangeInput || {});
@@ -6402,7 +4790,7 @@ app.whenReady().then(() => {
   });
   ipcMain.handle('session:getDetail', (_event, args) => {
     const { client, sessionId, period, sessionCost } = args || {};
-    return readSessionDetailForPlatform({ client, sessionId, period, sessionCost });
+    return readSessionDetail({ client, sessionId, period, sessionCost, home: os.homedir() });
   });
   ipcMain.handle('stream:status', () => ({ connected: streamConnected, mode, ...(streamFailure || {}) }));
   ipcMain.handle('serviceStatus:get', (_event, options) => serviceStatusClient.getServiceStatus({
@@ -6410,7 +4798,6 @@ app.whenReady().then(() => {
     providerIds: Array.isArray(options?.providerIds) ? options.providerIds : null
   }));
   ipcMain.handle('hub:getInfo', () => getHubInfo());
-  ipcMain.handle('hub:getBuildStatus', () => getHubBuildStatus());
   ipcMain.handle('hub:regenerateSecret', () => {
     settings.hubHostSecret = generateHubSecret();
     saveSettings({ throwOnError: true });
@@ -6424,75 +4811,10 @@ app.whenReady().then(() => {
     osRelease: require('os').release(),
     isPackaged: app.isPackaged,
     userData: app.getPath('userData'),
-    homeDir: os.homedir(),
     sharedDataDir: sharedDataDir(),
     loginItemSupported: loginItemEnabledHere(),
-    loginItemOpenAtLogin: currentLoginItemState(),
-    systemDarkUi: currentSystemDarkTrayUi()
+    loginItemOpenAtLogin: currentLoginItemState()
   }));
-  ipcMain.handle('diagnostics:generate', async () => {
-    const report = await diagnosticReportGenerator.generate();
-    return {
-      generatedAt: report.generatedAt,
-      completeness: report.completeness,
-      text: report.text,
-      bytes: report.bytes,
-      truncated: report.truncated,
-      includedClientCount: report.includedClientCount,
-      omittedClientCount: report.omittedClientCount,
-      includedLimitProviderCount: report.includedLimitProviderCount,
-      omittedLimitProviderCount: report.omittedLimitProviderCount,
-      includedRemoteGroupCount: report.includedRemoteGroupCount,
-      omittedRemoteGroupCount: report.omittedRemoteGroupCount,
-      includedJournalEventCount: report.includedJournalEventCount,
-      journalOmittedCount: report.journalOmittedCount
-    };
-  });
-  ipcMain.handle('usage:clientSources', (_event, clientId) => {
-    const client = String(clientId || '').trim().toLowerCase();
-    const tracked = trackedClientSet(clientsCsvForSetting(settings?.clients));
-    if (!KNOWN_CLIENTS.split(',').includes(client) || !tracked.has(client)) return null;
-    try {
-      const seen = new Set();
-      const all = (visibleDiagnosticRoots(client)[client] || [])
-        .filter((root) => {
-          const key = `${root.id}\0${root.dir}`;
-          return !seen.has(key) && seen.add(key);
-        })
-        .map((root) => ({ id: root.id, dir: root.dir, exists: root.exists === true }));
-      const sources = all.slice(0, 32);
-      return { sources, omittedCount: all.length - sources.length };
-    } catch (_) {
-      return null;
-    }
-  });
-  ipcMain.handle('usage:revealClientSource', async (_event, clientId) => {
-    const client = String(clientId || '').trim().toLowerCase();
-    const tracked = trackedClientSet(clientsCsvForSetting(settings?.clients));
-    if (!KNOWN_CLIENTS.split(',').includes(client) || !tracked.has(client)) return false;
-    try {
-      const roots = clientDiagnosticRoots(client)[client] || [];
-      const target = roots.find((root) => root.exists);
-      if (!target) return false;
-      if (target.sourcePath) {
-        shell.showItemInFolder(target.sourcePath);
-        return true;
-      }
-      return await shell.openPath(target.dir) === '';
-    } catch (_) {
-      return false;
-    }
-  });
-  ipcMain.handle('usage:rescanClient', async (_event, clientId) => {
-    const client = String(clientId || '').trim().toLowerCase();
-    if (!client || !ownsUsageRuntime()) return false;
-    try {
-      return await refreshUsageClient(client, { forceSync: true }) === true;
-    } catch (error) {
-      console.log(`[usage-runtime] rescan failed: ${error.message}`);
-      return false;
-    }
-  });
   ipcMain.handle('clipboard:write', (_event, text) => {
     clipboard.writeText(String(text || ''));
     return true;
@@ -6534,45 +4856,16 @@ app.whenReady().then(() => {
       await cursorAuth.runCursorLogin(token);
       cursorStatusCache = { value: null, at: 0 };
       void queueLimitInvalidation({ provider: 'cursor' }, 'login', { clear: true });
-      bestEffortTrackedUsageRefresh('cursor', { forceSync: true });
+      void refreshUsageClient('cursor', { forceSync: true });
       return { ok: true, email: probeResult.user.email };
     } catch (err) {
       return { ok: false, error: err.message };
     }
   });
-  ipcMain.handle('claude:saveCookie', async (_event, raw) => {
-    const requestRevision = ++claudeWebCookieMutationRevision;
-    let cookie;
-    try {
-      cookie = normalizeClaudeWebCookie(raw);
-    } catch (error) {
-      return { ok: false, status: 'invalid', errorCode: error?.code || 'INVALID_CLAUDE_WEB_SESSION_KEY' };
-    }
-    if (!cookie) return { ok: false, status: 'notConfigured', errorCode: 'INVALID_CLAUDE_WEB_SESSION_KEY' };
-    try {
-      let cookieToPersist = cookie;
-      const provider = await fetchClaudeLimits(
-        { claudeWebCookie: cookie },
-        {
-          claudeWebFetch: electronClaudeWebFetch,
-          providerRuntimeState: new Map(),
-          onClaudeWebCookieRenewed: ({ cookie: renewedCookie }) => { cookieToPersist = renewedCookie; }
-        }
-      );
-      if (provider?.status !== 'ok') return { ok: false, status: provider?.status || 'error' };
-      if (claudeWebCookieMutationRevision !== requestRevision) return { ok: false, status: 'superseded', superseded: true };
-      settings.claudeWebCookie = cookieToPersist;
-      saveSettings({ throwOnError: true });
-      void queueLimitInvalidation({ provider: 'claude' }, 'login', { clear: true });
-      return { ok: true, status: 'ok' };
-    } catch (error) {
-      return { ok: false, status: error?.status || 'error', errorCode: error?.code || '' };
-    }
-  });
   ipcMain.handle('ollama:validateCookie', async (_event, raw) => {
     const cookie = normalizeOllamaCookie(raw);
     if (!cookie) return { ok: false, status: 'notConfigured' };
-    const provider = await fetchOllamaLimits({ ollamaCookie: cookie }, electronProviderDeps({ bypassValidationCache: true }));
+    const provider = await fetchOllamaLimits({ ollamaCookie: cookie }, { bypassValidationCache: true });
     rememberOllamaValidation(cookie, provider);
     return { ok: provider.status === 'ok', status: provider.status };
   });
@@ -6592,8 +4885,8 @@ app.whenReady().then(() => {
     }
     try {
       const [go, zen] = await Promise.all([
-        opencodeWeb.fetchGoWeb(cookie, electronProviderDeps()),
-        opencodeWeb.fetchZen(cookie, electronProviderDeps())
+        opencodeWeb.fetchGoWeb(cookie, {}),
+        opencodeWeb.fetchZen(cookie, {})
       ]);
       if (opencodeWeb.summarizeLink(go, zen).expired) {
         return { ok: false, error: 'OpenCode rejected the cookie (it may be expired)' };
@@ -6615,7 +4908,7 @@ app.whenReady().then(() => {
       await cursorAuth.runCursorLogout();
       cursorStatusCache = { value: null, at: 0 };
       void queueLimitInvalidation({ provider: 'cursor' }, 'logout', { clear: true });
-      bestEffortTrackedUsageRefresh('cursor', { forceSync: true });
+      void refreshUsageClient('cursor', { forceSync: true });
       return { ok: true };
     } catch (err) {
       return { ok: false, error: err.message };
@@ -6663,77 +4956,16 @@ app.whenReady().then(() => {
       return opencodeStatusCache.value;
     }
     const profiles = settings.opencodeProfiles || {};
-    // A profile that only names the auto-detected key stores no credential of
-    // its own, so filtering on `cookie || apiKey` alone would skip it and leave
-    // its row stuck on the placeholder while the collector reads live quota
-    // from that very key. Resolve the key the same way the collector does.
-    const ambientKey = opencodeGoApi.readGoApiKey(process.env);
-    const ambientIdentity = ambientKey ? opencodeGoApi.goApiIdentity(ambientKey) : '';
-    const profileKey = (p) => p.apiKey || opencodeProfiles.ambientKeyFor(p, ambientKey, ambientIdentity);
-    // A reference that no longer resolves still has to answer for its row. It
-    // has a credential the user stored, so filtering it out here would leave the
-    // row on its placeholder forever with nothing saying what to do about it.
-    const needsRebind = (p) => Boolean(p.useAmbientKey) && !profileKey(p) && !p.cookie;
-    const entries = Object.entries(profiles)
-      .filter(([, p]) => (p.cookie || profileKey(p) || needsRebind(p)) && p.enabled);
+    const entries = Object.entries(profiles).filter(([, p]) => p.cookie && p.enabled);
 
     // Query all profiles in parallel
     const results = await Promise.all(
       entries.map(async ([name, profile]) => {
-        const apiKey = profileKey(profile);
-        if (needsRebind(profile)) {
-          return [name, {
-            linked: false,
-            expired: false,
-            go: false,
-            zen: false,
-            hasBalance: false,
-            balanceUsd: null,
-            needsRebind: true
-          }];
-        }
-        // An API key reaches Go quota and nothing else, so it reports the same
-        // shape as a cookie with the Zen half permanently absent. Without this
-        // branch an API account is never probed and the panel sits at "0/1".
-        // Only a cookie account can be probed for Zen, so a profile holding both
-        // falls through to the cookie path and its key is used by the collector.
-        if (apiKey && !profile.cookie) {
-          const probe = await probeOpenCodeApiKey(apiKey);
-          // The renderer checks `linked` before `error`, so anything short of a
-          // working key must not claim linked or it renders a bare "✓" with no
-          // plan behind it.
-          if (probe.status === 'ok') {
-            return [name, { linked: true, expired: false, go: true, zen: false, hasBalance: false, balanceUsd: null }];
-          }
-          if (probe.status === 'unauthorized') {
-            return [name, { linked: true, expired: true, go: false, zen: false, hasBalance: false, balanceUsd: null }];
-          }
-          return [name, {
-            linked: false,
-            expired: false,
-            go: false,
-            zen: false,
-            hasBalance: false,
-            balanceUsd: null,
-            error: probe.status
-          }];
-        }
-        const [go, zen, apiProbe] = await Promise.all([
-          opencodeWeb.fetchGoWeb(profile.cookie, electronProviderDeps()),
-          opencodeWeb.fetchZen(profile.cookie, electronProviderDeps()),
-          apiKey ? probeOpenCodeApiKey(apiKey) : null
+        const [go, zen] = await Promise.all([
+          opencodeWeb.fetchGoWeb(profile.cookie, {}),
+          opencodeWeb.fetchZen(profile.cookie, {})
         ]);
-        const summary = { ...opencodeWeb.summarizeLink(go, zen), balanceUsd: zen.balanceUsd };
-        // A bound key answers for Go on its own, so the row must not read as
-        // expired just because the cookie half died: the collector still has
-        // quota, and only the Zen balance is actually missing.
-        if (apiProbe?.status === 'ok') {
-          summary.go = true;
-          summary.linked = true;
-          summary.expired = false;
-          delete summary.error;
-        }
-        return [name, summary];
+        return [name, { ...opencodeWeb.summarizeLink(go, zen), balanceUsd: zen.balanceUsd }];
       })
     );
 
@@ -6745,8 +4977,8 @@ app.whenReady().then(() => {
     const envCookie = process.env.TOKEN_MONITOR_OPENCODE_COOKIE || '';
     if (envCookie && !entries.some(([, p]) => p.cookie === envCookie)) {
       const [go, zen] = await Promise.all([
-        opencodeWeb.fetchGoWeb(envCookie, electronProviderDeps()),
-        opencodeWeb.fetchZen(envCookie, electronProviderDeps())
+        opencodeWeb.fetchGoWeb(envCookie, {}),
+        opencodeWeb.fetchZen(envCookie, {})
       ]);
       let envKey = 'env';
       for (let i = 1; Object.prototype.hasOwnProperty.call(profiles, envKey); i += 1) {
@@ -6754,156 +4986,37 @@ app.whenReady().then(() => {
       }
       result[envKey] = { ...opencodeWeb.summarizeLink(go, zen), balanceUsd: zen.balanceUsd, env: true };
     }
-    // Zero configuration still has an account behind it. Without probing the key
-    // OpenCode stored for itself, the panel reports "not set up" while the limits
-    // card is showing live quota read from that very key.
-    //
-    // It rides in its own field rather than under a reserved name inside
-    // `profiles`: account names are user-chosen, so any sentinel key is one a
-    // user can also type, and the synthetic entry would then overwrite their
-    // account's real status (and collide with its DOM id in the renderer).
-    let ambient = null;
-    if (opencodeAmbientKeyActive(profiles) && settings.opencodeAmbientEnabled === false) {
-      ambient = { linked: false, expired: false, go: false, zen: false, hasBalance: false, balanceUsd: null, ambient: true, disabled: true };
-    } else if (opencodeAmbientKeyActive(profiles)) {
-      const probe = await probeOpenCodeApiKey(opencodeGoApi.readGoApiKey(process.env));
-      ambient = {
-        linked: probe.status === 'ok',
-        expired: probe.status === 'unauthorized',
-        go: probe.status === 'ok',
-        zen: false,
-        hasBalance: false,
-        balanceUsd: null,
-        ambient: true,
-        ...(probe.status === 'ok' || probe.status === 'unauthorized' ? {} : { error: probe.status })
-      };
-    }
-    const value = {
-      profiles: result,
-      ambient,
-      linked: Object.values(result).some(s => s.linked) || Boolean(ambient?.linked)
-    };
+    const value = { profiles: result, linked: Object.values(result).some(s => s.linked) };
     opencodeStatusCache = { value, at: now };
     return value;
   });
   ipcMain.handle('opencode:getProfiles', async () => {
     const profiles = settings.opencodeProfiles || {};
-    // The Go quota also arrives with no configuration at all, from the key
-    // OpenCode itself stores. Without counting that, the panel reports "not set
-    // up" while the limits card is showing live API data from the same account.
     const hasEnvVar = Boolean(process.env.TOKEN_MONITOR_OPENCODE_COOKIE);
-    // Kept as its own field rather than folded into hasEnvVar: an environment
-    // cookie and a key OpenCode stored for itself are different sources, and a
-    // later reader seeing hasEnvVar would reasonably assume the former.
-    const hasAmbientKey = opencodeAmbientKeyActive(profiles);
-    // Credential values never cross to the renderer; which kinds exist does, so
-    // the list can show what a profile actually holds.
-    const ambientKey = opencodeGoApi.readGoApiKey(process.env);
-    const ambientIdentity = ambientKey ? opencodeGoApi.goApiIdentity(ambientKey) : '';
-    // Keyed on user-typed names, so it must not inherit one. Structured clone
-    // hands the renderer a plain object either way.
-    const safe = Object.create(null);
+    // Strip cookie values — renderer only needs name/enabled for display
+    const safe = {};
     for (const [name, p] of Object.entries(profiles)) {
-      safe[name] = {
-        enabled: p.enabled,
-        hasApiKey: Boolean(p.apiKey),
-        hasCookie: Boolean(p.cookie),
-        usesAmbientKey: Boolean(p.useAmbientKey),
-        // Held but not resolving, because the key it was bound to is no longer
-        // the one on this machine. Without saying so the list shows the
-        // credential as present while the collector ignores it, and on an
-        // account that also has a cookie nothing else would reveal it.
-        ambientStale: Boolean(p.useAmbientKey)
-          && !opencodeProfiles.ambientKeyFor(p, ambientKey, ambientIdentity)
-      };
+      safe[name] = { enabled: p.enabled };
     }
-    return {
-      profiles: safe,
-      hasEnvVar,
-      hasAmbientKey,
-      ambientEnabled: settings.opencodeAmbientEnabled !== false
-    };
+    return { profiles: safe, hasEnvVar };
   });
-  // `kind` defaults to 'cookie' so an older renderer calling with two arguments
-  // keeps its existing behavior.
-  ipcMain.handle('opencode:saveProfile', async (_event, name, raw, kind = 'cookie', options = {}) => {
-    // Trimmed, so whitespace cannot create an account name that renders blank
-    // and that nobody could ever type again to attach a second credential.
-    name = String(name || '').trim();
-    if (!name) return { ok: false, error: 'Empty name' };
-    // Reject anything else rather than treating it as a cookie: an unrecognized
-    // kind would store the value in the wrong field and read as a credential it
-    // is not.
-    if (!['api', 'cookie', 'ambient'].includes(kind)) {
-      return { ok: false, error: `Unknown credential kind: ${kind}` };
-    }
+  ipcMain.handle('opencode:saveProfile', async (_event, name, raw) => {
+    const cookie = opencodeWeb.sanitizeCookieHeader(raw);
+    if (!cookie || !name) return { ok: false, error: 'Empty name or cookie' };
     try {
-      let credential;
-      if (kind === 'ambient') {
-        // Naming the auto-detected credential. A reference is stored, never the
-        // key itself, so the key is re-read every tick rather than going stale
-        // at 401 behind a snapshot.
-        const ambientKey = opencodeGoApi.readGoApiKey(process.env);
-        if (!ambientKey) {
-          return { ok: false, error: 'No OpenCode credential found on this machine' };
-        }
-        // Records which account the reference was bound to, so a key that later
-        // changes stops resolving here instead of quietly pairing whoever is
-        // signed in next with this account's cookie. It is a digest, not the
-        // key: the value itself is never stored for this credential kind.
-        credential = {
-          useAmbientKey: true,
-          ambientKeyIdentity: opencodeGoApi.goApiIdentity(ambientKey)
-        };
-      } else if (kind === 'api') {
-        const apiKey = String(raw || '').trim();
-        if (!apiKey) return { ok: false, error: 'Empty API key' };
-        const probe = await probeOpenCodeApiKey(apiKey);
-        if (probe.status === 'unauthorized') {
-          return { ok: false, error: 'OpenCode rejected the API key' };
-        }
-        // The key authenticates but the workspace has no Go plan, so this
-        // profile would render permanently empty. Say so instead of saving it.
-        if (probe.status === 'notConfigured') {
-          return { ok: false, error: 'That account has no OpenCode Go subscription' };
-        }
-        if (probe.status !== 'ok') {
-          return { ok: false, error: 'Could not reach the OpenCode usage API' };
-        }
-        credential = { apiKey };
-      } else {
-        const cookie = opencodeWeb.sanitizeCookieHeader(raw);
-        if (!cookie) return { ok: false, error: 'Empty cookie' };
-        const [go, zen] = await Promise.all([
-          opencodeWeb.fetchGoWeb(cookie, electronProviderDeps()),
-          opencodeWeb.fetchZen(cookie, electronProviderDeps())
-        ]);
-        if (opencodeWeb.summarizeLink(go, zen).expired) {
-          return { ok: false, error: 'OpenCode rejected the cookie (it may be expired)' };
-        }
-        credential = { cookie };
+      const [go, zen] = await Promise.all([
+        opencodeWeb.fetchGoWeb(cookie, {}),
+        opencodeWeb.fetchZen(cookie, {})
+      ]);
+      if (opencodeWeb.summarizeLink(go, zen).expired) {
+        return { ok: false, error: 'OpenCode rejected the cookie (it may be expired)' };
       }
-      // Saving one credential replaces only that kind and keeps the others. Two
-      // kinds under one profile name is how a user says "these are the same
-      // account", which is the only thing that licenses reading Go quota from
-      // the key while Zen balance comes from the cookie. Nothing associates them
-      // automatically — same machine is not evidence of same account — so the
-      // binding is refused here until the caller confirms it, whichever UI path
-      // asked. A blur that happens to land on an existing name must not be able
-      // to make that claim on the user's behalf.
-      const ambientWasActive = opencodeAmbientKeyActive(settings.opencodeProfiles || {});
-      const result = opencodeProfiles.saveCredential(
-        settings.opencodeProfiles || {},
-        name,
-        credential,
-        { merge: options.merge === true }
-      );
-      if (!result.ok) return result;
-      settings.opencodeProfiles = result.profiles;
+      const profiles = settings.opencodeProfiles || {};
+      profiles[name] = { cookie, enabled: true };
+      settings.opencodeProfiles = profiles;
       saveSettings({ throwOnError: true });
       opencodeStatusCache = { value: null, at: 0 };
       void queueLimitInvalidation({ provider: 'opencode', accountName: name }, 'profile-save');
-      refreshOpencodeAmbientOwnership(ambientWasActive);
       return { ok: true };
     } catch (err) {
       return { ok: false, error: err.message };
@@ -6911,8 +5024,7 @@ app.whenReady().then(() => {
   });
   ipcMain.handle('opencode:deleteProfile', async (_event, name) => {
     const profiles = settings.opencodeProfiles || {};
-    const ambientWasActive = opencodeAmbientKeyActive(profiles);
-    const deletedProfile = opencodeProfiles.readProfile(profiles, name);
+    const deletedProfile = profiles[name];
     delete profiles[name];
     if (deletedProfile?.cookie && settings.opencodeCookie === deletedProfile.cookie) {
       settings.opencodeCookie = '';
@@ -6928,78 +5040,16 @@ app.whenReady().then(() => {
       clear: true,
       refresh: false
     });
-    refreshOpencodeAmbientOwnership(ambientWasActive);
     return { ok: true };
   });
-  // Removes one credential from an account, leaving the others. Deleting the
-  // account removes all of them; this is how a binding is undone without
-  // losing the credential the user wanted to keep.
-  ipcMain.handle('opencode:removeCredential', async (_event, name, kind) => {
-    const ambientWasActive = opencodeAmbientKeyActive(settings.opencodeProfiles || {});
-    const result = opencodeProfiles.removeCredential(settings.opencodeProfiles || {}, name, kind);
-    if (!result.ok) return result;
-    if (result.removedCookie && settings.opencodeCookie === result.removedCookie) {
-      settings.opencodeCookie = '';
-    }
-    settings.opencodeProfiles = result.profiles;
-    try {
-      saveSettings({ throwOnError: true });
-    } catch (error) {
-      return { ok: false, error: error?.message || 'Could not persist OpenCode credential removal' };
-    }
-    opencodeStatusCache = { value: null, at: 0 };
-    void queueLimitInvalidation({ provider: 'opencode', accountName: name }, 'credential-remove', {
-      clear: true
-    });
-    refreshOpencodeAmbientOwnership(ambientWasActive);
-    return { ok: true };
-  });
-  // Moves one credential to another account name, creating it when needed. This
-  // is what "rename a credential" means in a model where the name is the
-  // account: moving it to a fresh name splits it off, moving it onto an
-  // existing name binds it there. The value never crosses to the renderer.
-  ipcMain.handle('opencode:moveCredential', async (_event, name, kind, targetName, options = {}) => {
-    const ambientWasActive = opencodeAmbientKeyActive(settings.opencodeProfiles || {});
-    const result = opencodeProfiles.moveCredential(
-      settings.opencodeProfiles || {},
-      name,
-      kind,
-      targetName,
-      { merge: options.merge === true }
-    );
-    if (!result.ok) return result;
-    if (result.unchanged) return { ok: true };
-    const target = String(targetName || '').trim();
-    settings.opencodeProfiles = result.profiles;
-    try {
-      saveSettings({ throwOnError: true });
-    } catch (error) {
-      return { ok: false, error: error?.message || 'Could not persist OpenCode credential move' };
-    }
-    opencodeStatusCache = { value: null, at: 0 };
-    for (const account of [name, target]) {
-      void queueLimitInvalidation({ provider: 'opencode', accountName: account }, 'credential-move', {
-        clear: true
-      });
-    }
-    refreshOpencodeAmbientOwnership(ambientWasActive);
-    return { ok: true };
-  });
-  // `merge` is the caller confirming that renaming onto an existing account
-  // asserts the two are the same OpenCode account — the same claim as saving a
-  // second credential under one name, and the only thing that licenses reading
-  // quota from one credential while identity comes from another. Without it an
-  // existing name is refused, so the assertion is never made by accident.
-  ipcMain.handle('opencode:renameProfile', async (_event, oldName, newName, options = {}) => {
-    const ambientWasActive = opencodeAmbientKeyActive(settings.opencodeProfiles || {});
-    const result = opencodeProfiles.renameProfile(
-      settings.opencodeProfiles || {},
-      oldName,
-      newName,
-      { merge: options.merge === true }
-    );
-    if (!result.ok) return result;
-    settings.opencodeProfiles = result.profiles;
+  ipcMain.handle('opencode:renameProfile', async (_event, oldName, newName) => {
+    if (!newName || oldName === newName) return { ok: false, error: 'Invalid name' };
+    const profiles = settings.opencodeProfiles || {};
+    if (!profiles[oldName]) return { ok: false, error: 'Profile not found' };
+    if (profiles[newName]) return { ok: false, error: 'Profile name already exists' };
+    profiles[newName] = profiles[oldName];
+    delete profiles[oldName];
+    settings.opencodeProfiles = profiles;
     try {
       saveSettings({ throwOnError: true });
     } catch (error) {
@@ -7011,17 +5061,12 @@ app.whenReady().then(() => {
       refresh: false
     });
     void queueLimitInvalidation({ provider: 'opencode', accountName: newName }, 'profile-rename');
-    refreshOpencodeAmbientOwnership(ambientWasActive);
     return { ok: true };
   });
   ipcMain.handle('opencode:setProfileEnabled', async (_event, name, enabled) => {
     const profiles = settings.opencodeProfiles || {};
-    // Own properties only. An inherited key resolves to an object that is not an
-    // account, and writing `enabled` onto it would reach whatever else shares
-    // that prototype.
-    const profile = opencodeProfiles.readProfile(profiles, name);
-    if (!profile) return { ok: false, error: 'Profile not found' };
-    profile.enabled = Boolean(enabled);
+    if (!profiles[name]) return { ok: false, error: 'Profile not found' };
+    profiles[name].enabled = Boolean(enabled);
     settings.opencodeProfiles = profiles;
     try {
       saveSettings({ throwOnError: true });
@@ -7033,28 +5078,6 @@ app.whenReady().then(() => {
       clear: !enabled,
       refresh: Boolean(enabled)
     });
-    return { ok: true };
-  });
-  // The auto-detected account has no stored record to carry an enabled flag, so
-  // its switch is a device preference rather than a credential. Writing one
-  // instead would mean a toggle that creates an account under a name the user
-  // can also type, cannot be undone symmetrically once that account is edited,
-  // and quietly comes back enabled when the key it pinned is rotated.
-  ipcMain.handle('opencode:setAmbientEnabled', async (_event, enabled) => {
-    settings.opencodeAmbientEnabled = enabled !== false;
-    try {
-      saveSettings({ throwOnError: true });
-    } catch (error) {
-      return { ok: false, error: error?.message || 'Could not persist the OpenCode detection setting' };
-    }
-    opencodeStatusCache = { value: null, at: 0 };
-    // Provider-wide, for the same reason every ownership change is: this row has
-    // no account name for a scoped refresh to address. It must still refresh
-    // afterwards. Clearing without one wipes every OpenCode account and rebuilds
-    // none of them, so switching off the detected key read as switching off the
-    // whole provider — the rest of the accounts are unaffected by this setting
-    // and have to come straight back.
-    void queueLimitInvalidation({ provider: 'opencode' }, 'ambient-toggle', { clear: true });
     return { ok: true };
   });
   ipcMain.handle('openrouter:getProfiles', async () => {
@@ -7069,10 +5092,10 @@ app.whenReady().then(() => {
     if (!name) return { ok: false, errorCode: 'invalidName' };
     if (!apiKey) return { ok: false, errorCode: 'missingApiKey' };
     try {
-      const provider = await openrouterLimits.fetchOpenRouterAccount(name, apiKey, electronProviderDeps({
+      const provider = await openrouterLimits.fetchOpenRouterAccount(name, apiKey, {
         env: process.env,
         signal: AbortSignal.timeout(15_000)
-      }));
+      });
       if (provider?.status !== 'ok') {
         return { ok: false, error: provider?.status === 'unauthorized' ? 'OpenRouter rejected the API key' : 'Could not validate the OpenRouter API key' };
       }
@@ -7138,145 +5161,6 @@ app.whenReady().then(() => {
       return { ok: false, error: error?.message || 'Could not persist OpenRouter profile state' };
     }
     void queueLimitInvalidation({ provider: 'openrouter', accountName: name }, 'profile-state', {
-      clear: !enabled,
-      refresh: Boolean(enabled)
-    });
-    return { ok: true };
-  });
-  ipcMain.handle('thirdparty:getProfiles', async () => {
-    return {
-      profiles: redactThirdPartyProfilesForRenderer(settings.thirdPartyProfiles || {}),
-      hasEnvVar: thirdPartyLimits.configuredAccounts({}, { env: process.env }).length > 0
-    };
-  });
-  ipcMain.handle('thirdparty:saveProfile', async (_event, rawProfile = {}) => {
-    const name = thirdPartyLimits.thirdPartyProfileName(rawProfile.name);
-    const adapter = thirdPartyLimits.normalizeAdapterId(rawProfile.adapter);
-    const customAdapter = adapter === thirdPartyLimits.CUSTOM_BALANCE_ADAPTER;
-    const baseUrl = thirdPartyLimits.normalizeThirdPartyBaseUrl(rawProfile.baseUrl, {
-      stripTerminalV1: !customAdapter
-    });
-    if (!name) return { ok: false, errorCode: 'invalidName' };
-    if (!adapter) return { ok: false, errorCode: 'invalidAdapter' };
-    if (!baseUrl) return { ok: false, errorCode: 'invalidBaseUrl' };
-    if (
-      adapter === thirdPartyLimits.NEWAPI_ACCOUNT_ADAPTER
-      && !thirdPartyLimits.newapiAccessToken({}, rawProfile.accessToken)
-    ) return { ok: false, errorCode: 'missingAccessToken' };
-    if (
-      [thirdPartyLimits.NEWAPI_TOKEN_ADAPTER, thirdPartyLimits.CUSTOM_BALANCE_ADAPTER].includes(adapter)
-      && !thirdPartyLimits.newapiApiKey({}, rawProfile.apiKey)
-    ) return { ok: false, errorCode: 'missingApiKey' };
-    if (
-      customAdapter
-      && !thirdPartyLimits.normalizeCustomEndpointPath(rawProfile.endpointPath)
-    ) return { ok: false, errorCode: 'invalidEndpointPath' };
-    if (
-      customAdapter
-      && !thirdPartyLimits.normalizeCustomAuthMode(rawProfile.authMode)
-    ) return { ok: false, errorCode: 'invalidAuthMode' };
-    if (
-      customAdapter
-      && (
-        !thirdPartyLimits.normalizeCustomJsonPath(rawProfile.remainingPath)
-        || (
-          String(rawProfile.usedPath || '').trim()
-          && !thirdPartyLimits.normalizeCustomJsonPath(rawProfile.usedPath)
-        )
-        || (
-          String(rawProfile.totalPath || '').trim()
-          && !thirdPartyLimits.normalizeCustomJsonPath(rawProfile.totalPath)
-        )
-      )
-    ) return { ok: false, errorCode: 'invalidJsonPath' };
-    if (
-      customAdapter
-      && !thirdPartyLimits.normalizeCustomCurrency(rawProfile.currency)
-    ) return { ok: false, errorCode: 'invalidCurrency' };
-    if (
-      customAdapter
-      && thirdPartyLimits.normalizeCustomDivisor(rawProfile.divisor) === null
-    ) return { ok: false, errorCode: 'invalidDivisor' };
-    const profile = thirdPartyLimits.normalizeThirdPartyProfile({
-      ...rawProfile,
-      adapter,
-      baseUrl,
-      enabled: true
-    });
-    if (!profile) return { ok: false, errorCode: 'invalidCredential' };
-    try {
-      const provider = await thirdPartyLimits.fetchThirdPartyAccount({ name, ...profile }, electronProviderDeps({
-        env: process.env,
-        signal: AbortSignal.timeout(15_000)
-      }));
-      if (provider?.status !== 'ok') {
-        return {
-          ok: false,
-          errorCode: provider?.status === 'unauthorized' ? 'invalidCredential' : 'unavailable'
-        };
-      }
-      settings.thirdPartyProfiles = {
-        ...(settings.thirdPartyProfiles || {}),
-        [name]: profile
-      };
-      saveSettings({ throwOnError: true });
-      void queueLimitInvalidation({ provider: 'thirdparty', accountName: name }, 'profile-save');
-      return { ok: true };
-    } catch (_) {
-      return { ok: false, errorCode: 'unavailable' };
-    }
-  });
-  ipcMain.handle('thirdparty:deleteProfile', async (_event, rawName) => {
-    const name = String(rawName || '').trim();
-    const profiles = { ...(settings.thirdPartyProfiles || {}) };
-    if (!profiles[name]) return { ok: false, error: 'Profile not found' };
-    delete profiles[name];
-    settings.thirdPartyProfiles = profiles;
-    try {
-      saveSettings({ throwOnError: true });
-    } catch (error) {
-      return { ok: false, error: error?.message || 'Could not persist third-party API profile deletion' };
-    }
-    void queueLimitInvalidation({ provider: 'thirdparty', accountName: name }, 'profile-delete', {
-      clear: true,
-      refresh: false
-    });
-    return { ok: true };
-  });
-  ipcMain.handle('thirdparty:renameProfile', async (_event, rawOldName, rawNewName) => {
-    const oldName = String(rawOldName || '').trim();
-    const newName = thirdPartyLimits.thirdPartyProfileName(rawNewName);
-    const profiles = { ...(settings.thirdPartyProfiles || {}) };
-    if (!newName || oldName === newName) return { ok: false, errorCode: 'invalidName' };
-    if (!profiles[oldName]) return { ok: false, error: 'Profile not found' };
-    if (profiles[newName]) return { ok: false, error: 'Profile name already exists' };
-    profiles[newName] = profiles[oldName];
-    delete profiles[oldName];
-    settings.thirdPartyProfiles = profiles;
-    try {
-      saveSettings({ throwOnError: true });
-    } catch (error) {
-      return { ok: false, error: error?.message || 'Could not persist third-party API profile rename' };
-    }
-    void queueLimitInvalidation({ provider: 'thirdparty', accountName: oldName }, 'profile-rename', {
-      clear: true,
-      refresh: false
-    });
-    void queueLimitInvalidation({ provider: 'thirdparty', accountName: newName }, 'profile-rename');
-    return { ok: true };
-  });
-  ipcMain.handle('thirdparty:setProfileEnabled', async (_event, rawName, enabled) => {
-    const name = String(rawName || '').trim();
-    const profiles = { ...(settings.thirdPartyProfiles || {}) };
-    if (!profiles[name]) return { ok: false, error: 'Profile not found' };
-    profiles[name] = { ...profiles[name], enabled: Boolean(enabled) };
-    settings.thirdPartyProfiles = profiles;
-    try {
-      saveSettings({ throwOnError: true });
-    } catch (error) {
-      return { ok: false, error: error?.message || 'Could not persist third-party API profile state' };
-    }
-    void queueLimitInvalidation({ provider: 'thirdparty', accountName: name }, 'profile-state', {
       clear: !enabled,
       refresh: Boolean(enabled)
     });
@@ -7433,7 +5317,7 @@ app.whenReady().then(() => {
     else mainWindow?.close();
   });
   ipcMain.handle('dashboard:open', () => { createDashboardWindow(); return true; });
-  ipcMain.handle('dashboard:getHistory', (_event, options) => getDashboardHistory(options));
+  ipcMain.handle('dashboard:getHistory', () => getDashboardHistory());
   ipcMain.on('dashboard:ready', (event) => {
     const win = BrowserWindow.fromWebContents(event.sender);
     if (!win || win !== dashboardWindow || win.isDestroyed()) return;
@@ -7450,15 +5334,7 @@ app.whenReady().then(() => {
 
 app.on('second-instance', focusExistingWindow);
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
-app.on('before-quit', () => {
-  quitRequested = true;
-  resetMacWidgetReloadThrottle();
-  if (rateRefreshTimer) clearInterval(rateRefreshTimer);
-  if (appUpdateBackgroundTimer) clearInterval(appUpdateBackgroundTimer);
-  unregisterWindowToggleShortcut();
-  if (skipForcedQuit) return;
-  performQuit();
-});
+app.on('before-quit', () => { quitRequested = true; if (rateRefreshTimer) clearInterval(rateRefreshTimer); if (appUpdateBackgroundTimer) clearInterval(appUpdateBackgroundTimer); unregisterWindowToggleShortcut(); stopAll(); });
 for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
   process.once(signal, requestAppQuit);
 }

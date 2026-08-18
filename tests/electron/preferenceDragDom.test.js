@@ -19,64 +19,6 @@ function functionBody(source, name, nextName) {
   return source.slice(start, end);
 }
 
-test('tool diagnostics summarize complete health and render three semantic groups', () => {
-  const app = readRendererFile('app.js');
-  const css = readRendererFile('styles.css');
-  const summary = functionBody(app, 'settingsSectionSummary', 'renderSettingsSummaries');
-  const group = functionBody(app, 'clientHealthGroup', 'localDayKey');
-  const actions = functionBody(app, 'clientHealthActions', 'clientHealthPanel');
-  const panel = functionBody(app, 'clientHealthPanel', 'localWslStatus');
-  const statsStart = app.indexOf('function renderStatsUpdate(');
-  const statsEnd = app.indexOf('const statsRenderScheduler', statsStart);
-  assert.notEqual(statsStart, -1);
-  assert.notEqual(statsEnd, -1);
-  const stats = app.slice(statsStart, statsEnd);
-
-  assert.match(summary, /clientHealthCountsForTracked\([\s\S]*localClientHealth\(\)[\s\S]*enabledClientSet\(\)/);
-  assert.match(summary, /if \(counts\) return t\('settings\.summary\.toolsHealth'/);
-  assert.match(summary, /return t\('settings\.summary\.tools'/);
-  assert.match(group, /group\.id === 'source'/);
-  assert.match(group, /group\.id === 'collection'/);
-  assert.match(group, /pathInfo\.exists \? ' found' : pathInfo\.pending \? ' pending'/);
-  assert.match(actions, /role', 'status'/);
-  assert.match(actions, /aria-live', 'polite'/);
-  assert.match(actions, /state\.clientRescans\.snapshot\(clientId\)/);
-  assert.match(actions, /state\.clientRescans\.begin\(clientId\)/);
-  assert.match(actions, /state\.clientRescans\.finish\(clientId, requestId, succeeded\)/);
-  assert.match(actions, /rescan\.disabled = rescanState\.pending/);
-  assert.match(panel, /for \(const group of detail\.groups\)/);
-  assert.match(panel, /note\.group === group\.id/);
-  assert.match(stats, /renderSettingsSummaries\(\)/);
-  assert.match(cssRule(css, '.tool-health-group'), /grid-template-columns:\s*58px minmax\(0,\s*1fr\)/);
-  assert.match(cssRule(css, '.tool-health-group + .tool-health-group'), /border-top/);
-});
-
-test('tool diagnostics bind source values to the full health snapshot key', () => {
-  const app = readRendererFile('app.js');
-  const identity = functionBody(app, 'clientSourcesIdentity', 'exactLocalClientSources');
-  const exactReader = functionBody(app, 'exactLocalClientSources', 'localClientSources');
-  const reader = functionBody(app, 'localClientSources', 'loadClientSources');
-  const loader = functionBody(app, 'loadClientSources', 'refillOpenClientHealthPanel');
-  const expand = functionBody(app, 'setClientHealthExpanded', 'clientPeriodUsage');
-  const actions = functionBody(app, 'clientHealthActions', 'clientHealthPanel');
-
-  assert.match(identity, /deviceId[\s\S]*clientId[\s\S]*observedAt/);
-  assert.match(exactReader, /clientSourceCacheApi\.readClientSources/);
-  assert.match(reader, /state\.clientSourcesKey === key[\s\S]*readLatestClientSources/);
-  assert.match(loader, /clientSourceCacheApi\.clientSourceRequestKey\(identity\)/);
-  assert.doesNotMatch(loader, /deleteClientSources/);
-  assert.match(loader, /clientSourceCacheApi\.writeClientSources/);
-  assert.match(loader, /catch[\s\S]*state\.clientSourcesKey = ''[\s\S]*refillOpenClientHealthPanel\(\)/);
-  assert.match(loader, /return true;/);
-  assert.match(expand, /if \(open\)[\s\S]*loadClientSources\(row\.dataset\.client\)/);
-  assert.match(actions, /succeeded = await window\.tokenMonitor\.rescanClient\(clientId\) === true/);
-  assert.match(actions, /if \(succeeded\) loadClientSources/);
-  assert.match(actions, /rescan\.id = `toolHealthRescan-\$\{clientId\}`/);
-  assert.match(actions, /reveal\.id = `toolHealthReveal-\$\{clientId\}`/);
-  assert.match(actions, /exactLocalClientSources\(clientId\)/);
-  assert.doesNotMatch(app, /clientSourceIds/);
-});
-
 function cssRule(source, selector) {
   const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const match = source.match(new RegExp(`${escaped}\\s*\\{([^}]*)\\}`));
@@ -103,21 +45,18 @@ test('preference drag only selects sortable rows, not nested controls', () => {
   assert.doesNotMatch(body, /querySelectorAll\(`\\\[data-\$\{attr\}\\\]`\)/);
 });
 
-// The handle-based lists still reorder by moving DOM nodes as the pointer
-// travels, with no transform animation. The two whole-row lists moved to the
-// transform model and carry their own guards in limitProviderDrag.test.js.
-test('handle-based preference drag does not animate row transforms during pointer movement', () => {
+test('preference drag does not animate row transforms during pointer movement', () => {
   const app = readRendererFile('app.js');
   const css = readRendererFile('styles.css');
   assert.doesNotMatch(app, /animatePreferenceOrderChange/);
   assert.doesNotMatch(app, /translateY\(/);
+  assert.doesNotMatch(cssRule(css, '.tool-preference-row'), /transform/);
   assert.doesNotMatch(cssRule(css, '.view-preference-row'), /transform/);
+  assert.doesNotMatch(cssRule(css, '.settings-panel .limit-provider-row'), /transform/);
   assert.doesNotMatch(cssRule(css, '.preference-order-handle'), /transition:\s*transform/);
 });
 
 test('tool preference controls place compact actions beside the note without duplicate headers', () => {
-  const app = readRendererFile('app.js');
-  const body = functionBody(app, 'renderToolPreferencesNow', 'connectLimitProviderCheckboxName');
   const html = readRendererFile('index.html');
   const group = html.match(/<div class="settings-subgroup settings-tools-subgroup">[\s\S]*?<div id="clientDisplayList"/)?.[0] || '';
   assert.match(html, /<div class="settings-group settings-collapsible-group settings-tools-group"/);
@@ -134,12 +73,8 @@ test('tool preference controls place compact actions beside the note without dup
   const css = readRendererFile('styles.css');
   assert.match(cssRule(css, '.settings-note-row'), /grid-template-columns:\s*minmax\(0,\s*1fr\) auto/);
   assert.match(cssRule(css, '.settings-note-row'), /align-items:\s*center/);
-  // The track checkbox gets its own leading cell; visibility and pin stay on the right.
-  assert.match(cssRule(css, '.tool-preference-row'), /grid-template-columns:\s*22px minmax\(0,\s*1fr\) repeat\(2,\s*22px\)/);
+  assert.match(cssRule(css, '.tool-preference-row'), /grid-template-columns:\s*minmax\(0,\s*1fr\) repeat\(4,\s*22px\)/);
   assert.match(cssRule(css, '.tool-preference-actions'), /display:\s*contents/);
-  assert.match(body, /actions\.append\(visibility, pin\);/);
-  assert.match(body, /row\.append\(track, labelGroup, actions(?:, panel)?\);/);
-  assert.doesNotMatch(body, /actions\.append\(track/);
   assert.doesNotMatch(css, /\.tool-preference-head/);
   assert.doesNotMatch(css, /\.tool-preference-legend-/);
 });
@@ -150,95 +85,6 @@ test('tool preference rows include compact per-tool pin controls', () => {
   assert.match(body, /settings\.tools\.pinClient/);
   assert.match(body, /settings\.tools\.unpinClient/);
   assert.match(body, /onClientPinnedToggle/);
-});
-
-test('tool preference rows drag from the row itself, not a handle', () => {
-  const app = readRendererFile('app.js');
-  const body = functionBody(app, 'renderToolPreferencesNow', 'connectLimitProviderCheckboxName');
-  assert.doesNotMatch(body, /createPreferenceOrderHandle/);
-  // The row the controller is told to look for is the row this builds.
-  assert.match(body, /row\.className = 'tool-preference-row';/);
-  assert.match(body, /row\.dataset\.client = id;/);
-  assert.match(body, /row\.addEventListener\('pointerdown', \(event\) => clientPreferenceRowDrag\.startRowDrag\(event, id\)\);/);
-  // The keyboard reorder entry point moves onto the track checkbox, keys unchanged.
-  assert.match(body, /trackInput\.setAttribute\('aria-keyshortcuts', 'ArrowUp ArrowDown Home End'\);/);
-  assert.match(body, /trackInput\.addEventListener\('keydown', \(event\) => onPreferenceOrderKeydown\(event, 'client', id\)\);/);
-
-  // The handle was the only affordance, so the section note has to say it.
-  const html = readRendererFile('index.html');
-  assert.match(html, /data-i18n="settings\.tools\.note">[^<]*Drag a row to reorder\./);
-  const i18n = readRendererFile('i18n.js');
-  assert.doesNotMatch(i18n, /'settings\.tools\.reorderClient':/);
-});
-
-// Token-only stats pushes keep the live rows and expanded panel in place; health
-// changes refill only the open panel instead of rebuilding the whole tool list.
-test('the tool list skips unchanged row renders and refreshes only open health details', () => {
-  const app = readRendererFile('app.js');
-  const defer = functionBody(app, 'renderToolPreferences', 'toolPreferenceRenderSignature');
-  assert.match(defer, /if \(clientPreferenceRowDrag\.deferRender\(\)\) return;/);
-  assert.match(defer, /return preserveSettingsPanelScroll\(renderToolPreferencesNow\);/);
-
-  const signature = functionBody(app, 'toolPreferenceRenderSignature', 'renderToolPreferencesNow');
-  assert.match(signature, /\[\.\.\.enabledClientSet\(\)\]\.sort\(\)/);
-  assert.doesNotMatch(signature, /trackedClients/);
-  assert.match(signature, /healthRows: KNOWN_CLIENTS\.map/);
-  assert.match(signature, /health\?\.clients\?\.\[id\]\?\.overall/);
-  assert.doesNotMatch(signature, /periods/);
-
-  const body = functionBody(app, 'renderToolPreferencesNow', 'connectLimitProviderCheckboxName');
-  const fill = functionBody(app, 'fillClientHealthPanel', 'clientHealthGroup');
-  assert.match(body, /state\.toolPreferenceRenderSignature === renderSignature/);
-  assert.match(body, /state\.toolPreferenceDetailSignature !== detailSignature/);
-  assert.match(body, /state\.settings\?\.currencyRatesEffective \|\| null/);
-  assert.match(body, /state\.toolPreferenceSourceSignature !== sourceSignature/);
-  assert.match(body, /loadClientSources\(state\.clientHealthExpanded\);\s*refillOpenClientHealthPanel\(\);/);
-  assert.match(body, /else \{\s*refillOpenClientHealthPanel\(\);\s*\}/);
-  assert.match(body, /visibility\.id = `toolVisibility-\$\{id\}`/);
-  assert.match(body, /pin\.id = `toolPin-\$\{id\}`/);
-  assert.match(body, /const focusedId = document\.activeElement\?\.id \|\| ''/);
-  assert.match(body, /document\.getElementById\(focusedId\)\?\.focus/);
-  assert.match(body, /return;/);
-  assert.doesNotMatch(body, /replaceChildren/);
-  assert.match(fill, /patchRenderedNode\(current, next\)/);
-  assert.match(fill, /else container\.replaceChildren\(next\)/);
-
-  const localSources = functionBody(app, 'localClientSources', 'loadClientSources');
-  assert.match(localSources, /exactLocalClientSources\(clientId\)/);
-  assert.match(localSources, /const pendingSources = key && state\.clientSourcesKey === key/);
-  assert.match(localSources, /exactSources \?\? clientSourceCacheApi\.readLatestClientSources/);
-  assert.match(localSources, /exists: false, pending: true/);
-});
-
-test('the tool preference row carries the drag transform contract', () => {
-  const css = readRendererFile('styles.css');
-  const row = cssRule(css, '.tool-preference-row');
-  assert.match(row, /position: relative;/);
-  assert.match(row, /touch-action: pan-y;/);
-  assert.match(row, /transform: translateY\(calc\(var\(--drag-y, 0px\) \+ var\(--drag-shift, 0px\)\)\);/);
-  assert.match(row, /transform 170ms cubic-bezier\(0\.22, 1, 0\.36, 1\)/);
-  assert.doesNotMatch(cssRule(css, '.tool-preference-row.dragging'), /transform \d/);
-  assert.match(css, /\.tool-preference-list\.drag-active \.tool-preference-row:not\(\.dragging\) \{ opacity: 0\.78; \}/);
-});
-
-test('a press on the tool row own controls never arms a drag', () => {
-  const app = readRendererFile('app.js');
-  // The checkbox sits inside a label, which is a hit target of its own.
-  assert.match(app, /const CLIENT_PREFERENCE_DRAG_EXCLUDED = 'button:not\(\.tool-preference-main\), input, select, textarea, a, label, \.accordion-animated-container';/);
-  const wiring = app.slice(app.indexOf('const clientPreferenceRowDrag = '), app.indexOf('function renderToolPreferences('));
-  assert.match(wiring, /dragExcluded: CLIENT_PREFERENCE_DRAG_EXCLUDED,/);
-  assert.match(wiring, /rowSelector: '\.tool-preference-row\[data-client\]',/);
-  assert.match(wiring, /idKey: 'client',/);
-  assert.match(wiring, /preserveScroll: preserveSettingsPanelScroll,/);
-  assert.match(wiring, /applyOrder: \(order\) => applyPreferenceOrder\('client', order\),/);
-  assert.match(wiring, /requestRender: \(\) => renderToolPreferences\(\)/);
-  // The pin/order decision is made once, by the shared module, and travels from
-  // the mirror to the save; onPreferenceOrderCommit would compare against the
-  // value the mirror just wrote and drop it.
-  assert.match(wiring, /clientDisplayPreferencesApi\.clientDisplayOrderCommit\(order, KNOWN_CLIENTS, state\.settings\?\.clientDisplayOrder, state\.settings\?\.pinnedClients, id\)/);
-  assert.match(wiring, /persistOrder: \(_order, _id, patch\) => void saveSettings\(patch\)/);
-  assert.doesNotMatch(wiring, /onPreferenceOrderCommit\(/);
-  assert.doesNotMatch(functionBody(app, 'onPreferenceOrderCommit', 'onPreferenceOrderKeydown'), /clientDisplayOrder|pinnedClients/);
 });
 
 test('view preferences place compact actions beside the note without duplicate headers', () => {
@@ -272,8 +118,6 @@ test('settings page uses collapsible icon sections with summaries', () => {
   assert.match(html, /class="settings-section-icon settings-section-icon-limits"/);
   assert.match(html, /class="settings-section-icon settings-section-icon-accounts"/);
   assert.match(html, /class="settings-section-icon settings-section-icon-sync"/);
-  assert.match(html, /data-settings-section="accounts"/);
-  assert.match(html, /id="accountsSettingsDetails" class="settings-section-details hidden"/);
   assert.match(html, /id="generalSettingsSummary"/);
   assert.match(html, /id="mainSettingsSummary"/);
   assert.match(html, /id="windowSettingsSummary"/);
@@ -295,18 +139,12 @@ test('settings page uses collapsible icon sections with summaries', () => {
   assert.match(app, /renderSettingsSummaries/);
   assert.match(app, /settingsSectionSummary/);
   assert.match(app, /for \(const other of SETTINGS_SECTION_IDS\)/);
-   assert.match(app, /'limits', 'accounts', 'subscriptions', 'sync'/);
   assert.doesNotMatch(app, /viewsSettingsSummary/);
-  assert.doesNotMatch(app, /orderAccountProviderGroups/);
 
   const css = readRendererFile('styles.css');
-  const i18n = readRendererFile('i18n.js');
   assert.match(css, /\.settings-section-toggle/);
   assert.match(css, /\.settings-section-icon/);
   assert.match(css, /\.settings-section-summary/);
-  assert.match(css, /\.settings-section-icon-accounts/);
-  assert.match(i18n, /settings\.(?:sections|summary)\.accounts/);
-  assert.equal(fs.existsSync(path.join(rendererDir, 'icons', 'settings', 'accounts.svg')), true);
   assert.match(cssRule(css, '.settings-section-icon'), /mask:\s*var\(--settings-section-icon-url\)/);
   for (const [section, asset] of Object.entries(settingsIconAssets)) {
     assert.match(cssRule(css, `.settings-section-icon-${section}`), new RegExp(`icons/settings/${asset}`));
@@ -335,10 +173,9 @@ test('main section holds views; appearance is its own section; window holds beha
     html.indexOf('<div id="appearanceSettingsDetails"'),
     html.indexOf('<div class="settings-group settings-collapsible-group settings-tools-group"')
   );
-  assert.notEqual(appearance, '', 'appearance section should exist');
-  assert.match(appearance, /name="systemGlassOption" value="system"/);
-  assert.match(appearance, /name="systemGlassOption" value="off"/);
+  assert.match(appearance, /name="systemGlassOption"/);
   assert.match(appearance, /id="glassInput"/);
+  assert.match(appearance, /id="blurInput"/);
   assert.match(appearance, /id="zoomInput"/);
   assert.match(appearance, /id="themePresetChips"/);
   assert.match(appearance, /id="themeCodeInput"/);
@@ -399,61 +236,6 @@ test('main section holds views; appearance is its own section; window holds beha
   );
 });
 
-test('legacy settings mode choices retain their select controls', () => {
-  const html = readRendererFile('index.html');
-  assert.match(html, /<select id="floatingBubbleTriggerInput">[\s\S]*value="click"[\s\S]*value="hover"/);
-  assert.match(html, /<select id="showLimitUsedInput">[\s\S]*value="remaining"[\s\S]*value="used"/);
-
-  const app = readRendererFile('app.js');
-  assert.match(app, /floatingBubbleTriggerInput: document\.getElementById\('floatingBubbleTriggerInput'\)/);
-  assert.match(app, /showLimitUsedInput: document\.getElementById\('showLimitUsedInput'\)/);
-  assert.match(app, /floatingBubbleTriggerInput\?\.addEventListener\('change'/);
-  assert.match(app, /showLimitUsedInput\?\.addEventListener\('change'/);
-
-  // Bound every declaration match to the body of the rule it names: an
-  // unbounded [\s\S]* happily matches the same property in an unrelated rule
-  // further down the file, so the assertion would survive deleting the rule.
-  const css = readRendererFile('styles.css');
-  assert.match(css, /\.settings-panel \.status-provider-interval\s*\{[^}]*display:\s*flex/);
-  assert.match(css, /\.settings-panel \.status-provider-interval select\s*\{[^}]*width:\s*auto/);
-  assert.match(css, /\.settings-panel \.home-limit-account-count-setting > input\[type="number"\]\s*\{[^}]*height:\s*20px[^}]*padding:\s*2px 8px/);
-});
-
-test('nested settings lists share one compact rhythm instead of per-list spacing', () => {
-  const app = readRendererFile('app.js');
-  const css = readRendererFile('styles.css');
-
-  // Every list nested under a view row opts into the shared class. Restyling one
-  // of them on its own is how Trends and Status drifted looser than Home.
-  for (const list of ['home-limit-provider-list', 'home-settings-list', 'trend-settings-list', 'status-provider-list']) {
-    assert.match(app, new RegExp(`wrap\\.className = 'settings-nested-list ${list}'`));
-    assert.doesNotMatch(css, new RegExp(`\\.${list}\\s*\\{`));
-  }
-
-  // Rows carry their own height, so the container must not add a gap on top.
-  assert.match(css, /\.settings-nested-list[^{}]*\{[^}]*gap: 0 !important/);
-  assert.match(css, /\.settings-panel \.settings-nested-list > \.checkbox-label,[^{}]*\{[^}]*min-height:\s*24px/);
-  assert.match(css, /\.settings-panel \.settings-nested-list > \.checkbox-label,[^{}]*\{[^}]*margin-top:\s*0/);
-  assert.match(css, /\.settings-panel \.settings-nested-list > \.settings-item\s*\{[^}]*padding:\s*2px 0/);
-  // The interval pill fills the base row, so it needs a taller one to keep the
-  // same ~4px of air between controls that the Home rows have.
-  assert.match(css, /\.settings-panel \.settings-nested-list > \.status-provider-interval\s*\{[^}]*min-height:\s*28px/);
-});
-
-test('checkbox labels keep the legacy whole-row hit target', () => {
-  const css = readRendererFile('styles.css');
-  assert.doesNotMatch(css, /\.settings-panel \.checkbox-label,\s*\.settings-panel label\.client-checkbox\s*\{[^}]*pointer-events:\s*none/);
-  assert.match(css, /\.settings-panel \.client-checkboxes label\.client-checkbox input\[type="checkbox"\]\s*\{[^}]*cursor:\s*pointer/);
-});
-
-// The provider row opens its details, while the checkbox remains the only hit
-// target that enables or disables the provider.
-test('AI Tool Limits provider checkbox keeps the legacy row interaction', () => {
-  const css = readRendererFile('styles.css');
-  assert.doesNotMatch(css, /\.settings-panel \.checkbox-label,\s*\.settings-panel label\.client-checkbox\s*\{[^}]*pointer-events:\s*none/);
-  assert.match(css, /\.settings-panel \.client-checkboxes label\.client-checkbox\s*\{[^}]*cursor:\s*pointer/);
-});
-
 test('theme code feedback clears when the displayed code changes', () => {
   const app = readRendererFile('app.js');
   const build = functionBody(app, 'buildAppearanceColorControls', 'renderThemePresetChips');
@@ -479,22 +261,20 @@ test('theme code feedback clears when the displayed code changes', () => {
   assert.match(copy, /themeCodeFeedbackIsCurrent\(generation, code\)/);
 });
 
-test('settings accordions share accessible collapsed-state handling', () => {
+test('theme colour accordions share accessible collapsed-state handling', () => {
   const app = readRendererFile('app.js');
-  const setupStart = app.indexOf('function setSettingsAccordionExpanded(');
-  const setupEnd = app.indexOf('\nfunction setupSettingsAccordion(', setupStart);
-  assert.notEqual(setupStart, -1, 'setSettingsAccordionExpanded function should exist');
-  assert.notEqual(setupEnd, -1, 'settings accordion setup calls should follow the helper');
+  const setupStart = app.indexOf('function setupThemeAccordion(');
+  const setupEnd = app.indexOf('\nsetupThemeAccordion(els.themeAdvancedGroup', setupStart);
+  assert.notEqual(setupStart, -1, 'setupThemeAccordion function should exist');
+  assert.notEqual(setupEnd, -1, 'theme accordion setup calls should follow the helper');
   const setup = app.slice(setupStart, setupEnd);
 
   assert.match(setup, /toggle\.setAttribute\('aria-expanded', String\(open\)\)/);
   assert.match(setup, /details\.classList\.toggle\('hidden', !open\)/);
   assert.match(setup, /details\.inert = !open/);
   assert.match(setup, /group\.classList\.toggle\('expanded', open\)/);
-  assert.match(app, /setupSettingsAccordion\(els\.appUpdateNotes, els\.appUpdateNotesToggle, els\.appUpdateNotesDetails\)/);
-  assert.match(app, /setupSettingsAccordion\(els\.advancedSettingsGroup, els\.advancedSettingsToggle, els\.advancedSettingsDetails\)/);
-  assert.match(app, /setupSettingsAccordion\(els\.themeAdvancedGroup, els\.themeAdvancedToggle, els\.themeAdvancedDetails\)/);
-  assert.match(app, /setupSettingsAccordion\(els\.themeVendorGroup, els\.themeVendorToggle, els\.themeVendorDetails\)/);
+  assert.match(app, /setupThemeAccordion\(els\.themeAdvancedGroup, els\.themeAdvancedToggle, els\.themeAdvancedDetails\)/);
+  assert.match(app, /setupThemeAccordion\(els\.themeVendorGroup, els\.themeVendorToggle, els\.themeVendorDetails\)/);
 });
 
 test('Trends has a master toggle separate from main-screen visibility', () => {
@@ -513,7 +293,7 @@ test('Trends has a master toggle separate from main-screen visibility', () => {
   assert.match(app, /setTrendEnabled\(true\)/);
   assert.match(app, /row\.classList\.toggle\('is-disabled'/);
   assert.match(css, /\.view-preference-row\.is-disabled/);
-  assert.match(app, /wrap\.className = 'settings-nested-list trend-settings-list'/);
+  assert.match(css, /\.trend-settings-list/);
 });
 
 test('session archive retention has its own setting separate from Trends', () => {
@@ -618,3 +398,4 @@ test('renderer applies the first visible view on cold startup only', () => {
   const syncBody = functionBody(app, 'syncSettingsForm', 'enabledClientSet');
   assert.match(syncBody, /applyInitialBreakdownPreference\(\)/);
 });
+

@@ -11,15 +11,6 @@ function nonNegativeNumber(value) {
   return Number.isFinite(numeric) && numeric >= 0 ? numeric : null;
 }
 
-function attachLocalNativeViews(stats, localDevice) {
-  if (!stats || typeof stats !== 'object') return stats;
-  delete stats.nativeSessions;
-  delete stats.nativeProjects;
-  if (hasOwn(localDevice, 'nativeSessions')) stats.nativeSessions = localDevice.nativeSessions;
-  if (hasOwn(localDevice, 'nativeProjects')) stats.nativeProjects = localDevice.nativeProjects;
-  return stats;
-}
-
 function composeLocalSyncStats(hubStats, localDevice, options = {}) {
   if (!localDevice?.deviceId) return hubStats;
   if (hubStats && !Array.isArray(hubStats.devices)) return hubStats;
@@ -47,7 +38,7 @@ function composeLocalSyncStats(hubStats, localDevice, options = {}) {
     };
   });
 
-  const displayStats = {
+  return {
     ...(hubStats || {}),
     updatedAt: aggregate.updatedAt,
     periods: aggregate.periods,
@@ -55,8 +46,6 @@ function composeLocalSyncStats(hubStats, localDevice, options = {}) {
     projectsIncomplete: aggregate.projectsIncomplete,
     limits: hasHubStaleAfterMs || !hasOwn(hubStats, 'limits') ? aggregate.limits : hubStats.limits
   };
-  attachLocalNativeViews(displayStats, localDevice);
-  return displayStats;
 }
 
-module.exports = { attachLocalNativeViews, composeLocalSyncStats };
+module.exports = { composeLocalSyncStats };

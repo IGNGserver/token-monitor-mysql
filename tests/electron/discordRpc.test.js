@@ -15,7 +15,6 @@ function loadBuildPayload() {
     require(name) {
       if (name === '@xhayper/discord-rpc') return { Client: class {} };
       if (name === '../shared/currency') return require('../../src/shared/currency');
-      if (name === '../shared/compactTokens') return require('../../src/shared/compactTokens');
       return require(name);
     },
     setTimeout,

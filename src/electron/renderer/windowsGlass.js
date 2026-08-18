@@ -11,15 +11,22 @@
   const { normalizeWindowsBackdropMode } = backdropModeApi;
 
   function appearanceState(settings = {}, { isWindows = false, backdropSupported = true } = {}) {
-    const systemGlassEnabled = settings.systemGlass !== false;
-    const backdropMode = normalizeWindowsBackdropMode(settings.windowsBackdrop);
+    const systemGlassEnabled = settings?.systemGlass !== false;
+    const backdropMode = normalizeWindowsBackdropMode(settings?.windowsBackdrop);
     return {
       showBackdropControl: isWindows && systemGlassEnabled && backdropSupported !== false,
-      showAccentNote: isWindows && systemGlassEnabled && backdropSupported !== false && backdropMode === 'accent',
+      showAccentNote: false,
       showMicaNote: isWindows && systemGlassEnabled && backdropSupported !== false && backdropMode === 'mica',
       backdropMode
     };
   }
 
-  return { appearanceState, normalizeWindowsBackdropMode };
+  // Native Mica/Acrylic is already the BrowserWindow's base layer. Only
+  // transient HTML surfaces need an app-owned fill; the shell itself is kept
+  // transparent in styles.css so it cannot cover the DWM material.
+  function nativePopoverAlpha({ lightTheme = false } = {}) {
+    return lightTheme ? 0.92 : 0.88;
+  }
+
+  return { appearanceState, nativePopoverAlpha, normalizeWindowsBackdropMode };
 });

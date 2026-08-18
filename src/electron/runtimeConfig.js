@@ -1,15 +1,7 @@
 'use strict';
 
 const { clientsCsvForSetting } = require('../shared/clientTracking');
-const { normalizeHistoryIntervalMs } = require('../shared/collector');
-const {
-  normalizeLimitsRefreshMode,
-  normalizeLimitsRefreshMs,
-  parseLimitProviders
-} = require('../shared/limitCollector');
-const { normalizeSyncUploadIntervalMs } = require('../shared/syncUploadInterval');
-
-const DEFAULT_ALL_TIME_SINCE = '2024-01-01';
+const { normalizeLimitsRefreshMs, parseLimitProviders } = require('../shared/limitCollector');
 
 const MODE_STRUCTURAL_KEYS = Object.freeze([
   'hubMode',
@@ -33,14 +25,11 @@ const USAGE_STRUCTURAL_KEYS = Object.freeze([
 const LIMITS_RECONFIGURE_KEYS = Object.freeze([
   'limitsEnabled',
   'limitProviders',
-  'limitsRefreshMode',
-  'limitsRefreshMs',
-  'opencodeLocalLimitsEnabled'
+  'limitsRefreshMs'
 ]);
 const SINK_STRUCTURAL_KEYS = Object.freeze(['syncUploadIntervalMs']);
 const LIMIT_PROVIDER_SETTING_KEYS = Object.freeze({
-  claude: ['claudeWebCookie'],
-  opencode: ['opencodeCookie', 'opencodeProfiles', 'opencodeLocalLimitsEnabled'],
+  opencode: ['opencodeCookie', 'opencodeProfiles'],
   openrouter: ['openrouterProfiles'],
   deepseek: ['deepseekApiKey'],
   minimax: ['minimaxApiKey'],
@@ -49,12 +38,10 @@ const LIMIT_PROVIDER_SETTING_KEYS = Object.freeze({
   zaiteam: ['zaiTeamApiKey', 'zaiTeamOrganizationId', 'zaiTeamProjectId'],
   volcengine: ['volcengineAccessKeyId', 'volcengineSecretAccessKey', 'volcengineRegion'],
   qoder: ['qoderCookie', 'qoderSite'],
-  commandcode: ['commandcodeCookie'],
   kimi: ['kimiApiKey', 'kimiWebAccessToken'],
   ollama: ['ollamaCookie'],
   codex: ['codexManagedAccounts'],
-  mimo: ['mimoManagedAccounts'],
-  thirdparty: ['thirdPartyProfiles']
+  mimo: ['mimoManagedAccounts']
 });
 
 function equalSetting(left, right) {
@@ -68,17 +55,10 @@ function changedAny(previous, next, keys) {
   return keys.some((key) => !equalSetting(previous?.[key], next?.[key]));
 }
 
-function normalizeAllTimeSince(value, fallback = DEFAULT_ALL_TIME_SINCE) {
-  const raw = String(value ?? '').trim();
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return fallback;
-  const date = new Date(`${raw}T00:00:00.000Z`);
-  return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === raw ? raw : fallback;
-}
-
 function usageConfigFromSettings(settings = {}, context = {}) {
   return {
     clients: clientsCsvForSetting(settings.clients),
-    allTimeSince: normalizeAllTimeSince(settings.allTimeSince),
+    allTimeSince: settings.allTimeSince || '2024-01-01',
     commandTimeoutMs: Number(context.commandTimeoutMs || 120 * 1000),
     deviceId: settings.deviceId || context.defaultDeviceId,
     agentVersion: context.agentVersion,
@@ -88,34 +68,12 @@ function usageConfigFromSettings(settings = {}, context = {}) {
     dailyHistoryArchiveEnabled: settings.sessionUsageArchiveEnabled !== false,
     dailyHistoryArchiveWriteEnabled: context.dailyHistoryArchiveWriteEnabled,
     projectsEnabled: settings.projectsEnabled !== false,
-    reasonixNativeSessionsEnabled: context.reasonixNativeSessionsEnabled === true,
     historyIntervalMs: context.historyIntervalMs ?? settings.historyIntervalMs,
     watchEnabled: context.watchEnabled,
-    watchUsePolling: context.watchUsePolling,
-    watchTriggersCollection: context.watchTriggersCollection !== false,
-    intervalRequiresActivity: Boolean(context.intervalRequiresActivity),
     watchDebounceMs: Number(context.watchDebounceMs || 1500),
     wslScanEnabled: settings.wslScanEnabled !== false,
     onError: context.onError,
     logger: context.logger
-  };
-}
-
-function diagnosticConfigurationFromSettings(settings = {}, context = {}) {
-  const usage = usageConfigFromSettings(settings, context.usage || {});
-  const limits = limitsConfigFromSettings(settings, context.limits || {});
-  return {
-    configurationSource: 'effective-normalized',
-    allTimeSince: usage.allTimeSince,
-    historyEnabled: usage.historyEnabled,
-    historyIntervalMs: normalizeHistoryIntervalMs(usage.historyIntervalMs),
-    projectsEnabled: usage.projectsEnabled,
-    wslScanEnabled: usage.wslScanEnabled,
-    syncUploadIntervalMs: normalizeSyncUploadIntervalMs(
-      context.syncUploadIntervalMs ?? settings.syncUploadIntervalMs
-    ),
-    limitsRefreshMode: limits.limitsRefreshMode,
-    limitsRefreshMs: limits.limitsRefreshMs
   };
 }
 
@@ -124,12 +82,7 @@ function limitsConfigFromSettings(settings = {}, context = {}) {
   return {
     limitsEnabled: settings.limitsEnabled !== false,
     limitProviders: settings.limitProviders ?? context.defaultLimitProviders,
-    limitsRefreshMode: normalizeLimitsRefreshMode(settings.limitsRefreshMode),
     limitsRefreshMs: normalizeLimitsRefreshMs(settings.limitsRefreshMs),
-    claudeWebCookie: settings.claudeWebCookie || env.CLAUDE_WEB_COOKIE || '',
-    claudePrepaidBalanceEnabled: settings.claudePrepaidBalanceEnabled !== false,
-    opencodeLocalLimitsEnabled: settings.opencodeLocalLimitsEnabled === true,
-    opencodeAmbientEnabled: settings.opencodeAmbientEnabled !== false,
     opencodeCookie: settings.opencodeCookie || env.TOKEN_MONITOR_OPENCODE_COOKIE || '',
     opencodeProfiles: settings.opencodeProfiles || {},
     openrouterProfiles: settings.openrouterProfiles || {},
@@ -147,13 +100,11 @@ function limitsConfigFromSettings(settings = {}, context = {}) {
     volcengineRegion: settings.volcengineRegion || '',
     qoderCookie: settings.qoderCookie || '',
     qoderSite: settings.qoderSite || 'global',
-    commandcodeCookie: settings.commandcodeCookie || '',
     kimiApiKey: settings.kimiApiKey || '',
     kimiWebAccessToken: settings.kimiWebAccessToken || '',
     ollamaCookie: settings.ollamaCookie || '',
     codexManagedAccounts: context.codexManagedAccounts ?? settings.codexManagedAccounts ?? [],
-    mimoManagedAccounts: context.mimoManagedAccounts ?? settings.mimoManagedAccounts ?? [],
-    thirdPartyProfiles: settings.thirdPartyProfiles || {}
+    mimoManagedAccounts: context.mimoManagedAccounts ?? settings.mimoManagedAccounts ?? []
   };
 }
 
@@ -183,9 +134,7 @@ function classifySettingsChange(previous = {}, next = {}) {
 module.exports = {
   LIMIT_PROVIDER_SETTING_KEYS,
   classifySettingsChange,
-  diagnosticConfigurationFromSettings,
   envelopeFromSettings,
   limitsConfigFromSettings,
-  normalizeAllTimeSince,
   usageConfigFromSettings
 };

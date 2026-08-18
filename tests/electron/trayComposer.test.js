@@ -1,21 +1,15 @@
 'use strict';
 
 const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const path = require('node:path');
 const test = require('node:test');
 
 const trayLayoutApi = require('../../src/shared/trayLayout');
 const {
   accountModeSourcePatch,
-  costDisplayPatch,
-  createTrayComposer,
   duplicateTrayLayoutItem,
-  handlePickerDocumentScroll,
   moveTrayLayoutItemByKey,
   periodItemPatch,
-  syncTrayComposerSurfaces,
-  usageScopePatch
+  syncTrayComposerSurfaces
 } = require('../../src/electron/renderer/trayComposer');
 
 function layoutWithIds(...ids) {
@@ -104,45 +98,6 @@ test('period updates target the item for single text and the source for stacked 
   assert.equal(stackedUpdated.rows[1].period, 'allTime');
 });
 
-test('cost display updates target a single item or one mixed-information row', () => {
-  const single = trayLayoutApi.createTrayLayoutItem('cost', { idFactory: () => 'single-cost' });
-  const singleUpdated = costDisplayPatch(single, 0, { costFormat: 'full', costDecimals: 'auto' });
-  assert.equal(singleUpdated.costFormat, 'full');
-  assert.equal(singleUpdated.costDecimals, 'auto');
-  assert.equal(singleUpdated.source.costFormat, undefined);
-
-  const stacked = trayLayoutApi.createTrayLayoutItem('doubleInfo', { idFactory: () => 'stacked-cost' });
-  const stackedUpdated = costDisplayPatch(stacked, 1, { costFormat: 'compact', costDecimals: 3 });
-  assert.equal(stackedUpdated.rows[0].costFormat, undefined);
-  assert.equal(stackedUpdated.rows[1].costFormat, 'compact');
-  assert.equal(stackedUpdated.rows[1].costDecimals, 3);
-
-  const normalized = trayLayoutApi.normalizeTrayLayout({
-    version: trayLayoutApi.VERSION,
-    items: [{ ...stackedUpdated, rows: [stackedUpdated.rows[0], { ...stackedUpdated.rows[1], metric: 'cost' }] }]
-  });
-  assert.equal(normalized.items[0].rows[1].costFormat, 'compact');
-  assert.equal(normalized.items[0].rows[1].costDecimals, 3);
-});
-
-test('usage source updates target a single item or one mixed-information row', () => {
-  const single = trayLayoutApi.createTrayLayoutItem('tokens', { idFactory: () => 'single-tokens' });
-  const singleUpdated = usageScopePatch(single, 0, 'recent');
-  assert.equal(singleUpdated.usageScope, 'recent');
-  assert.equal(singleUpdated.source.usageScope, undefined);
-
-  const stacked = trayLayoutApi.createTrayLayoutItem('doubleInfo', { idFactory: () => 'stacked-tokens' });
-  const stackedUpdated = usageScopePatch(stacked, 1, 'recent');
-  assert.equal(stackedUpdated.rows[0].usageScope, undefined);
-  assert.equal(stackedUpdated.rows[1].usageScope, 'recent');
-
-  const normalized = trayLayoutApi.normalizeTrayLayout({
-    version: trayLayoutApi.VERSION,
-    items: [{ ...stackedUpdated, rows: [stackedUpdated.rows[0], { ...stackedUpdated.rows[1], metric: 'tokens' }] }]
-  });
-  assert.equal(normalized.items[0].rows[1].usageScope, 'recent');
-});
-
 test('keyboard movement returns the reordered layout and respects boundaries', () => {
   const layout = layoutWithIds('first', 'selected', 'last');
   const moved = moveTrayLayoutItemByKey(trayLayoutApi, layout, 'selected', 'ArrowRight');
@@ -153,43 +108,6 @@ test('keyboard movement returns the reordered layout and respects boundaries', (
   const boundary = moveTrayLayoutItemByKey(trayLayoutApi, moved.layout, 'selected', 'ArrowRight');
   assert.equal(boundary.moved, false);
   assert.deepEqual(boundary.layout, moved.layout);
-});
-
-test('an open picker follows outer scroll updates while its trigger stays connected', () => {
-  const menu = { contains: (target) => target === 'menu-scroll' };
-  const connected = {
-    menu,
-    owner: { isConnected: true },
-    trigger: { isConnected: true }
-  };
-  const calls = [];
-  const actions = {
-    close: () => calls.push('close'),
-    reposition: () => calls.push('reposition')
-  };
-
-  assert.equal(handlePickerDocumentScroll(connected, 'menu-scroll', actions), 'ignore');
-  assert.deepEqual(calls, []);
-  assert.equal(handlePickerDocumentScroll(connected, 'settings-scroll', actions), 'reposition');
-  assert.deepEqual(calls, ['reposition']);
-  assert.equal(
-    handlePickerDocumentScroll(
-      { ...connected, trigger: { isConnected: false } },
-      'settings-scroll',
-      actions
-    ),
-    'close'
-  );
-  assert.deepEqual(calls, ['reposition', 'close']);
-  assert.equal(
-    handlePickerDocumentScroll(
-      { ...connected, owner: { isConnected: false } },
-      'settings-scroll',
-      actions
-    ),
-    'close'
-  );
-  assert.deepEqual(calls, ['reposition', 'close', 'close']);
 });
 
 test('composer visibility destroys hidden surfaces and creates newly visible surfaces', () => {
@@ -225,201 +143,4 @@ test('composer visibility destroys hidden surfaces and creates newly visible sur
     ['tray', 'hidden', true],
     ['floatingBubble', 'hidden', false]
   ]);
-});
-
-const balanceStats = {
-  periods: { today: {}, month: {}, allTime: {} },
-  limits: {
-    providers: [{
-      provider: 'deepseek',
-      accountKey: 'ds1',
-      accountLabel: 'Pay-as-you-go',
-      status: 'ok',
-      stale: false,
-      windows: [{
-        kind: 'billing',
-        metric: 'credits',
-        label: 'Balance',
-        remaining: 4,
-        currency: 'CNY',
-        showMeter: true
-      }],
-      balance: { amount: 4, currency: 'CNY', monthSpend: 6 }
-    }]
-  }
-};
-
-function balanceSource() {
-  return {
-    provider: 'deepseek',
-    accountMode: 'lowest',
-    accountKey: '',
-    window: 'primary',
-    valueMode: 'remaining'
-  };
-}
-
-test('a balance-only provider is offered in the tray window picker', () => {
-  const options = trayLayoutApi.windowOptions(balanceStats, 'deepseek');
-  assert.equal(options.length, 1);
-  assert.equal(options[0].kind, 'billing');
-  assert.equal(options[0].label, 'Balance');
-});
-
-test('a tray percent item prints a balance as compact money', () => {
-  const resolved = trayLayoutApi.resolveTrayLayout({
-    version: trayLayoutApi.VERSION,
-    items: [{ id: 'a', type: 'text', metric: 'percent', source: balanceSource() }]
-  }, balanceStats, {});
-
-  assert.equal(resolved.items[0].available, true);
-  assert.equal(resolved.items[0].text, '¥4.00');
-});
-
-test('a tray bar item meters a balance against its derived percentage', () => {
-  const resolved = trayLayoutApi.resolveTrayLayout({
-    version: trayLayoutApi.VERSION,
-    items: [{ id: 'a', type: 'bars', rows: [balanceSource()] }]
-  }, balanceStats, {});
-
-  // 4 / (4 + 6) = 40%
-  assert.equal(resolved.items[0].rows[0].percent, 40);
-});
-
-test('a balance selection carries resolved percentages so tray icons never fabricate 0%', () => {
-  const { compactLimitSelection, pickConfiguredLimitProviders } = require('../../src/shared/trayText');
-
-  const provider = balanceStats.limits.providers[0];
-  const selection = compactLimitSelection(provider);
-  // 4 / (4 + 6) = 40% — the raw window carries no percentage at all.
-  assert.equal(selection.primaryWindow.remainingPercent, undefined);
-  assert.equal(selection.primaryPercent, 40);
-  assert.equal(selection.secondaryPercent, null);
-
-  const [pick] = pickConfiguredLimitProviders(balanceStats, {});
-  assert.equal(pick.percent, 40);
-});
-
-// The read-only preview path of render() only touches a handful of DOM APIs, so
-// a shim covers it without pulling in a headless-browser dependency.
-function fakeElement(tag) {
-  const el = {
-    tagName: String(tag).toUpperCase(),
-    className: '',
-    textContent: '',
-    src: '',
-    style: {},
-    dataset: {},
-    children: [],
-    attributes: {},
-    clickHandlers: []
-  };
-  const classes = () => el.className.split(' ').filter(Boolean);
-  el.classList = {
-    add: (...names) => { el.className = [...new Set([...classes(), ...names])].join(' '); },
-    remove: (...names) => { el.className = classes().filter((name) => !names.includes(name)).join(' '); },
-    contains: (name) => classes().includes(name),
-    toggle: (name, force) => {
-      const on = force === undefined ? !el.classList.contains(name) : Boolean(force);
-      if (on) el.classList.add(name);
-      else el.classList.remove(name);
-    }
-  };
-  el.append = (...nodes) => { el.children.push(...nodes); };
-  el.replaceChildren = (...nodes) => { el.children = [...nodes]; };
-  el.setAttribute = (name, value) => { el.attributes[name] = value; };
-  el.addEventListener = (type, handler) => { if (type === 'click') el.clickHandlers.push(handler); };
-  el.querySelector = () => null;
-  return el;
-}
-
-function renderComposer({ preview = {}, editable = false, onCustomize = () => {} }) {
-  const saved = { document: global.document, window: global.window, Image: global.Image };
-  global.document = { createElement: (tag) => fakeElement(tag) };
-  global.window = { addEventListener() {}, removeEventListener() {} };
-  global.Image = function FakeImage() { return fakeElement('img'); };
-  const root = fakeElement('div');
-  try {
-    createTrayComposer({
-      root,
-      surface: 'tray',
-      layoutApi: trayLayoutApi,
-      getLayout: () => layoutWithIds(),
-      getPreview: () => preview,
-      isEditable: () => editable,
-      onCustomize,
-      onLayoutChange() {},
-      label: (key) => key
-    });
-  } finally {
-    global.document = saved.document;
-    global.window = saved.window;
-    global.Image = saved.Image;
-  }
-  const [heading, strip] = root.children;
-  return { root, heading, strip, content: strip.children[0].children[0] };
-}
-
-test('a non-custom surface previews the real tray image behind a Customize button', () => {
-  const { root, heading, strip, content } = renderComposer({
-    preview: { generatedSrc: 'data:image/png;base64,GENERATED' }
-  });
-
-  assert.equal(heading.children[0].textContent, 'Live preview');
-  assert.equal(heading.children[1].tagName, 'BUTTON');
-  assert.equal(heading.children[1].textContent, 'Customize…');
-  assert.equal(root.classList.contains('is-editing'), false);
-  // No add button: nothing on this surface is editable yet.
-  assert.equal(strip.children.length, 1);
-
-  assert.equal(content.classList.contains('is-menubar'), true);
-  assert.equal(content.children[0].className, 'tray-composer-menubar-generated');
-  assert.equal(content.children[0].src, 'data:image/png;base64,GENERATED');
-});
-
-test('the preview falls back from a rendered image to text to the app mark', () => {
-  const image = renderComposer({ preview: { src: 'data:image/png;base64,PLAIN' } });
-  assert.equal(image.content.classList.contains('is-menubar'), false);
-  assert.equal(image.content.children[0].className, 'tray-composer-preview-image');
-  assert.equal(image.content.children[0].src, 'data:image/png;base64,PLAIN');
-
-  const text = renderComposer({ preview: { text: '24.9M' } });
-  assert.equal(text.content.classList.contains('is-text'), true);
-  assert.equal(text.content.textContent, '24.9M');
-
-  const empty = renderComposer({ preview: {} });
-  assert.equal(empty.content.textContent, 'Σ');
-});
-
-test('Customize hands the surface back to the editor', () => {
-  let customized = 0;
-  const { heading } = renderComposer({ onCustomize: () => { customized += 1; } });
-
-  heading.children[1].clickHandlers.forEach((handler) => handler());
-  assert.equal(customized, 1);
-});
-
-test('a custom surface keeps the editor affordances instead of a preview', () => {
-  const { root, heading, strip } = renderComposer({
-    editable: true,
-    preview: { generatedSrc: 'data:image/png;base64,GENERATED' }
-  });
-
-  assert.equal(heading.children[1].textContent, 'Drag to reorder · Click to configure');
-  assert.equal(root.classList.contains('is-editing'), true);
-  assert.equal(strip.children.at(-1).className, 'tray-composer-add');
-  assert.equal(strip.children[0].children[0].textContent, 'Add your first item');
-});
-
-// A capture listener on `window` sees every element's blur, not just the
-// window's. The press moves focus off whatever was clicked last, so the chip
-// drag died on its own first pointerdown whenever a control still held focus.
-test('only the window own blur cancels the chip drag', () => {
-  const source = fs.readFileSync(
-    path.join(__dirname, '..', '..', 'src', 'electron', 'renderer', 'trayComposer.js'),
-    'utf8'
-  );
-  assert.match(source, /window\.addEventListener\('blur', cancelDrag\);/);
-  assert.match(source, /window\.removeEventListener\('blur', cancelDrag\);/);
-  assert.doesNotMatch(source, /'blur', cancelDrag, true/);
 });

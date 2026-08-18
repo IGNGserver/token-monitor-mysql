@@ -14,6 +14,9 @@
   --line-alpha: 0.138;
   --line-strong-alpha: 0.238;
   --control-alpha: 0.049;
+  /* Native Mica/Acrylic owns the BrowserWindow base layer. This variable is
+     reserved for transient HTML surfaces such as menus and tooltips. */
+  --windows-popover-alpha: 0.88;
   --glass: rgba(var(--glass-rgb), var(--glass-alpha));
   --glass-filter: blur(32px) saturate(115%);
   --floating-bubble-radius: 17px;
@@ -53,7 +56,7 @@ html, body {
   background: transparent;
   border-radius: 14px;
   color: var(--text);
-  font-family: var(--ui-font, ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
   user-select: none;
   -webkit-user-select: none;
 }
@@ -80,12 +83,6 @@ input, textarea, [contenteditable="true"] {
   -webkit-backdrop-filter: var(--glass-filter);
   backdrop-filter: var(--glass-filter);
 }
-html[data-macos-glass="liquid-glass"] .shell,
-body[data-macos-glass="liquid-glass"] .shell {
-  background: transparent;
-  -webkit-backdrop-filter: none;
-  backdrop-filter: none;
-}
 html.is-windows, html.is-windows body {
   border-radius: 8px;
 }
@@ -97,16 +94,14 @@ html.is-windows .shell {
      blur) with proper anti-aliasing instead. */
   clip-path: none;
 }
-/* The native Windows material owns the BrowserWindow base layer. Keep the
-   renderer surface transparent so it does not paint a second glass slab over
-   Acrylic or Accent Blur. */
+/* In native-material mode the OS backdrop is the app's base layer. Do not
+   paint a second full-window CSS surface over it. */
 html.is-windows[data-windows-backdrop] .shell,
 body.is-windows[data-windows-backdrop] .shell {
   background: transparent;
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
 }
-
 html.is-mac-legacy, html.is-mac-legacy body {
   border-radius: 10px;
 }
@@ -137,23 +132,26 @@ html.is-mac-legacy .shell {
   -webkit-backdrop-filter: var(--glass-filter);
   backdrop-filter: var(--glass-filter);
 }
+/* macOS 26 Liquid Glass is supplied by NSGlassEffectView behind the web
+   contents. Keep the HTML shell transparent so the native refraction and
+   interactive highlights remain visible instead of being covered by a second
+   CSS surface. */
+html[data-macos-glass="liquid-glass"] .shell,
+body[data-macos-glass="liquid-glass"] .shell,
 html[data-macos-glass="liquid-glass"] .floating-bubble-tab,
 body[data-macos-glass="liquid-glass"] .floating-bubble-tab {
   background: transparent;
-  border: 0;
-  border-radius: var(--floating-bubble-radius);
-  -webkit-appearance: none;
-  appearance: none;
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+.system-glass-disabled .floating-bubble-tab {
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
 }
 html.is-windows[data-windows-backdrop] .floating-bubble-tab,
 body.is-windows[data-windows-backdrop] .floating-bubble-tab {
   background: transparent;
-  -webkit-backdrop-filter: none;
-  backdrop-filter: none;
-}
-.system-glass-disabled .floating-bubble-tab {
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
 }
@@ -229,7 +227,6 @@ body.is-windows.floating-bubble-collapsed-right .floating-bubble-tab {
   gap: 12px;
   min-height: 30px;
 }
-.titlebar.period-menu-open { z-index: 13; }
 .shell.desktop-mode .titlebar { -webkit-app-region: no-drag; }
 .titlebar > div:first-child { min-width: 0; flex: 1 1 auto; }
 .app-title {
@@ -269,16 +266,12 @@ body.is-windows.floating-bubble-collapsed-right .floating-bubble-tab {
   pointer-events: none;
   white-space: nowrap;
 }
-/* Swap text → the compact mark at the exact width where the title would start to truncate, */
+/* Swap text → T mark at the exact width where the title would start to truncate, */
 /* driven by JS overflow detection (see renderer/app.js). */
 .shell.title-collapsed .app-title-text, .shell.title-icon-only .app-title-text { display: none; }
-.shell.title-collapsed .app-title-mark, .shell.title-icon-only .app-title-mark {
-  display: inline-block;
-  position: relative;
-}
+.shell.title-collapsed .app-title-mark, .shell.title-icon-only .app-title-mark { display: inline-block; }
 .live-dot {
   display: inline-block;
-  position: relative;
   width: 4px;
   height: 4px;
   margin-left: 5px;
@@ -291,83 +284,6 @@ body.is-windows.floating-bubble-collapsed-right .floating-bubble-tab {
 .live-dot.live {
   background: var(--accent);
   box-shadow: 0 0 4px rgba(var(--accent-rgb), 0.55);
-}
-/* The reveal only exists in the two collapsed title states, so its no-drag island and the
-   enlarged hover targets are scoped to them. Unscoped, the live dot — which is shown in
-   every state — would punch a permanent ~16px no-drag hole into the frameless window's
-   drag region right beside the title, for users who can never see the reveal. */
-.shell.title-collapsed .app-title-mark,
-.shell.title-collapsed .live-dot,
-.shell.title-icon-only .app-title-mark,
-.shell.title-icon-only .live-dot { -webkit-app-region: no-drag; }
-/* Both toggle the reveal between the speed and burn readings, so both get a pointer: the
-   hover target and the click target must be the same surface, and an area of the titlebar
-   that refuses to drag reads as broken unless it visibly announces itself as a control. */
-.shell.title-collapsed .app-title-mark,
-.shell.title-collapsed .live-dot,
-.shell.title-icon-only .app-title-mark,
-.shell.title-icon-only .live-dot { cursor: pointer; }
-/* Scoped to the states that can actually show the reveal. Left on the base rule it would take
-   6px of the flex row in the expanded state too, where updateTitleFit() does not account for
-   it — so "Token Monitor" would start clipping ~6px before the collapse to Σ triggers, leaving
-   a truncated title and no hover target. Constant rather than animated within these states:
-   at rest the element is zero-wide and the gap sits after the live dot, the last thing in the
-   collapsed title, so animating it would add a second layout property for no visual gain. */
-.shell.title-collapsed .token-rate-reveal,
-.shell.title-icon-only .token-rate-reveal { margin-left: 6px; }
-.shell.title-collapsed .app-title-mark::before,
-.shell.title-collapsed .live-dot::before,
-.shell.title-icon-only .app-title-mark::before,
-.shell.title-icon-only .live-dot::before {
-  content: '';
-  position: absolute;
-  inset: -6px;
-  -webkit-app-region: no-drag;
-}
-.shell.title-collapsed .app-title-mark::before,
-.shell.title-icon-only .app-title-mark::before { inset: -6px -7px; }
-.token-rate-reveal {
-  display: inline-block;
-  max-width: 0;
-  overflow: hidden;
-  color: var(--muted);
-  font-size: 10px;
-  font-weight: 500;
-  line-height: 1;
-  opacity: 0;
-  pointer-events: none;
-  white-space: nowrap;
-  transition: max-width 180ms ease, color 180ms ease, opacity 180ms ease;
-  vertical-align: baseline;
-}
-.shell.title-icon-only .app-title-mark:hover ~ .token-rate-reveal.has-value,
-.shell.title-icon-only .live-dot:hover ~ .token-rate-reveal.has-value,
-.shell.title-collapsed .app-title-mark:hover ~ .token-rate-reveal.has-value,
-.shell.title-collapsed .live-dot:hover ~ .token-rate-reveal.has-value {
-  /* ch rather than a px constant so the cap follows the font size. Sized off the widest
-     measured reading rather than a typical one: the burn framing peaks at a 5-significant-
-     digit compact value ("≈ 999.9K tok/min"), which renders at 96px here — 16ch cleared it
-     by a third of a pixel, which is luck, not headroom. */
-  max-width: 18ch;
-  color: var(--text);
-  opacity: 0.82;
-}
-.shell.title-collapsed .token-rate-reveal.boosting,
-.shell.title-icon-only .token-rate-reveal.boosting {
-  max-width: 18ch;
-  color: var(--accent);
-  opacity: 0.96;
-  text-shadow: 0 0 8px rgba(var(--accent-rgb), 0.35);
-}
-.shell.title-collapsed .token-rate-reveal.settling,
-.shell.title-icon-only .token-rate-reveal.settling {
-  max-width: 18ch;
-  color: var(--text);
-  opacity: 0.82;
-  text-shadow: none;
-}
-@media (prefers-reduced-motion: reduce) {
-  .token-rate-reveal { transition: none; }
 }
 /* One-shot flare on data update — flares, then settles back to the resting
    .live glow. No `infinite`, so the GPU compositor can idle between updates. */
@@ -411,6 +327,33 @@ body.is-windows.floating-bubble-collapsed-right .floating-bubble-tab {
   transform: translateY(-2px);
   transition: opacity 160ms ease 280ms, transform 160ms ease 280ms;
   z-index: 4;
+}
+/* Windows uses a frameless window, so keep the native-style controls visible
+   and reserve space for them beside the period switcher. */
+body.is-windows .title-controls {
+  flex: 0 0 288px;
+  width: 288px;
+  min-width: 288px;
+}
+body.is-windows .window-actions {
+  width: 114px;
+  opacity: 1;
+  pointer-events: auto;
+  transform: none;
+  transition: none;
+}
+body.is-windows .actions-hotspot {
+  display: none;
+}
+/* macOS owns the close/minimize/full-screen controls in the native titlebar.
+   Keep the custom controls for Windows/Linux, where this window is intentionally
+   frameless without a native titlebar. */
+body.is-macos .titlebar > div:first-child {
+  padding-left: 76px;
+}
+body.is-macos .window-actions,
+body.is-macos .actions-hotspot {
+  display: none;
 }
 #footerActionSlot { display: contents; }
 /* Settings and Refresh move as one utility group. The selected primary action
@@ -482,6 +425,16 @@ body.is-windows.floating-bubble-collapsed-right .floating-bubble-tab {
   transform: translateY(0);
   transition-delay: 0ms;
 }
+.title-controls .tabs {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 34px; /* 30px calendar button + 4px gap */
+  width: auto;
+  transition: opacity 160ms ease 280ms, transform 160ms ease 280ms;
+}
+body.is-windows .title-controls .tabs { right: 120px; }
 .period-calendar-button {
   position: absolute;
   top: 0;
@@ -518,14 +471,6 @@ body.is-windows.floating-bubble-collapsed-right .floating-bubble-tab {
   background: rgba(var(--accent-rgb), 0.08);
   box-shadow: inset 0 1px 0 rgba(var(--overlay-rgb), 0.075);
 }
-.title-controls .tabs {
-  position: absolute;
-  top: 0;
-  right: 0;
-  left: 34px;
-  bottom: 0;
-  transition: opacity 160ms ease 280ms, transform 160ms ease 280ms;
-}
 .title-controls:has(.actions-hotspot:hover) .tabs,
 .title-controls:has(.window-actions:hover) .tabs,
 .title-controls:has(.window-actions:focus-within) .tabs,
@@ -539,39 +484,8 @@ body.is-windows.floating-bubble-collapsed-right .floating-bubble-tab {
   pointer-events: none;
   transition-delay: 0ms;
 }
-/* Windows uses a frameless window, so keep the native-style controls visible
-   and reserve space for them beside the period switcher. */
-body.is-windows .title-controls {
-  flex: 0 0 288px;
-  width: 288px;
-  min-width: 288px;
-}
-body.is-windows .window-actions {
-  width: 114px;
-  opacity: 1;
-  pointer-events: auto;
-  transform: none;
-  transition: none;
-}
-body.is-windows .actions-hotspot { display: none; }
-body.is-macos .titlebar > div:first-child { padding-left: 76px; }
-body.is-windows .title-controls .tabs { right: 120px; left: 36px; }
-body.is-windows:not(.settings-open) .title-controls:has(.window-actions:hover) .tabs,
-body.is-windows:not(.settings-open) .title-controls:has(.window-actions:focus-within) .tabs,
-body.is-windows:not(.settings-open) .title-controls:has(.window-actions:hover) .period-calendar-button,
-body.is-windows:not(.settings-open) .title-controls:has(.window-actions:focus-within) .period-calendar-button {
-  opacity: 1;
-  transform: none;
-  pointer-events: auto;
-}
-body.is-macos .window-actions,
-body.is-macos .actions-hotspot { display: none; }
-body.is-windows #closeButton:hover,
-body.is-windows #closeButton:focus-visible {
-  border-color: #e06c75;
-  color: #fff;
-  background: #c94f5b;
-}
+/* The Windows controls are always present, so hovering them must not hide the
+   period controls that occupy the adjacent reserved space. */
 body.is-windows:not(.settings-open) .title-controls:has(.window-actions:hover) .tabs,
 body.is-windows:not(.settings-open) .title-controls:has(.window-actions:focus-within) .tabs {
   opacity: 1;
@@ -608,6 +522,12 @@ body.is-windows:not(.settings-open) .title-controls:has(.window-actions:focus-wi
   mask: url("icons/actions/settings.svg") center / contain no-repeat;
 }
 .icon-button:hover, .refresh-button:hover, .mode-button:hover, .settings-actions button:hover, .shortcut-recorder button:hover { border-color: var(--line-strong); background: rgba(var(--overlay-rgb), 0.072); }
+body.is-windows #closeButton:hover,
+body.is-windows #closeButton:focus-visible {
+  border-color: #e06c75;
+  color: #fff;
+  background: #c94f5b;
+}
 .icon-button.active { border-color: rgba(var(--accent-rgb), 0.58); color: var(--accent); background: rgba(var(--accent-rgb), 0.08); }
 /* The settings panel is a plain view on the widget glass (like the main
    breakdown), not a recessed slab: the section cards carry all the surface
@@ -777,7 +697,6 @@ body.is-windows:not(.settings-open) .title-controls:has(.window-actions:focus-wi
 .settings-panel .settings-item.hidden { display: none; }
 #windowsBackdropNote.hidden { display: none; }
 #macosGlassNote.hidden { display: none; }
-#limitsRefreshAdaptiveNote.hidden { display: none; }
 .settings-item-text {
   flex: 1 1 auto;
   min-width: 0;
@@ -979,18 +898,23 @@ span.settings-note.settings-item-desc {
 }
 
 /* Convert Grid Gaps to animatable margins for accordion containers */
-.settings-group, .settings-subgroup, .presence-feature, .tool-preference-list, .settings-nested-list, .cursor-settings-details-inner, .hub-mode-fields > .accordion-animation-inner {
+.settings-group, .settings-subgroup, .presence-feature, .tool-preference-list, .home-settings-list, .home-limit-provider-list, .cursor-settings-details-inner, .hub-mode-fields > .accordion-animation-inner {
   gap: 0 !important;
 }
 .settings-group > * + *,
 .settings-subgroup > * + *,
 .presence-feature > * + *,
+.home-settings-list > * + *,
+.home-limit-provider-list > * + *,
 .cursor-settings-details-inner > * + *,
 .hub-mode-fields > .accordion-animation-inner > * + * {
   margin-top: 8px;
 }
-.tool-preference-list > * + *,
-.settings-nested-list > * + * {
+.tool-preference-list > * + * {
+  margin-top: 6px;
+}
+.home-settings-list > * + *,
+.home-limit-provider-list > * + * {
   margin-top: 6px;
 }
 .accordion-animation-inner {
@@ -1031,113 +955,6 @@ span.settings-note.settings-item-desc {
   gap: 8px;
   padding-top: 9px;
   border-top: 1px solid rgba(var(--line-rgb), 0.075);
-}
-.advanced-settings {
-  gap: 0 !important;
-}
-.advanced-settings-toggle {
-  width: 100%;
-  min-width: 0;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-  user-select: none;
-}
-.advanced-settings-toggle:hover { color: var(--text); }
-.advanced-settings-toggle:focus-visible {
-  border-radius: 4px;
-  outline: 1px solid rgba(115, 189, 245, 0.72);
-  outline-offset: 3px;
-}
-.advanced-settings-meta {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: 7px;
-}
-.advanced-settings.expanded > .advanced-settings-toggle .settings-section-disclosure {
-  transform: rotate(180deg);
-}
-.advanced-settings-details {
-  min-width: 0;
-}
-.advanced-settings-body {
-  display: grid;
-  min-width: 0;
-}
-.advanced-settings-body > .advanced-settings-block + .advanced-settings-block {
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px solid rgba(var(--line-rgb), 0.075);
-}
-.maintenance-section,
-.maintenance-panel {
-  gap: 0 !important;
-}
-.maintenance-section > * + *,
-.maintenance-panel > * + * {
-  margin-top: 8px;
-}
-.maintenance-header {
-  min-height: 14px;
-}
-.maintenance-version-grid {
-  display: grid;
-  min-width: 0;
-  gap: 6px;
-  padding: 2px 0;
-}
-.maintenance-version-item {
-  display: flex;
-  min-width: 0;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
-  color: var(--muted);
-  font-size: 10px;
-  line-height: 1.35;
-}
-.maintenance-version-item.hidden { display: none; }
-.maintenance-version-item strong {
-  min-width: 0;
-  color: var(--text);
-  font-size: 11px;
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
-  line-height: inherit;
-  overflow-wrap: anywhere;
-  text-align: right;
-}
-.maintenance-version-item small {
-  color: inherit;
-  font-size: 9px;
-}
-.maintenance-actions {
-  margin-top: 8px !important;
-}
-.app-update-settings > .app-update-notes {
-  margin-top: 4px;
-}
-.advanced-config-row {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 10px !important;
-}
-.advanced-config-row > * + * {
-  margin-top: 0 !important;
-}
-.advanced-config-row .settings-note {
-  min-width: 0;
-}
-.advanced-config-row .settings-actions {
-  flex: 0 0 auto;
 }
 .settings-section-details-inner > .settings-subgroup:first-child {
   padding-top: 0;
@@ -1191,7 +1008,6 @@ span.settings-note.settings-item-desc {
 .settings-section-icon-limits { --settings-section-icon-url: url("icons/settings/limits.svg"); }
 .settings-section-icon-accounts { --settings-section-icon-url: url("icons/settings/accounts.svg"); }
 .settings-section-icon-sync { --settings-section-icon-url: url("icons/settings/sync.svg"); }
-.settings-section-icon-subscriptions { --settings-section-icon-url: url("icons/settings/subscriptions.svg"); }
 .settings-section-icon-appearance { --settings-section-icon-url: url("icons/settings/appearance.svg"); }
 .cursor-settings-toggle {
   width: 100%;
@@ -1443,8 +1259,6 @@ span.settings-note.settings-item-desc {
   gap: 8px;
   margin-top: 8px;
 }
-.app-update-notes { min-width: 0; color: var(--muted); font-size: 10px; }
-.app-update-notes.hidden { display: none; }
 .app-update-notes {
   min-width: 0;
   padding-top: 8px;
@@ -1452,6 +1266,7 @@ span.settings-note.settings-item-desc {
   color: var(--muted);
   font-size: 10px;
 }
+.app-update-notes.hidden { display: none; }
 .app-update-notes summary {
   width: max-content;
   max-width: 100%;
@@ -1463,62 +1278,15 @@ span.settings-note.settings-item-desc {
   user-select: none;
 }
 .app-update-notes summary::marker { color: var(--muted); }
-.app-update-notes-toggle {
-  display: flex;
-  width: 100%;
-  min-width: 0;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 5px;
-  padding: 5px 0;
-  border: 0;
-  background: transparent;
-  color: var(--muted);
-  cursor: pointer;
-  font: inherit;
-  font-size: 10.5px;
-  font-weight: 600;
-  line-height: 1.35;
-  text-align: left;
-  user-select: none;
-}
-.app-update-notes-toggle:hover { color: var(--blue); }
-.app-update-notes-toggle:focus-visible {
-  border-radius: 3px;
-  outline: 1px solid rgba(115, 189, 245, 0.72);
-  outline-offset: 3px;
-}
-/* Kept as a semantic fallback for embedded views that render the disclosure
-   with native <summary> markup. */
 .app-update-notes summary:focus-visible {
   border-radius: 3px;
   outline: 1px solid rgba(115, 189, 245, 0.72);
   outline-offset: 3px;
 }
-.app-update-notes-disclosure {
-  width: 8px;
-  height: 8px;
-}
-.app-update-notes-disclosure::before {
-  width: 0;
-  height: 0;
-  border: 0;
-  border-top: 3px solid transparent;
-  border-bottom: 3px solid transparent;
-  border-left: 5px solid currentColor;
-  transform: none;
-}
-.app-update-notes.expanded .app-update-notes-disclosure {
-  transform: rotate(90deg);
-}
-.app-update-notes-details { min-width: 0; }
-.app-update-notes-content {
-  min-width: 0;
-  padding: 4px 0 2px;
-}
 .app-update-notes-body {
   display: grid;
   gap: 7px;
+  margin-top: 8px;
 }
 .app-update-note-title {
   color: var(--text);
@@ -1532,7 +1300,7 @@ span.settings-note.settings-item-desc {
   line-height: 1.45;
 }
 .app-update-note-group li + li { margin-top: 3px; }
-.app-update-notes .inline-link { margin-top: 8px; font-size: 10px; }
+.app-update-notes .inline-link { margin-top: 7px; font-size: 10px; }
 .app-update-notes .inline-link.hidden { display: none; }
 .inline-link {
   padding: 0;
@@ -1550,80 +1318,6 @@ span.settings-note.settings-item-desc {
   gap: 6px 14px;
 }
 .about-settings-links .inline-link { font-size: 10px; }
-.about-settings-diagnostics {
-  display: grid;
-  gap: 6px;
-  min-width: 0;
-  margin-top: 11px;
-  padding-top: 10px;
-  border-top: 1px solid rgba(var(--line-rgb), 0.10);
-  transition: grid-template-rows 250ms cubic-bezier(0.4, 0, 0.2, 1),
-    margin-top 250ms cubic-bezier(0.4, 0, 0.2, 1),
-    padding-top 250ms cubic-bezier(0.4, 0, 0.2, 1),
-    border-top-color 250ms ease;
-}
-.about-settings-diagnostics.hidden {
-  padding-top: 0;
-  border-top-color: transparent;
-}
-.diagnostic-preview.hidden { display: none; }
-.about-settings-diagnostics-inner {
-  display: grid;
-  min-width: 0;
-  gap: 6px;
-}
-.about-settings-diagnostics-heading {
-  color: var(--text);
-  font-size: 11px;
-  font-weight: 600;
-}
-.about-settings-diagnostics .settings-note { margin: 0; }
-.diagnostic-actions,
-.diagnostic-preview-header,
-.diagnostic-preview-actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px 12px;
-}
-.diagnostic-actions button { font-size: 10px; }
-.diagnostic-actions button:disabled,
-.diagnostic-preview-actions button:disabled { opacity: 0.45; cursor: default; }
-.diagnostic-privacy-note { color: var(--muted); font-size: 9px; line-height: 1.35; }
-.diagnostic-status {
-  min-height: 13px;
-  color: var(--muted);
-  font-size: 9px;
-}
-.diagnostic-status.success { color: var(--green, var(--text)); }
-.diagnostic-status.error { color: var(--red, #f08080); }
-.diagnostic-preview {
-  display: grid;
-  gap: 5px;
-  min-width: 0;
-}
-.diagnostic-preview-header {
-  justify-content: space-between;
-  color: var(--muted);
-  font-size: 9px;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-}
-#diagnosticReportText {
-  max-height: 260px;
-  margin: 0;
-  padding: 8px;
-  overflow: auto;
-  border: 1px solid rgba(var(--line-rgb), 0.12);
-  border-radius: 7px;
-  background: rgba(var(--overlay-rgb), 0.18);
-  color: var(--muted);
-  font-family: var(--mono-font, ui-monospace, SFMono-Regular, Menlo, monospace);
-  font-size: 8px;
-  line-height: 1.45;
-  white-space: pre;
-  tab-size: 2;
-}
 .hub-mode-options {
   display: grid;
   min-width: 0;
@@ -1717,10 +1411,8 @@ span.settings-note.settings-item-desc {
   font-size: 10px;
 }
 .hub-status.ok { color: var(--success); border-color: rgba(var(--success-rgb), 0.32); }
-.hub-status.warning { color: var(--orange); border-color: rgba(244, 160, 115, 0.4); }
 .hub-status.error { color: var(--red); border-color: rgba(244, 119, 136, 0.42); }
 .hub-status[hidden] { display: none; }
-.hub-build-status { line-height: 1.4; }
 .hub-address-list { display: grid; min-width: 0; gap: 5px; }
 .hub-address-header { color: var(--muted); font-size: 10px; }
 .hub-address-empty { color: var(--muted); font-size: 10px; line-height: 1.4; }
@@ -1812,7 +1504,6 @@ span.settings-note.settings-item-desc {
   flex: 0 0 auto;
   width: auto;
   margin: 0;
-  cursor: pointer;
   accent-color: var(--accent);
 }
 .settings-panel .client-checkboxes label.client-checkbox > span {
@@ -1905,9 +1596,8 @@ span.settings-note.settings-item-desc {
   gap: 6px;
 }
 .tool-preference-row {
-  position: relative;
   display: grid;
-  grid-template-columns: 22px minmax(0, 1fr) repeat(2, 22px);
+  grid-template-columns: minmax(0, 1fr) repeat(4, 22px);
   align-items: center;
   column-gap: 5px;
   margin: 0 -2px;
@@ -1915,37 +1605,8 @@ span.settings-note.settings-item-desc {
   border-radius: 6px;
   min-width: 0;
   flex-wrap: nowrap;
-  touch-action: pan-y;
-  transform: translateY(calc(var(--drag-y, 0px) + var(--drag-shift, 0px)));
-  transition:
-    transform 170ms cubic-bezier(0.22, 1, 0.36, 1),
-    background 120ms ease,
-    box-shadow 120ms ease,
-    opacity 120ms ease;
+  transition: background 120ms ease, box-shadow 120ms ease, opacity 120ms ease;
 }
-/* The dragged row must track the pointer with zero latency, so it opts out of
-   the transform transition its neighbours use to slide out of the way. */
-.tool-preference-row.dragging {
-  z-index: 2;
-  background: rgba(var(--panel-rgb), 0.96);
-  box-shadow: inset 0 0 0 1px rgba(var(--accent-rgb), 0.62);
-  cursor: grabbing;
-  scale: 1.02;
-  transition:
-    background 120ms ease,
-    box-shadow 120ms ease,
-    opacity 120ms ease;
-  will-change: transform;
-}
-/* The final DOM positions and the drag transforms encode the same move, so the
-   transition stays off through the first landed paint. */
-.tool-preference-list.is-landing .tool-preference-row {
-  transition:
-    background 120ms ease,
-    box-shadow 120ms ease,
-    opacity 120ms ease;
-}
-.tool-preference-list.drag-active .tool-preference-row:not(.dragging) { opacity: 0.78; }
 .view-preference-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) repeat(2, 22px);
@@ -2003,10 +1664,6 @@ span.settings-note.settings-item-desc {
   color: var(--muted);
   opacity: 0.72;
 }
-.tool-status-tag-warn {
-  border-color: rgba(244, 160, 115, 0.42);
-  color: var(--orange);
-}
 .tool-status-tag-setup {
   border-color: rgba(244, 160, 115, 0.32);
   color: var(--orange);
@@ -2028,177 +1685,6 @@ span.settings-note.settings-item-desc {
 .view-preference-row.is-disabled .preference-order-handle:hover:not(:disabled) {
   opacity: 0.72;
 }
-/* The detail panel is a child of the row, not a sibling: the whole row is the
-   drag surface, and a sibling would be left behind when the row moves. Vertical
-   space comes from the container's own margin, which the accordion zeroes while
-   hidden — a grid row-gap cannot animate away and would keep the row taller. */
-.settings-panel .tool-preference-row {
-  row-gap: 0;
-}
-.settings-panel .tool-preference-row > .accordion-animated-container {
-  grid-column: 1 / -1;
-  margin-top: 4px;
-  cursor: default;
-}
-/* Collapsing must land instantly so the drag snapshot measures settled geometry
-   rather than a mid-animation height. */
-.tool-preference-list.is-reordering .accordion-animated-container { transition: none; }
-/* The disclosure sits with the row's other controls, so it is sized like them. */
-.tool-preference-row.has-health {
-  grid-template-columns: 22px minmax(0, 1fr) repeat(3, 22px);
-}
-.tool-preference-main {
-  display: grid;
-  place-items: center;
-  width: 22px;
-  height: 22px;
-  padding: 0;
-  border: 0;
-  border-radius: 5px;
-  background: none;
-  color: inherit;
-  font: inherit;
-  cursor: pointer;
-}
-.tool-preference-row.expanded .tool-preference-main .cursor-disclosure-icon {
-  transform: rotate(-180deg);
-}
-.tool-health-inner {
-  display: grid;
-  gap: 5px;
-  padding: 7px 8px 6px;
-  border-radius: 6px;
-  background: rgba(var(--line-rgb), 0.05);
-}
-.tool-health-groups {
-  display: grid;
-}
-.tool-health-group {
-  display: grid;
-  grid-template-columns: 58px minmax(0, 1fr);
-  gap: 8px;
-  min-width: 0;
-  padding: 5px 0;
-  font-size: 10px;
-  line-height: 1.35;
-}
-.tool-health-group + .tool-health-group {
-  border-top: 1px solid rgba(var(--line-rgb), 0.1);
-}
-.tool-health-group-title {
-  margin: 0;
-  color: var(--muted);
-  font: inherit;
-  font-weight: 500;
-}
-.tool-health-group-body {
-  display: grid;
-  gap: 3px;
-  min-width: 0;
-}
-.tool-health-group-summary {
-  color: var(--fg);
-  font-variant-numeric: tabular-nums;
-}
-.tool-health-group-meta {
-  color: var(--muted);
-  font-size: 9px;
-  font-variant-numeric: tabular-nums;
-}
-.tool-health-usage {
-  display: flex;
-  gap: 0;
-}
-.tool-health-usage-cell {
-  flex: 1 1 0;
-  display: grid;
-  gap: 1px;
-  min-width: 0;
-}
-.tool-health-usage-cell + .tool-health-usage-cell { text-align: right; }
-.tool-health-usage-label {
-  color: var(--muted);
-  font-size: 9px;
-}
-.tool-health-usage-value {
-  color: var(--fg);
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-}
-.tool-health-usage-cost {
-  color: var(--muted);
-  font-size: 9px;
-  font-variant-numeric: tabular-nums;
-}
-.tool-health-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  margin-top: 1px;
-}
-.tool-health-action {
-  padding: 2px 7px;
-  border: 1px solid rgba(var(--line-rgb), 0.16);
-  border-radius: 5px;
-  background: none;
-  color: var(--muted);
-  font: inherit;
-  font-size: 9px;
-  line-height: 1.4;
-  cursor: pointer;
-  transition: color 120ms ease, border-color 120ms ease;
-}
-.tool-health-action:hover:not(:disabled) {
-  border-color: rgba(var(--accent-rgb), 0.42);
-  color: var(--fg);
-}
-.tool-health-action:disabled { cursor: default; opacity: 0.55; }
-.tool-health-action-feedback {
-  align-self: center;
-  color: var(--orange);
-  font-size: 9px;
-}
-/* One per line, because these carry paths: a row of them side by side either
-   overflows the panel or truncates the only part that answers "is it looking
-   where I installed it". Check ids stand in where there is no local path, and
-   are shown verbatim — a user pasting one into an issue is the point, so they
-   must not be translated or prettified. */
-.tool-health-checks {
-  flex: 0 0 100%;
-  display: grid;
-  justify-items: start;
-  gap: 3px;
-}
-.tool-health-check {
-  max-width: 100%;
-  padding: 1px 4px;
-  border: 1px solid rgba(var(--line-rgb), 0.14);
-  border-radius: 4px;
-  color: var(--muted);
-  font-size: 9px;
-  line-height: 1.3;
-  opacity: 0.72;
-  overflow-wrap: anywhere;
-  text-decoration: line-through;
-}
-.tool-health-check.pending {
-  opacity: 0.72;
-  text-decoration: none;
-}
-.tool-health-check.found {
-  border-color: rgba(var(--success-rgb), 0.28);
-  color: var(--success);
-  opacity: 1;
-  text-decoration: none;
-}
-.tool-health-note-line {
-  font-size: 10px;
-  line-height: 1.4;
-}
-.tool-health-note-line.tone-warn { color: var(--orange); }
-.tool-health-note-line.tone-neutral { color: var(--fg); opacity: 0.86; }
-.tool-health-note-line.tone-muted { color: var(--muted); }
-
 .tool-preference-actions {
   display: contents;
 }
@@ -2276,140 +1762,31 @@ span.settings-note.settings-item-desc {
   gap: 6px;
 }
 .settings-panel .limit-provider-row {
-  position: relative;
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;
   margin: 0 -2px;
-  padding: 1px 0;
+  padding: 1px 2px;
   border-radius: 6px;
-  touch-action: pan-y;
-  transform: translateY(calc(var(--drag-y, 0px) + var(--drag-shift, 0px)));
-  transition:
-    transform 170ms cubic-bezier(0.22, 1, 0.36, 1),
-    background 120ms ease,
-    box-shadow 120ms ease,
-    opacity 120ms ease;
+  transition: background 120ms ease, box-shadow 120ms ease, opacity 120ms ease;
 }
 .settings-panel .limit-provider-row label.client-checkbox {
   min-width: 0;
-}
-.limit-provider-main {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  width: 100%;
-  min-width: 0;
-  padding: 0;
-  border: 0;
-  border-radius: 4px;
-  background: transparent;
-  color: var(--fg);
-  font: inherit;
-  font-size: 11px;
-  line-height: 1.3;
-  text-align: left;
-  cursor: pointer;
-}
-.limit-provider-main:focus-visible {
-  outline: 1px solid rgba(var(--accent-rgb), 0.62);
-  outline-offset: 2px;
-}
-.limit-provider-row.is-disabled .limit-provider-main {
-  color: var(--muted);
-}
-.limit-provider-row.is-disabled .limit-provider-tag {
-  border-color: rgba(var(--line-rgb), 0.13);
-  color: var(--muted);
-}
-.limit-provider-actions {
-  display: flex;
-  flex: 0 1 auto;
-  min-width: 0;
-  max-width: 58%;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 4px;
-}
-.limit-provider-actions > .cursor-status-pill {
-  flex: 0 1 auto;
-}
-.limit-provider-row.expanded > .limit-provider-main .cursor-disclosure-icon {
-  transform: rotate(180deg);
-}
-/* Provider options hang under their own row, spanning the full width beneath
-   both the label and the actions. The row's spacing is a column gap only: a row
-   gap cannot animate away, so a collapsed panel would still push the row taller.
-   Vertical space comes from the container's own margin, which the accordion
-   already zeroes while hidden. */
-.settings-panel .limit-provider-row {
-  column-gap: 8px;
-  row-gap: 0;
-}
-.settings-panel .limit-provider-row > .accordion-animated-container {
-  grid-column: 1 / -1;
-  margin-top: 4px;
-  cursor: default;
-}
-/* The dragged row must track the pointer with zero latency, so it opts out of
-   the transform transition its neighbours use to slide out of the way. */
-.settings-panel .limit-provider-row.dragging {
-  z-index: 2;
-  background: rgba(var(--panel-rgb), 0.96);
-  box-shadow: inset 0 0 0 1px rgba(var(--accent-rgb), 0.62);
-  cursor: grabbing;
-  scale: 1.02;
-  transition:
-    background 120ms ease,
-    box-shadow 120ms ease,
-    opacity 120ms ease;
-  will-change: transform;
-}
-.settings-panel .limit-provider-list.is-landing .limit-provider-row {
-  transition:
-    background 120ms ease,
-    box-shadow 120ms ease,
-    opacity 120ms ease;
-}
-.limit-provider-list.drag-active .limit-provider-row:not(.dragging) { opacity: 0.78; }
-/* Collapsing must land instantly so the drag snapshot measures settled
-   geometry rather than a mid-animation height. */
-.limit-provider-list.is-reordering .accordion-animated-container { transition: none; }
-.settings-panel .limit-provider-settings-list {
-  margin: 0;
-  padding-left: 0;
-  border-left: 0;
 }
 .settings-panel .limit-provider-toggle {
   align-items: flex-start;
 }
 .limit-provider-copy {
   display: grid;
-  flex: 1 1 auto;
   min-width: 0;
   gap: 3px;
   white-space: normal;
-}
-.limit-provider-name-line {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: 6px;
 }
 .limit-provider-name {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-.limit-provider-status-dot {
-  flex: 0 0 auto;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--success);
-  box-shadow: 0 0 0 1px rgba(var(--success-rgb), 0.1);
 }
 .limit-provider-tags {
   display: flex;
@@ -2468,33 +1845,6 @@ span.settings-note.settings-item-desc {
 .limit-provider-tag-muted {
   color: var(--muted);
 }
-.limit-provider-options-inner {
-  display: grid;
-  min-width: 0;
-  gap: 8px;
-}
-.limit-provider-account-group {
-  margin-left: 0;
-}
-.limit-provider-account-group > .settings-group-header {
-  display: none;
-}
-.limit-provider-account-group > .cursor-settings-details {
-  margin-top: 0;
-}
-.limit-provider-connection-detail {
-  display: grid;
-  min-width: 0;
-  gap: 3px;
-  padding: 4px 0 2px;
-}
-.limit-provider-connection-title {
-  color: var(--text);
-  font-size: 10px;
-}
-.limit-provider-connection-detail > .settings-note {
-  margin: 0;
-}
 .preference-order-handle {
   display: inline-flex;
   align-items: center;
@@ -2536,7 +1886,9 @@ span.settings-note.settings-item-desc {
   opacity: 0.34;
   cursor: default;
 }
+.tool-preference-row.is-dragging,
 .view-preference-row.is-dragging,
+.settings-panel .limit-provider-row.is-dragging,
 .home-module-preference-row.is-dragging,
 .home-limit-provider-row.is-dragging {
   background: rgba(var(--accent-rgb), 0.08);
@@ -2569,61 +1921,6 @@ span.settings-note.settings-item-desc {
 }
 
 /* Appearance: interface theme presets + colour pickers */
-.settings-font-controls {
-  display: grid;
-  gap: 8px;
-  margin-bottom: 0;
-  padding-top: 9px;
-  padding-bottom: 9px;
-  border-top: 1px solid var(--line);
-}
-.settings-font-field {
-  display: grid;
-  gap: 4px;
-  min-width: 0;
-  color: var(--muted);
-  font-size: 11px;
-}
-.settings-font-input-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 18px;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-}
-.settings-panel .settings-font-input-row select,
-.settings-panel .settings-font-input-row input {
-  width: 100%;
-  min-width: 0;
-}
-.settings-font-input-row .reset-appearance-button {
-  width: 18px;
-  height: 18px;
-}
-.settings-font-custom-row {
-  display: grid;
-  gap: 4px;
-  margin-top: 2px;
-  color: var(--muted);
-  font-size: 10px;
-}
-.settings-font-custom-row.hidden { display: none; }
-.settings-font-preview {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  min-height: 28px;
-  padding: 4px 8px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: rgba(var(--overlay-rgb), var(--control-alpha));
-}
-.settings-font-preview-label { color: var(--muted); font-size: 9px; }
-.settings-font-preview-sample { color: var(--text); font-size: 14px; line-height: 1.2; }
-.settings-font-controls > .settings-note {
-  margin: 0;
-  line-height: 1.45;
-}
 .theme-preset-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .theme-preset-chip {
   display: inline-flex;
@@ -2844,27 +2141,15 @@ html.is-windows .settings-panel select option {
   box-shadow: none;
 }
 .tab:hover { color: var(--text); }
+.tabs.custom-active .tab-indicator {
+  opacity: 0;
+}
 .tab.active {
   border-color: transparent;
   color: var(--accent);
   background: transparent;
   box-shadow: none;
 }
-.fixed-period-message {
-  position: relative;
-  z-index: 1;
-  display: grid;
-  flex: 1;
-  min-height: 0;
-  place-items: center;
-  padding: 0 24px 12px;
-  color: var(--muted);
-  font-size: 11px;
-  line-height: 1.55;
-  text-align: center;
-  text-wrap: balance;
-}
-.fixed-period-message.hidden { display: none; }
 .total-panel {
   position: relative;
   z-index: 1;
@@ -2887,7 +2172,7 @@ html.is-windows .settings-panel select option {
   min-width: 0;
   margin-top: 8px;
   color: var(--number);
-  font-family: var(--display-font, -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", sans-serif);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", sans-serif;
   font-weight: 500;
   font-size: clamp(30px, 11vw, 46px);
   line-height: 1.05;
@@ -3189,7 +2474,7 @@ html.is-windows .settings-panel select option {
 .home-limit-account {
   display: grid;
   min-width: 0;
-  gap: 4px;
+  gap: 8px;
 }
 .home-limit-account-head {
   display: grid;
@@ -3201,7 +2486,7 @@ html.is-windows .settings-panel select option {
 .home-limit-windows {
   display: grid;
   min-width: 0;
-  margin-left: 18px;
+  margin-left: 16px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
 }
@@ -3336,7 +2621,7 @@ html.is-windows .settings-panel select option {
   margin-top: 1px;
   overflow-x: auto;
   overflow-y: hidden;
-  cursor: default;
+  cursor: grab;
   scrollbar-width: none;
   overscroll-behavior-x: contain;
   touch-action: pan-x pan-y;
@@ -3381,10 +2666,6 @@ html.is-windows .settings-panel select option {
   opacity: 0;
   pointer-events: none;
   transition: opacity 180ms ease;
-}
-.home-activity-scroll.is-restoring-hover .heat,
-.home-activity-scroll.is-restoring-hover .heat-bright-layer {
-  transition: none;
 }
 .home-activity-scroll:hover .heat-bright-layer,
 .home-activity-scroll:focus-within .heat-bright-layer {
@@ -3550,20 +2831,16 @@ html.is-windows .settings-panel select option {
 .row-icon-pi         { -webkit-mask-image: url(../../../assets/icons/pi.svg);            mask-image: url(../../../assets/icons/pi.svg); }
 .row-icon-zed        { -webkit-mask-image: url(../../../assets/icons/zed.svg);           mask-image: url(../../../assets/icons/zed.svg); }
 .row-icon-kilocode   { -webkit-mask-image: url(../../../assets/icons/kilocode.svg);      mask-image: url(../../../assets/icons/kilocode.svg); }
-.row-icon-commandcode { -webkit-mask-image: url(../../../assets/icons/commandcode.svg);   mask-image: url(../../../assets/icons/commandcode.svg); }
 .row-icon-micode     { -webkit-mask-image: url(../../../assets/icons/xiaomi.svg);       mask-image: url(../../../assets/icons/xiaomi.svg); }
 .row-icon-zcode      { -webkit-mask-image: url(../../../assets/icons/zai.svg);          mask-image: url(../../../assets/icons/zai.svg); }
 .row-icon-kiro       { -webkit-mask-image: url(../../../assets/icons/kiro.svg);          mask-image: url(../../../assets/icons/kiro.svg); }
 .row-icon-codebuddy  { -webkit-mask-image: url(../../../assets/icons/codebuddy.svg);     mask-image: url(../../../assets/icons/codebuddy.svg); }
 .row-icon-workbuddy  { -webkit-mask-image: url(../../../assets/icons/workbuddy.svg);     mask-image: url(../../../assets/icons/workbuddy.svg); }
 .row-icon-proma      { -webkit-mask-image: url(../../../assets/icons/proma.svg);         mask-image: url(../../../assets/icons/proma.svg); }
-.row-icon-qodercn    { -webkit-mask-image: url(../../../assets/icons/qoder.svg);          mask-image: url(../../../assets/icons/qoder.svg); }
-.row-icon-reasonix   { -webkit-mask-image: url(../../../assets/icons/reasonix.svg);       mask-image: url(../../../assets/icons/reasonix.svg); }
 .row-icon-opencode   { -webkit-mask-image: url(../../../assets/icons/opencode.svg);      mask-image: url(../../../assets/icons/opencode.svg); }
 .row-icon-openrouter { -webkit-mask-image: url(../../../assets/icons/openrouter.svg);    mask-image: url(../../../assets/icons/openrouter.svg); }
 .row-icon-openclaw   { -webkit-mask-image: url(../../../assets/icons/openclaw.svg);      mask-image: url(../../../assets/icons/openclaw.svg); }
 .row-icon-deepseek   { -webkit-mask-image: url(../../../assets/icons/deepseek.svg);      mask-image: url(../../../assets/icons/deepseek.svg); }
-.row-icon-hunyuan    { -webkit-mask-image: url(../../../assets/icons/hunyuan.svg);       mask-image: url(../../../assets/icons/hunyuan.svg); }
 .row-icon-xai        { -webkit-mask-image: url(../../../assets/icons/grok.svg);          mask-image: url(../../../assets/icons/grok.svg); }
 .row-icon-meta       { -webkit-mask-image: url(../../../assets/icons/meta.svg);          mask-image: url(../../../assets/icons/meta.svg); }
 .row-icon-mistral    { -webkit-mask-image: url(../../../assets/icons/mistral.svg);       mask-image: url(../../../assets/icons/mistral.svg); }
@@ -3578,9 +2855,7 @@ html.is-windows .settings-panel select option {
 .row-icon-doubao     { -webkit-mask-image: url(../../../assets/icons/doubao.svg);        mask-image: url(../../../assets/icons/doubao.svg); }
 .row-icon-volcengine     { -webkit-mask-image: url(../../../assets/icons/volcengine.svg);        mask-image: url(../../../assets/icons/volcengine.svg); }
 .row-icon-qoder      { -webkit-mask-image: url(../../../assets/icons/qoder.svg);         mask-image: url(../../../assets/icons/qoder.svg); }
-.row-icon-qodercn    { -webkit-mask-image: url(../../../assets/icons/qodercn.svg);      mask-image: url(../../../assets/icons/qodercn.svg); }
 .row-icon-ollama     { -webkit-mask-image: url(../../../assets/icons/ollama.svg);        mask-image: url(../../../assets/icons/ollama.svg); }
-.row-icon-thirdparty { -webkit-mask-image: url(../../../assets/icons/newapi.svg);         mask-image: url(../../../assets/icons/newapi.svg); }
 .row-icon-os-apple   { -webkit-mask-image: url(../../../assets/icons/os-apple.svg);      mask-image: url(../../../assets/icons/os-apple.svg); }
 .row-icon-os-linux   { -webkit-mask-image: url(../../../assets/icons/os-linux.svg);      mask-image: url(../../../assets/icons/os-linux.svg); }
 .row-icon-os-windows { -webkit-mask-image: url(../../../assets/icons/os-windows.svg);    mask-image: url(../../../assets/icons/os-windows.svg); }
@@ -3641,10 +2916,6 @@ html.is-windows .settings-panel select option {
   -webkit-mask-image: url(../../../assets/icons/kiro.svg);
   mask-image: url(../../../assets/icons/kiro.svg);
 }
-.limit-icon-commandcode {
-  -webkit-mask-image: url(../../../assets/icons/commandcode.svg);
-  mask-image: url(../../../assets/icons/commandcode.svg);
-}
 .limit-icon-zai {
   -webkit-mask-image: url(../../../assets/icons/zai.svg);
   mask-image: url(../../../assets/icons/zai.svg);
@@ -3673,10 +2944,6 @@ html.is-windows .settings-panel select option {
 .limit-icon-mimo {
   -webkit-mask-image: url(../../../assets/icons/xiaomi.svg);
   mask-image: url(../../../assets/icons/xiaomi.svg);
-}
-.limit-icon-thirdparty {
-  -webkit-mask-image: url(../../../assets/icons/newapi.svg);
-  mask-image: url(../../../assets/icons/newapi.svg);
 }
 .row-label {
   display: grid;
@@ -3984,11 +3251,9 @@ html.is-windows .settings-panel select option {
 .limit-row-group {
   gap: 8px;
 }
-/* Spacing lives on the rows, not here, so each account can carry its own
-   separator rule in the gap it opens above itself. */
 .limit-account-list {
   display: grid;
-  gap: 0;
+  gap: 10px;
 }
 .limit-live-badge {
   flex: 0 0 auto;
@@ -4136,47 +3401,12 @@ html.is-windows .limit-live-badge {
   padding: 0;
   border-bottom: 0;
 }
-/* Accounts sit one tier below providers, so they get their own separator that
-   reads as weaker than the provider rule: half its alpha, and feathered at both
-   ends instead of hard full-bleed. The feathering is what actually carries the
-   tier — halved alpha on a 1px line is barely perceptible on the dark gradient,
-   whereas "no hard edge" is unmistakable next to the provider rule. 0.06 is
-   this stylesheet's floor for a hairline that survives the light theme, so the
-   weight can't go lower. Twice the within-account gap (.limit-row) carries the
-   grouping on its own; the rule just pins it. `+` keeps it strictly between
-   accounts. */
-.limit-account-row + .limit-account-row {
-  position: relative;
-  margin-top: 10px;
-  padding-top: 10px;
-}
-.limit-account-row + .limit-account-row::before {
-  position: absolute;
-  top: 0;
-  right: 0;
-  left: 0;
-  height: 1px;
-  /* Percentage stops, not px: the window is resizable, and a fixed feather
-     collapses into a near-hard edge once the panel is wide. Fade stops use
-     rgba(…, 0) rather than `transparent` so only alpha ramps — `transparent`
-     is rgba(0, 0, 0, 0) and would drag the hue toward black. */
-  background: linear-gradient(
-    to right,
-    rgba(var(--line-rgb), 0) 0,
-    rgba(var(--line-rgb), 0.075) 22%,
-    rgba(var(--line-rgb), 0.075) 78%,
-    rgba(var(--line-rgb), 0) 100%
-  );
-  content: '';
-}
 .limit-account-row .limit-head {
   gap: 10px;
 }
-/* The account title heads its own block, so it must not be dimmer than the
-   numbers underneath it — the meta line below stays muted to rank under it. */
 .limit-account-row .limit-name {
   font-size: 11px;
-  color: var(--text);
+  color: var(--muted);
 }
 .limit-account-row .limit-windows {
   gap: 8px;
@@ -4355,9 +3585,6 @@ html.is-windows .limit-live-badge {
   -webkit-backdrop-filter: blur(28px) saturate(115%);
   backdrop-filter: blur(28px) saturate(115%);
 }
-.limit-detail-tooltip-triple {
-  grid-template-columns: max-content max-content max-content;
-}
 .limit-detail-tooltip::after {
   position: absolute;
   right: 6px;
@@ -4395,385 +3622,11 @@ html.is-windows .limit-live-badge {
   text-align: right;
   white-space: nowrap;
 }
-/* Middle cell of a three-column row: secondary, like the trailing one. */
-.limit-detail-tooltip-row span:nth-child(2):not(:last-child) {
-  color: var(--text);
-  opacity: 0.54;
-  text-align: right;
-  white-space: nowrap;
-}
 @media (prefers-reduced-motion: reduce) {
   :root:not([data-reduce-motion="off"]) .limit-detail-tooltip {
     transition: none;
   }
 }
-/* Subscriptions */
-
-/* The shared .opencode-add-body rule sizes `input` only, so with the global
-   `button, input, select { font: inherit }` every select and date field falls
-   back to the panel's base size and renders noticeably larger. Scoped here
-   rather than widened on the shared rule, which the other provider forms
-   already lay out against. Height is pinned for the same reason the
-   third-party form pins it: select and input carry different paddings. */
-.subscription-add-body :is(input:not([type="checkbox"]), select) {
-  height: 30px;
-  box-sizing: border-box;
-  font-size: 12px;
-}
-/* Align every field's control on one edge; the longest label ("first charge")
-   sets the column. Descendant rather than child selectors: the two kinds of
-   record each live in their own wrapper, so the rows are no longer all direct
-   children of the form body. */
-.subscription-add-body .settings-row label {
-  flex: 0 0 auto;
-  min-width: 5.2em;
-}
-/* A select's intrinsic width is its widest option, and an account option can be
-   a whole email address. Nothing gives that width a shrinkable basis by default,
-   so the row overflowed and dragged the entire settings panel into a horizontal
-   scroll. */
-.subscription-add-body .settings-row > :is(input, select) {
-  flex: 1 1 0;
-  min-width: 0;
-}
-/* Count+interval reads as one phrase ("1 month"), so it shares a row and a label
-   rather than splitting into two labelled columns. Its controls stay on the same
-   left edge as every other field, which keeps the form on one alignment grid. */
-.subscription-add-body .subscription-pair-row > input {
-  flex: 2 1 0;
-}
-.subscription-add-body .subscription-pair-row > select {
-  flex: 1 1 0;
-}
-/* Amount, cadence, and dates are separate settings rows inside one field
-   wrapper. Give that wrapper its own rhythm; the outer add-form gap does not
-   reach these descendants, which previously made the rows touch. */
-.subscription-add-body .subscription-kind-fields {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  gap: 8px;
-}
-.subscription-field-note {
-  margin-top: -2px;
-}
-/* This stylesheet has no blanket `.hidden { display: none }` — every hidden
-   thing declares its own rule — so a bare `hidden` class on these wrappers left
-   both kinds of field on screen at once. */
-.subscription-kind-fields.hidden {
-  display: none;
-}
-/* The ledger stands where a labelled field would, so it keeps the form's left
-   edge rather than indenting to the control column. Its currency select is
-   parked on the same line by setSubscriptionFormMode(). */
-.subscription-topup-heading-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.subscription-topup-heading {
-  flex: 1 1 auto;
-  min-width: 0;
-  color: var(--muted);
-  font-size: 11px;
-}
-.subscription-add-body .subscription-topup-heading-row > select {
-  flex: 0 0 auto;
-  width: 6.5em;
-}
-.subscription-topup-list {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.subscription-topup-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
-  align-items: center;
-  min-width: 0;
-  gap: 8px;
-  padding: 5px 8px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: rgba(var(--sunken-rgb), 0.36);
-  font-size: 11px;
-}
-.subscription-topup-date {
-  min-width: 0;
-  overflow: hidden;
-  color: var(--text);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.subscription-topup-amount {
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
-}
-.subscription-topup-remove {
-  width: 18px;
-  height: 18px;
-  padding: 0;
-  border: none;
-  background: none;
-  color: var(--muted);
-  font-size: 11px;
-  line-height: 1;
-  opacity: 0.55;
-}
-.subscription-topup-row .subscription-topup-remove:hover {
-  opacity: 0.85;
-}
-.subscription-topup-row .subscription-topup-remove.is-armed {
-  border-radius: 4px;
-  opacity: 1;
-  color: var(--red);
-  background: rgba(255, 91, 91, 0.12);
-}
-/* No label: the two fields are the entry, and the button says what happens to
-   them. Dropping the label column also buys the date field the width it needs. */
-.subscription-add-body .subscription-topup-add-row > input[type="date"] {
-  flex: 1 1 0;
-  min-width: 0;
-}
-/* Unshrinkable: sharing the row three ways squeezed the amount until its own
-   placeholder was clipped. The date takes what is left over instead. */
-.subscription-add-body .subscription-topup-add-row > input[type="number"] {
-  flex: 0 0 auto;
-  width: 5.5em;
-}
-/* .icon-button is the app's small-action-attached-to-a-row convention (the hub
-   secret row uses it the same way); only its height needs to match the 30px
-   controls beside it. A plain <button> would have fallen outside the stylesheet's
-   button allow-list and rendered as an unstyled UA control. */
-.subscription-topup-add {
-  flex: 0 0 auto;
-  width: 30px;
-  height: 30px;
-  font-size: 15px;
-}
-/* Sized and behaved as .opencode-profile-item, the row convention every other
-   account list in this panel already uses: 11/9px type, a faint always-there
-   delete and a hover-revealed edit. */
-/* Grid with a minmax(0, 1fr) text column, exactly as .opencode-profile-item
-   does it — and for the same reason. `min-width: 0` on a flex child only lets it
-   shrink during layout; it does NOT reduce the row's min-content contribution,
-   which stays as wide as the longest unbreakable account label. That
-   contribution sizes the settings section's grid column, so on a narrow window
-   the whole section was laid out to fit an email address and everything in it
-   spilled past the panel. minmax(0, 1fr) contributes zero. */
-.subscription-orphan-notice {
-  margin: 6px 0 8px;
-  padding: 8px;
-  border: 1px solid rgba(255, 176, 46, 0.32);
-  border-radius: 6px;
-  background: rgba(255, 176, 46, 0.08);
-}
-.subscription-orphan-notice.hidden {
-  display: none;
-}
-.subscription-orphan-notice .settings-note {
-  margin: 0 0 6px;
-}
-.subscription-orphan-actions {
-  display: flex;
-  gap: 6px;
-}
-.subscription-orphan-actions button {
-  padding: 3px 8px;
-  border: 1px solid var(--line);
-  border-radius: 5px;
-  background: rgba(var(--sunken-rgb), 0.5);
-  color: var(--text);
-  cursor: pointer;
-  font-size: 10px;
-}
-.subscription-orphan-actions button:hover {
-  border-color: rgba(var(--accent-rgb), 0.5);
-}
-/* Sits above the list rather than inside the add form, because a failed delete
-   has no form open to report into. */
-.subscription-sync-error {
-  color: var(--red);
-}
-.subscription-sync-error.hidden {
-  display: none;
-}
-.subscription-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  min-width: 0;
-  gap: 8px;
-  padding: 7px 8px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: rgba(var(--sunken-rgb), 0.36);
-}
-.subscription-row.is-editing {
-  border-color: rgba(var(--accent-rgb), 0.42);
-  background: rgba(var(--accent-rgb), 0.055);
-}
-.subscription-row + .subscription-row {
-  margin-top: 6px;
-}
-/* The editor itself becomes a list child while editing. Its top margin is part
-   of the accordion transition, while the bottom margin preserves the row rhythm
-   for the subscriptions that follow it. */
-#subscriptionList > #subscriptionAddDetails {
-  margin: 6px 0;
-}
-/* The icon column only exists when there is an icon: a row without one keeps the
-   two-column template, so the title still starts against the padding edge rather
-   than in an empty gutter. */
-.subscription-row:has(.subscription-row-icon) {
-  grid-template-columns: auto minmax(0, 1fr) auto;
-}
-.subscription-row-icon {
-  width: 13px;
-  height: 13px;
-  margin-left: 1px;
-  color: var(--text);
-  opacity: 0.85;
-}
-.subscription-row-main {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  gap: 1px;
-}
-.subscription-row-title {
-  overflow: hidden;
-  color: var(--text);
-  font-size: 11px;
-  line-height: 1.2;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.subscription-row-meta {
-  overflow: hidden;
-  color: var(--muted);
-  font-size: 9px;
-  line-height: 1.2;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.subscription-row-warn {
-  margin-top: 1px;
-  color: var(--red);
-  font-size: 9px;
-  line-height: 1.2;
-}
-.subscription-row-actions {
-  display: flex;
-  flex: 0 0 auto;
-  align-items: center;
-  gap: 2px;
-}
-.subscription-row-actions button {
-  flex: 0 0 auto;
-  width: 18px;
-  height: 18px;
-  padding: 0;
-  border: none;
-  border-radius: 4px;
-  background: none;
-  color: var(--muted);
-  cursor: pointer;
-  font-size: 11px;
-  line-height: 18px;
-  text-align: center;
-  transition: opacity 0.15s, color 0.15s, background 0.15s;
-}
-.subscription-row-edit { opacity: 0; }
-.subscription-row-delete { opacity: 0.55; }
-.subscription-row:hover .subscription-row-edit { opacity: 0.6; }
-.subscription-row:hover .subscription-row-delete { opacity: 0.85; }
-.subscription-row .subscription-row-actions button:hover,
-.subscription-row .subscription-row-actions button:focus-visible {
-  opacity: 1;
-  color: var(--text);
-}
-.subscription-row.is-editing .subscription-row-edit {
-  opacity: 1;
-  color: var(--accent);
-  background: rgba(var(--accent-rgb), 0.1);
-}
-.subscription-row .subscription-row-delete.is-armed {
-  opacity: 1;
-  color: var(--red);
-  background: rgba(255, 91, 91, 0.12);
-}
-.subscription-total {
-  margin-top: 8px;
-  color: var(--text);
-  font-size: 11px;
-  text-align: right;
-}
-
-/* The plan label doubles as the subscription tooltip trigger, so the wrap sizes
-   to its text instead of the 14px info dot the base class assumes. The wrap also
-   carries .limit-plan, whose overflow:hidden clipped the card away entirely —
-   the card sits above the label, wholly outside that 10px-tall box. */
-.subscription-plan-wrap {
-  position: relative;
-  display: inline-grid;
-  width: auto;
-  height: auto;
-  flex: 0 0 auto;
-  place-items: end;
-  overflow: visible;
-  transform: none;
-}
-/* No resting decoration. The plan label appears on every limits row, and it has
-   to look identical whether or not a subscription is attached to that account;
-   hovering brightens it, which is affordance enough. */
-.subscription-plan-trigger {
-  max-width: 100%;
-  overflow: hidden;
-  cursor: default;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  transition: color 0.15s;
-}
-.subscription-plan-wrap:hover .subscription-plan-trigger,
-.subscription-plan-wrap:focus-within .subscription-plan-trigger {
-  color: var(--text);
-}
-/* The wrap carries .limit-plan, whose `text-align: right` inherits into the card
-   and dragged the labels over to their column's right edge — a ragged left edge
-   against right-aligned values. A key/value card reads as labels left, values
-   right; the value cells set their own alignment already. */
-.subscription-tooltip {
-  right: 0;
-  text-align: left;
-}
-/* The card opens upward, and .limits-panel scrolls behind `overflow: hidden
-   auto` — so on the topmost provider the whole card landed above the panel's
-   edge and was clipped away. positionSubscriptionTooltip() flips it below when
-   the row has no room above it. */
-.subscription-tooltip.is-below {
-  top: calc(100% + 5px);
-  bottom: auto;
-}
-.subscription-tooltip.is-below::after {
-  top: -4px;
-  bottom: auto;
-  border-top: 1px solid rgba(var(--line-rgb), 0.22);
-  border-right: none;
-  border-bottom: none;
-  border-left: 1px solid rgba(var(--line-rgb), 0.22);
-}
-.subscription-tooltip-rule {
-  height: 1px;
-  margin: 2px 0;
-  background: rgba(var(--line-rgb), 0.16);
-  grid-column: 1 / -1;
-}
-.limit-detail-tooltip-row span.subscription-tooltip-warn {
-  color: var(--red);
-  opacity: 1;
-}
-
 .limit-window-note .limit-reset {
   min-height: 0;
   font-size: 10px;
@@ -4911,6 +3764,46 @@ html.is-windows .limit-live-badge {
     visibility 0s linear 0s;
   will-change: opacity, transform, filter;
 }
+html.is-windows[data-windows-backdrop="mica"] .view-switcher-menu,
+body.is-windows[data-windows-backdrop="mica"] .view-switcher-menu {
+  background:
+    linear-gradient(180deg, rgba(var(--overlay-rgb), 0.075), rgba(var(--overlay-rgb), 0.025)),
+    rgba(var(--glass-rgb), var(--windows-popover-alpha));
+  border: 1px solid rgba(var(--line-rgb), 0.3);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+  -webkit-backdrop-filter: blur(18px) saturate(112%);
+  backdrop-filter: blur(18px) saturate(112%);
+}
+html.is-windows[data-windows-backdrop="acrylic"] .view-switcher-menu,
+body.is-windows[data-windows-backdrop="acrylic"] .view-switcher-menu {
+  background:
+    linear-gradient(180deg, rgba(var(--overlay-rgb), 0.075), rgba(var(--overlay-rgb), 0.025)),
+    rgba(var(--glass-rgb), var(--windows-popover-alpha));
+  border: 1px solid rgba(var(--line-rgb), 0.3);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+  -webkit-backdrop-filter: blur(30px) saturate(125%);
+  backdrop-filter: blur(30px) saturate(125%);
+}
+
+/* The same window-level native material is also behind tooltips and the two
+   fixed popovers. Give them the same readable themed surface so they do not
+   become accidental see-through layers on Windows. */
+html.is-windows[data-windows-backdrop="mica"] :is(.limit-detail-tooltip, .app-update-popover, .tray-composer-popover, .tray-composer-picker-menu),
+body.is-windows[data-windows-backdrop="mica"] :is(.limit-detail-tooltip, .app-update-popover, .tray-composer-popover, .tray-composer-picker-menu),
+html.is-windows[data-windows-backdrop="acrylic"] :is(.limit-detail-tooltip, .app-update-popover, .tray-composer-popover, .tray-composer-picker-menu),
+body.is-windows[data-windows-backdrop="acrylic"] :is(.limit-detail-tooltip, .app-update-popover, .tray-composer-popover, .tray-composer-picker-menu) {
+  background:
+    linear-gradient(180deg, rgba(var(--overlay-rgb), 0.075), rgba(var(--overlay-rgb), 0.025)),
+    rgba(var(--glass-rgb), var(--windows-popover-alpha));
+  -webkit-backdrop-filter: blur(26px) saturate(120%);
+  backdrop-filter: blur(26px) saturate(120%);
+}
+html.is-windows[data-windows-backdrop="mica"] .limit-detail-tooltip::after,
+body.is-windows[data-windows-backdrop="mica"] .limit-detail-tooltip::after,
+html.is-windows[data-windows-backdrop="acrylic"] .limit-detail-tooltip::after,
+body.is-windows[data-windows-backdrop="acrylic"] .limit-detail-tooltip::after {
+  background: rgba(var(--glass-rgb), var(--windows-popover-alpha));
+}
 .view-switcher-menu.hidden {
   visibility: hidden;
   opacity: 0;
@@ -4952,23 +3845,6 @@ html.is-windows .limit-live-badge {
   line-height: 14px;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-.period-menu {
-  -webkit-app-region: no-drag;
-  top: 34px;
-  right: 42px;
-  bottom: auto;
-  left: auto;
-  width: 132px;
-  pointer-events: auto;
-  transform-origin: right top;
-}
-.period-menu.view-switcher-menu [data-fixed-period] {
-  -webkit-app-region: no-drag;
-  grid-template-columns: minmax(0, 1fr);
-}
-.period-menu.hidden {
-  transform: translateY(-6px) scale(0.985);
 }
 @media (prefers-reduced-motion: reduce) {
   :root:not([data-reduce-motion="off"]) .view-switcher-menu {
@@ -5192,7 +4068,6 @@ html.is-windows .limit-live-badge {
   .service-status-panel { display: none; }
 }
 
-#claudeManualPanel.hidden,
 #cursorManualPanel.hidden,
 #opencodeManualPanel.hidden,
 #deepseekManualPanel.hidden,
@@ -5201,7 +4076,6 @@ html.is-windows .limit-live-badge {
 #zaiteamManualPanel.hidden,
 #volcengineManualPanel.hidden,
 #qoderManualPanel.hidden,
-#commandcodeManualPanel.hidden,
 #ollamaManualPanel.hidden,
 #mimoManualPanel.hidden,
 #kimiManualPanel.hidden,
@@ -5209,25 +4083,16 @@ html.is-windows .limit-live-badge {
 #copilotManualDetails.hidden,
 #cursorErrorMessage.hidden,
 #opencodeErrorMessage.hidden,
-#openrouterErrorMessage.hidden,
-#thirdpartyErrorMessage.hidden,
-#thirdpartyAccessTokenRow.hidden,
-#thirdpartyUserIdRow.hidden,
-#thirdpartyApiKeyRow.hidden,
-#thirdpartyModeField.hidden,
-#thirdpartyCustomConfig.hidden,
 #deepseekErrorMessage.hidden,
 #minimaxErrorMessage.hidden,
 #zaiErrorMessage.hidden,
 #zaiteamErrorMessage.hidden,
 #volcengineErrorMessage.hidden,
 #qoderErrorMessage.hidden,
-#commandcodeErrorMessage.hidden,
 #ollamaErrorMessage.hidden,
 #kimiErrorMessage.hidden,
 #copilotErrorMessage.hidden,
 #copilotLoginStatus.hidden { display: none; }
-#claudeManualPanel,
 #cursorManualPanel,
 #opencodeManualPanel,
 #deepseekManualPanel,
@@ -5236,14 +4101,12 @@ html.is-windows .limit-live-badge {
 #zaiteamManualPanel,
 #volcengineManualPanel,
 #qoderManualPanel,
-#commandcodeManualPanel,
 #ollamaManualPanel,
 #mimoManualPanel,
 #kimiManualPanel,
 #copilotManualPanel {
   min-width: 0;
 }
-#claudeManualPanel > .accordion-animation-inner,
 #cursorManualPanel > .accordion-animation-inner,
 #opencodeManualPanel > .accordion-animation-inner,
 #deepseekManualPanel > .accordion-animation-inner,
@@ -5252,7 +4115,6 @@ html.is-windows .limit-live-badge {
 #zaiteamManualPanel > .accordion-animation-inner,
 #volcengineManualPanel > .accordion-animation-inner,
 #qoderManualPanel > .accordion-animation-inner,
-#commandcodeManualPanel > .accordion-animation-inner,
 #ollamaManualPanel > .accordion-animation-inner,
 #mimoManualPanel > .accordion-animation-inner,
 #kimiManualPanel > .accordion-animation-inner {
@@ -5260,23 +4122,9 @@ html.is-windows .limit-live-badge {
   min-width: 0;
   gap: 8px;
 }
-#claudeManualPanel textarea,
 #cursorManualPanel textarea,
 #opencodeManualPanel textarea,
 #openrouterApiKeyInput,
-#thirdpartyPlatformInput,
-#thirdpartyModeInput,
-#thirdpartyAuthModeInput,
-#thirdpartyBaseUrlInput,
-#thirdpartyAccessTokenInput,
-#thirdpartyUserIdInput,
-#thirdpartyApiKeyInput,
-#thirdpartyEndpointPathInput,
-#thirdpartyRemainingPathInput,
-#thirdpartyUsedPathInput,
-#thirdpartyTotalPathInput,
-#thirdpartyCurrencyInput,
-#thirdpartyDivisorInput,
 #deepseekManualPanel input,
 #minimaxManualPanel input,
 #zaiManualPanel input,
@@ -5285,7 +4133,6 @@ html.is-windows .limit-live-badge {
 #volcengineManualPanel input,
 #qoderManualPanel textarea,
 #qoderManualPanel select,
-#commandcodeManualPanel textarea,
 #ollamaManualPanel textarea,
 #mimoManualPanel input,
 #mimoManualPanel textarea,
@@ -5294,27 +4141,15 @@ html.is-windows .limit-live-badge {
   width: 100%;
   font-size: 12px;
 }
-#claudeManualPanel textarea,
 #cursorManualPanel textarea,
 #opencodeManualPanel textarea,
 #openrouterApiKeyInput,
-#thirdpartyBaseUrlInput,
-#thirdpartyAccessTokenInput,
-#thirdpartyUserIdInput,
-#thirdpartyApiKeyInput,
-#thirdpartyEndpointPathInput,
-#thirdpartyRemainingPathInput,
-#thirdpartyUsedPathInput,
-#thirdpartyTotalPathInput,
-#thirdpartyCurrencyInput,
-#thirdpartyDivisorInput,
 #deepseekManualPanel input,
 #minimaxManualPanel input,
 #zaiManualPanel input,
 #zaiteamManualPanel input,
 #volcengineManualPanel input,
 #qoderManualPanel textarea,
-#commandcodeManualPanel textarea,
 #ollamaManualPanel textarea,
 #mimoManualPanel input,
 #mimoManualPanel textarea,
@@ -5366,10 +4201,8 @@ html.is-windows .limit-live-badge {
 .detail-role-user { color: #bda5f5; }
 .detail-role-sep { color: var(--muted); }
 .detail-turn-title { color: var(--muted); }
-.row.session-row[data-client="claude"], .row.session-row[data-client="codex"], .row.session-row[data-client="opencode"], .row.session-row[data-client="reasonix"] { cursor: pointer; }
-.row.session-row[data-client="claude"] .row-metrics::after, .row.session-row[data-client="codex"] .row-metrics::after, .row.session-row[data-client="opencode"] .row-metrics::after, .row.session-row[data-client="reasonix"] .row-metrics::after { content: '›'; color: var(--muted); font-size: 14px; line-height: 1; }
-.row.session-row[data-client="reasonix"][data-detail-unavailable="true"] { cursor: default; }
-.row.session-row[data-client="reasonix"][data-detail-unavailable="true"] .row-metrics::after { content: none; }
+.row.session-row[data-client="claude"], .row.session-row[data-client="codex"], .row.session-row[data-client="opencode"] { cursor: pointer; }
+.row.session-row[data-client="claude"] .row-metrics::after, .row.session-row[data-client="codex"] .row-metrics::after, .row.session-row[data-client="opencode"] .row-metrics::after { content: '›'; color: var(--muted); font-size: 14px; line-height: 1; }
 .view-preference-row.has-subgroup {
   grid-template-columns: minmax(0, 1fr) repeat(3, 22px);
 }
@@ -5402,33 +4235,26 @@ html.is-windows .limit-live-badge {
   outline: 2px solid rgba(var(--accent-rgb), 0.35);
   outline-offset: 1px;
 }
-/* Every list nested under a view row (Home modules, Home limit providers,
-   Trends, Status) shares one rhythm: 24 px rows sitting flush, matching the
-   density of the view list they hang off. Rows carry their own padding, so the
-   container must not add a gap on top of it. */
-.settings-nested-list {
+.status-provider-list {
+  display: grid;
+  gap: 6px;
+  margin: 2px 0 6px 14px;
+  padding-left: 8px;
+  border-left: 1px solid rgba(var(--line-rgb), 0.14);
+}
+.trend-settings-list {
+  display: grid;
+  gap: 6px;
+  margin: 2px 0 6px 14px;
+  padding-left: 8px;
+  border-left: 1px solid rgba(var(--line-rgb), 0.14);
+}
+.home-settings-list {
   display: grid;
   min-width: 0;
   margin: 2px 0 6px 14px;
-  padding: 0 0 0 8px;
+  padding-left: 8px;
   border-left: 1px solid rgba(var(--line-rgb), 0.14);
-}
-.settings-panel .settings-nested-list > .checkbox-label,
-.settings-panel .settings-nested-list > .settings-item,
-.settings-panel .settings-nested-list > .status-provider-interval,
-.settings-panel .settings-nested-list > .status-provider-row {
-  min-height: 24px;
-  margin-top: 0;
-}
-/* .settings-item ships a roomier 5 px padding for top-level rows; nested rows
-   trade it for the compact rhythm. */
-.settings-panel .settings-nested-list > .settings-item {
-  padding: 2px 0;
-}
-/* The interval pill is as tall as the base row, so at 24 px it would touch the
-   control above it. Give it the same ~2 px of air the switches and inputs get. */
-.settings-panel .settings-nested-list > .status-provider-interval {
-  min-height: 28px;
 }
 .home-settings-note {
   margin: 0;
@@ -5449,11 +4275,12 @@ html.is-windows .limit-live-badge {
 .home-module-preference-row:has(.view-subgroup-toggle) {
   grid-template-columns: minmax(0, 1fr) repeat(3, 22px);
 }
-.settings-panel .home-limit-account-count-setting > input[type="number"] {
-  height: 20px;
-  min-height: 20px;
-  padding: 2px 8px;
-  line-height: 15px;
+.home-limit-provider-list {
+  display: grid;
+  min-width: 0;
+  margin: 2px 0 4px 14px;
+  padding: 0 0 0 8px;
+  border-left: 1px solid rgba(var(--line-rgb), 0.14);
 }
 .home-activity-settings {
   display: flex;
@@ -5464,10 +4291,13 @@ html.is-windows .limit-live-badge {
   margin: 2px 0 4px 14px;
   padding: 2px 0 2px 8px;
   border-left: 1px solid rgba(var(--line-rgb), 0.14);
-  color: var(--text);
+  color: var(--muted);
   font-size: 11px;
 }
 .home-limit-provider-header { margin-bottom: 1px; }
+.home-limit-status-setting {
+  min-height: 24px;
+}
 .home-limit-provider-names-copy {
   display: grid;
   gap: 2px;
@@ -5480,6 +4310,9 @@ html.is-windows .limit-live-badge {
 }
 .home-limit-provider-row {
   grid-template-columns: minmax(0, 1fr) repeat(2, 22px);
+}
+.trend-settings-row {
+  padding: 2px 0;
 }
 .status-provider-header { margin-bottom: 2px; }
 .status-provider-row {
@@ -5494,21 +4327,16 @@ html.is-windows .limit-live-badge {
   color: var(--muted);
   font-size: 11px;
 }
-.settings-panel .status-provider-interval {
+.status-provider-interval {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  min-width: 0;
-  color: var(--text);
+  margin-bottom: 4px;
+  color: var(--muted);
   font-size: 11px;
 }
-.settings-panel .status-provider-interval select {
-  flex: 0 0 auto;
-  width: auto;
-  max-width: 58%;
-  font-size: 11px;
-}
+.status-provider-interval select { font-size: 11px; }
 .status-provider-interval.hidden { display: none; }
 
 .trends-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 10px; padding-right: 2px; overflow: hidden; }
@@ -5525,14 +4353,6 @@ html.is-windows .limit-live-badge {
   transform-origin: bottom center;
 }
 .trends-spark .spark-bar--last { opacity: 1; }
-.trends-spark .spark-zero-marker {
-  stroke: #6ab4f0;
-  stroke-width: 1;
-  opacity: 0.24;
-  pointer-events: stroke;
-  vector-effect: non-scaling-stroke;
-}
-.trends-spark .spark-zero-marker--last { opacity: 0.32; }
 .trends-axis { flex: none; display: flex; justify-content: space-between; padding: 0 4px; font-size: 10px; opacity: 0.45; font-variant-numeric: tabular-nums; }
 .trends-stats { flex: none; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .trends-stat { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border-radius: 8px; background: rgba(var(--overlay-rgb), 0.04); }
@@ -5758,23 +4578,6 @@ html.is-windows .limit-live-badge {
 .opencode-profile-list {
   margin-bottom: 4px;
 }
-/* This stylesheet has no global `.hidden`; every use is scoped to its own
-   selector, so the credential blocks need their own rule to disappear. */
-.opencode-credential-fields {
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
-}
-.opencode-credential-fields.hidden { display: none; }
-/* The API key field sits outside .settings-row, so it needs the same explicit
-   sizing that rule gives the labelled controls. */
-.opencode-credential-fields > input {
-  width: 100%;
-  box-sizing: border-box;
-  height: 30px;
-  font-family: monospace;
-  font-size: 12px;
-}
 .opencode-empty {
   padding: 16px 8px;
   color: var(--muted);
@@ -5786,10 +4589,7 @@ html.is-windows .limit-live-badge {
   display: grid;
   grid-template-columns: 20px minmax(0, 1fr) auto;
   align-items: center;
-  /* No row gap: the credential list is the only second-row child and it stays
-     in the grid while collapsed, so a row gap would pad every multi-credential
-     row by that much even when nothing is shown. It carries its own margin. */
-  gap: 0 8px;
+  gap: 8px;
   min-width: 0;
   padding: 7px 8px;
   border: 1px solid var(--line);
@@ -5802,199 +4602,19 @@ html.is-windows .limit-live-badge {
   height: 14px;
   padding: 0;
 }
-/* The auto-detected credential is not a stored account, so its row carries no
-   toggle or delete, and an empty first cell keeps it on the same grid. Its name
-   field rests as the row's label and only looks like an input once pointed at,
-   so an unnamed row does not read as an unfinished form. */
-.opencode-profile-item .profile-name-input.is-placeholder {
-  border-color: transparent;
-  background: transparent;
-  color: var(--muted);
-  /* Pulls the field's own padding back so its text starts on the same column as
-     the plain names above it; only the highlight box overhangs once hovered. */
-  margin-left: -5px;
-}
-.opencode-profile-item .profile-name-input.is-placeholder:hover,
-.opencode-profile-item .profile-name-input.is-placeholder:focus {
-  border-color: rgba(var(--accent-rgb), 0.6);
-  background: rgba(0, 0, 0, 0.2);
-  color: var(--text);
-}
-/* Acting on a single credential lives in the expanded section, not inline next
-   to the account's own controls: unbinding is one click and should not sit a
-   pixel away from the control that disables the whole account. */
-/* The summary line is itself the control that expands it. A chevron trails the
-   text so the affordance sits on the thing being revealed, rather than as a
-   separate button stranded between the status text and delete. */
-.opencode-profile-item button.profile-detail {
+.opencode-profile-item .profile-name-box {
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 0;
-  border: 0;
-  background: none;
-  text-align: left;
-  cursor: pointer;
-}
-.opencode-profile-item .profile-detail.is-expandable:hover,
-.opencode-profile-item .profile-detail.is-expandable:focus-visible {
-  color: var(--text);
-}
-/* Right when closed, down when open. The shared chevron points down at rest and
-   the app-wide rule rotates it to up; these two selectors are more specific, so
-   they win, and the shared transition still animates the turn.
-   `.cursor-account-group.expanded .cursor-disclosure-icon` is a descendant rule,
-   so an icon nested inside an expanded group inherits its rotation — which is
-   why the nested fallback group needs its own pair as well. */
-.opencode-profile-item .profile-detail .cursor-disclosure-icon {
-  transform: rotate(-90deg);
-}
-.opencode-profile-item .profile-detail.is-open .cursor-disclosure-icon {
-  transform: rotate(0deg);
-}
-/* The summary line runs at 9px, so the group-header size reads as an oversized
-   arrow next to it. Scaled to the text it belongs to. */
-.opencode-profile-item .profile-detail .cursor-disclosure-icon {
-  width: 9px;
-  height: 9px;
-}
-.opencode-profile-item .profile-detail .cursor-disclosure-icon::before {
-  width: 4px;
-  height: 4px;
-  border-width: 0 1.2px 1.2px 0;
-}
-#opencodeLocalFallbackAccountGroup > .settings-group-header .cursor-disclosure-icon {
-  transform: rotate(-90deg);
-}
-#opencodeLocalFallbackAccountGroup.expanded > .settings-group-header .cursor-disclosure-icon {
-  transform: rotate(0deg);
-}
-/* The relocated toggle keeps only its description, and a paragraph's
-   content-based flex basis is wide enough to claim the whole line on its own,
-   pushing the switch to a second row. A zero basis lets both share the line and
-   the text reflow into the space that is left. */
-#opencodeLocalFallbackInner .settings-item > .settings-item-text {
-  flex: 1 1 0;
-}
-/* Animated like every other disclosure in the panel rather than snapping from
-   `display: none`; the container squeezes a single inner wrapper, so the rows
-   have to live inside one. */
-.opencode-credential-list {
-  grid-column: 2 / -1;
-  margin-top: 6px;
-}
-.opencode-credential-list > .accordion-animation-inner {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.opencode-credential-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px 6px;
   min-width: 0;
-  padding: 3px 0 3px 8px;
-  border-left: 1px solid var(--line);
-}
-/* One shared column width. Sized to their own content, each label took a
-   different width and the name fields started at a different x on every row,
-   which is what made an expanded account look ragged: most visible once a field
-   is focused and its box appears. */
-.opencode-credential-row .credential-label {
-  flex: 0 0 5.4em;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--muted);
-  font-size: 10px;
-}
-/* Always visible: two credentials showing the same name is the reason they are
-   one account, so the name is the row's content rather than something behind an
-   edit button. */
-.opencode-credential-row .credential-name-input {
-  flex: 1;
-  min-width: 0;
-  height: 22px;
-  box-sizing: border-box;
-  font-size: 11px;
-  /* Rests as text and only looks like a field once pointed at: an expanded
-     account otherwise reads as a form waiting to be filled in, when what it is
-     showing is which name each credential already answers to. */
-  border: 1px solid transparent;
-  background: transparent;
-}
-.opencode-credential-row .credential-name-input:hover,
-.opencode-credential-row .credential-name-input:focus {
-  border-color: rgba(var(--accent-rgb), 0.6);
-  background: rgba(0, 0, 0, 0.2);
-}
-.opencode-credential-row .credential-actions {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-}
-/* Merging asserts two credentials are one account, so confirming is a button
-   the user chooses rather than a keypress they repeat. */
-.credential-merge-btn {
-  padding: 2px 6px;
-  border: 1px solid rgba(var(--accent-rgb), 0.35);
-  border-radius: 4px;
-  background: rgba(var(--accent-rgb), 0.08);
-  color: var(--text);
-  font: inherit;
-  font-size: 10px;
-  line-height: 1.3;
-  white-space: nowrap;
-  cursor: pointer;
-}
-.credential-merge-btn.hidden { display: none; }
-.opencode-credential-row .credential-merge-btn { flex: 0 0 auto; }
-.opencode-profile-item .profile-name-box {
-  display: grid;
-  grid-template-columns: minmax(0, max-content) auto minmax(0, 1fr);
-  grid-template-areas:
-    "name rename ."
-    "detail detail detail";
-  align-items: center;
-  gap: 1px 4px;
-  min-width: 0;
-}
-/* Merging is an OpenCode-only affordance, so only that list carries the extra
-   row; the shared grid stays two rows for the other profile lists. It needs a
-   row of its own because the label carries the target account name, which is
-   far wider than the cell beside the rename button, and auto-placement would
-   otherwise drop it into whichever cell happened to be free. */
-#opencodeProfileList .opencode-profile-item .profile-name-box {
-  grid-template-areas:
-    "name rename ."
-    "merge merge merge"
-    "detail detail detail";
-}
-#opencodeProfileList .opencode-profile-item .profile-name-box > .credential-merge-btn {
-  grid-area: merge;
-  justify-self: start;
-  margin-top: 3px;
 }
 .opencode-profile-item .profile-name {
-  grid-area: name;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--text);
   font-size: 11px;
-  line-height: 1.2;
-}
-.opencode-profile-item .profile-detail {
-  grid-area: detail;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--muted);
-  font-size: 9px;
   line-height: 1.2;
 }
 .opencode-profile-item .profile-name.hidden,
@@ -6002,7 +4622,6 @@ html.is-windows .limit-live-badge {
   display: none;
 }
 .opencode-profile-item .profile-name-input {
-  grid-area: name;
   min-width: 60px;
   font-size: 11px;
   line-height: 1.2;
@@ -6014,7 +4633,6 @@ html.is-windows .limit-live-badge {
   outline: none;
 }
 .opencode-profile-item .profile-rename-btn {
-  grid-area: rename;
   flex: 0 0 auto;
   background: none;
   border: none;
@@ -6028,10 +4646,6 @@ html.is-windows .limit-live-badge {
 }
 .opencode-profile-item:hover .profile-rename-btn {
   opacity: 0.6;
-}
-.opencode-profile-item .profile-rename-btn:focus-visible,
-.opencode-profile-item .profile-delete:focus-visible {
-  opacity: 1;
 }
 .opencode-profile-item .profile-rename-btn:hover {
   opacity: 1;
@@ -6136,15 +4750,8 @@ html.is-windows .limit-live-badge {
   color: var(--muted);
   white-space: nowrap;
 }
-/* `select` is listed alongside `input` for the reason spelled out above
-   .subscription-add-body: the global `button, input, select { font: inherit }`
-   otherwise drops a select back to the panel's base size, and the two carry
-   different paddings, so the height is pinned to keep the rows aligned. */
-.opencode-add-body .settings-row :is(input, select) {
+.opencode-add-body .settings-row input {
   flex: 1;
-  min-width: 0;
-  height: 30px;
-  box-sizing: border-box;
   font-size: 12px;
 }
 .opencode-add-body textarea {
@@ -6154,81 +4761,185 @@ html.is-windows .limit-live-badge {
   font-size: 12px;
 }
 
-.thirdparty-add-body {
-  gap: 9px;
+/* Custom range calendar popover */
+.custom-range-popover.hidden,
+.custom-range-error.hidden {
+  display: none !important;
 }
-.thirdparty-add-body .thirdparty-intro {
-  line-height: 1.45;
+/* Custom range calendar popover */
+.custom-range-popover {
+  position: absolute;
+  top: 46px;
+  right: 12px;
+  z-index: 40;
+  width: min(292px, calc(100vw - 24px));
+  padding: 12px;
+  border: 1px solid rgba(var(--line-rgb), 0.14);
+  border-radius: 12px;
+  background: rgba(var(--panel-rgb, 18, 20, 24), 0.96);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(var(--overlay-rgb), 0.06);
+  -webkit-backdrop-filter: blur(22px);
+  backdrop-filter: blur(22px);
+  color: var(--text);
 }
-.thirdparty-choice-grid,
-.thirdparty-credential-grid,
-.thirdparty-custom-request-grid,
-.thirdparty-custom-mapping-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-  min-width: 0;
-}
-.thirdparty-choice-grid.single-field,
-.thirdparty-credential-grid.single-field {
-  grid-template-columns: minmax(0, 1fr);
-}
-.thirdparty-field {
-  display: grid;
-  min-width: 0;
-  gap: 4px;
-}
-.thirdparty-field label {
-  color: var(--muted);
-  font-size: 10px;
-  line-height: 1.2;
-}
-.thirdparty-field :is(input, select) {
-  width: 100%;
-  min-width: 0;
-  height: 30px;
-  box-sizing: border-box;
-  font-size: 11px;
-}
-.thirdparty-mode-hint {
-  min-height: 30px;
-  box-sizing: border-box;
-  padding: 7px 9px;
-  border: 1px solid rgba(var(--accent-rgb), 0.22);
-  border-radius: 5px;
-  background: rgba(var(--accent-rgb), 0.055);
-  line-height: 1.4;
-}
-#thirdpartyApiKeyRow {
-  grid-column: 1 / -1;
-}
-.thirdparty-custom-config {
-  display: grid;
-  gap: 8px;
-}
-.thirdparty-custom-mapping {
-  display: grid;
-  gap: 7px;
-  padding: 8px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: rgba(var(--overlay-rgb), 0.025);
-}
-.thirdparty-custom-mapping-heading {
+.custom-range-header {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: 8px;
-  color: var(--text);
-  font-size: 10px;
+  margin-bottom: 10px;
 }
-.thirdparty-custom-mapping-heading span:last-child {
-  overflow: hidden;
+.custom-range-header strong {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+.custom-range-close,
+.custom-range-nav-btn {
+  width: 24px;
+  height: 24px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
   color: var(--muted);
-  font-size: 9px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
 }
+.custom-range-close:hover,
+.custom-range-nav-btn:hover {
+  color: var(--text);
+  background: rgba(var(--overlay-rgb), 0.06);
+  border-color: rgba(var(--line-rgb), 0.12);
+}
+.custom-range-month-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.custom-range-month-label {
+  font-size: 12px;
+  font-weight: 600;
+}
+.custom-range-weekdays,
+.custom-range-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+.custom-range-weekdays {
+  margin-bottom: 4px;
+}
+.custom-range-weekdays span {
+  text-align: center;
+  font-size: 9px;
+  color: var(--muted);
+  padding: 2px 0;
+}
+.custom-range-day {
+  height: 28px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text);
+  font-size: 11px;
+  cursor: pointer;
+}
+.custom-range-day:hover:not(:disabled) {
+  background: rgba(var(--overlay-rgb), 0.07);
+}
+.custom-range-day:disabled {
+  opacity: 0.28;
+  cursor: default;
+}
+.custom-range-day.outside {
+  color: var(--muted);
+  opacity: 0.55;
+}
+.custom-range-day.in-range {
+  background: rgba(var(--accent-rgb), 0.12);
+  border-color: rgba(var(--accent-rgb), 0.08);
+}
+.custom-range-day.range-endpoint {
+  color: var(--success);
+  background: rgba(var(--accent-rgb), 0.2);
+  border-color: rgba(var(--accent-rgb), 0.45);
+  font-weight: 600;
+}
+.custom-range-fields {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+.custom-range-field {
+  display: grid;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.custom-range-field-controls {
+  display: grid;
+  grid-template-columns: 1fr 78px;
+  gap: 6px;
+}
+.custom-range-field-controls input,
+.custom-range-field-controls select {
+  height: 28px;
+  border: 1px solid rgba(var(--line-rgb), 0.14);
+  border-radius: 7px;
+  background: rgba(var(--overlay-rgb), 0.04);
+  color: var(--text);
+  font-size: 11px;
+  padding: 0 8px;
+}
+.custom-range-error {
+  margin-top: 8px;
+  color: #ff8e8e;
+  font-size: 11px;
+}
+.custom-range-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+}
+.custom-range-secondary,
+.custom-range-primary {
+  height: 28px;
+  min-width: 68px;
+  padding: 0 12px;
+  border-radius: 7px;
+  border: 1px solid rgba(var(--line-rgb), 0.14);
+  font-size: 11px;
+  cursor: pointer;
+}
+.custom-range-secondary {
+  background: transparent;
+  color: var(--muted);
+}
+.custom-range-secondary:hover {
+  color: var(--text);
+  background: rgba(var(--overlay-rgb), 0.06);
+}
+.custom-range-primary {
+  background: rgba(var(--accent-rgb), 0.16);
+  border-color: rgba(var(--accent-rgb), 0.42);
+  color: var(--success);
+}
+.custom-range-primary:hover {
+  background: rgba(var(--accent-rgb), 0.24);
+}
+.custom-range-primary:disabled,
+.custom-range-secondary:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.shell.custom-range-open .title-controls .tabs,
+.shell.custom-range-open .title-controls .period-calendar-button {
+  opacity: 1 !important;
+  transform: none !important;
+  pointer-events: auto !important;
 
 /* Custom tray/bubble composer ------------------------------------------------
    The preview is deliberately a menu-bar-like recessed strip. Its children
@@ -6242,12 +4953,9 @@ html.is-windows .limit-live-badge {
 .tray-composer.hidden { display: none; }
 .tray-composer-heading {
   display: flex;
-  /* Holds either a drag hint or a Customize button depending on the mode; a
-     fixed height keeps the block from jumping when the surface switches. */
-  align-items: center;
+  align-items: baseline;
   justify-content: space-between;
   gap: 8px;
-  min-height: 22px;
   color: var(--text);
   font-size: 11px;
 }
@@ -6294,7 +5002,6 @@ html.is-windows .limit-live-badge {
 }
 .tray-composer-item,
 .tray-composer-add,
-.tray-composer-customize,
 .tray-composer-close,
 .tray-composer-picker,
 .tray-composer-picker-option,
@@ -6365,99 +5072,6 @@ html.is-windows .limit-live-badge {
 .tray-composer-item .tray-composer-preview-image {
   max-width: 108px;
   height: 18px;
-}
-.tray-composer-live-preview {
-  display: flex;
-  flex: 1 1 auto;
-  align-items: center;
-  justify-content: center;
-  min-width: 0;
-  min-height: 28px;
-  padding-inline: 5px;
-}
-.tray-composer-live-preview.is-text {
-  overflow: hidden;
-  color: var(--text);
-  font-size: 13px;
-  font-weight: 600;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.tray-composer-live-preview .tray-composer-preview-image {
-  max-width: 210px;
-  /* Matches .floating-bubble-tab span.bars img so the preview is the size the
-     bubble actually draws; the tray surface overrides this to its own 20px. */
-  height: 24px;
-}
-.tray-composer[data-surface="tray"]:not(.is-editing) .tray-composer-live-preview {
-  justify-content: flex-start;
-}
-.tray-composer[data-surface="tray"]:not(.is-editing) .tray-composer-live-preview .tray-composer-preview-image {
-  max-width: 100%;
-  height: 20px;
-}
-.tray-composer[data-surface="tray"]:not(.is-editing) .tray-composer-live-preview.is-menubar {
-  gap: 4px;
-  min-height: 20px;
-  padding-block: 4px;
-}
-.tray-composer-menubar-generated {
-  display: block;
-  width: auto;
-  max-width: 100%;
-  height: 20px;
-  object-fit: contain;
-  pointer-events: none;
-}
-.tray-composer-menubar-title {
-  overflow: hidden;
-  color: var(--text);
-  font-family: var(--display-font, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif);
-  font-size: 13px;
-  font-weight: 500;
-  letter-spacing: -0.01em;
-  line-height: 20px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.tray-composer-customize {
-  flex: 0 0 auto;
-  /* Same 22px as the panel's other compact buttons (.tool-visibility-button). */
-  min-height: 22px;
-  padding: 2px 7px;
-  border-color: var(--line);
-  border-radius: 6px;
-  background: rgba(var(--overlay-rgb), 0.045);
-  color: var(--text);
-  font-size: 10px;
-  line-height: 1;
-}
-.tray-composer-customize:hover,
-.tray-composer-customize:focus-visible {
-  border-color: rgba(var(--accent-rgb), 0.5);
-  background: rgba(var(--accent-rgb), 0.09);
-  color: var(--accent);
-}
-.tray-composer[data-surface="floatingBubble"]:not(.is-editing) .tray-composer-strip {
-  justify-content: center;
-  min-height: 42px;
-  padding: 3px;
-  border: 0;
-  background: transparent;
-  box-shadow: none;
-}
-.tray-composer[data-surface="floatingBubble"]:not(.is-editing) .tray-composer-items {
-  flex: 0 1 auto;
-}
-.tray-composer[data-surface="floatingBubble"]:not(.is-editing) .tray-composer-live-preview {
-  flex: 0 1 auto;
-  min-width: 34px;
-  min-height: 34px;
-  padding-inline: 9px;
-  border: 1px solid var(--line);
-  border-radius: var(--floating-bubble-radius);
-  background: var(--glass);
-  box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.18);
 }
 .tray-composer-add {
   display: grid;
@@ -6870,188 +5484,6 @@ html.is-windows .limit-live-badge {
   min-height: 26px;
   padding: 3px 6px;
 }
-/* Custom range calendar popover */
-.custom-range-popover.hidden,
-.custom-range-error.hidden {
-  display: none !important;
-}
-.custom-range-popover {
-  position: absolute;
-  top: 46px;
-  right: 12px;
-  z-index: 40;
-  width: min(292px, calc(100vw - 24px));
-  padding: 12px;
-  border: 1px solid rgba(var(--line-rgb), 0.14);
-  border-radius: 12px;
-  background: rgba(var(--panel-rgb, 18, 20, 24), 0.96);
-  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(var(--overlay-rgb), 0.06);
-  -webkit-backdrop-filter: blur(22px);
-  backdrop-filter: blur(22px);
-  color: var(--text);
-}
-.custom-range-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 10px;
-}
-.custom-range-header strong {
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.01em;
-}
-.custom-range-close,
-.custom-range-nav-btn {
-  width: 24px;
-  height: 24px;
-  border: 1px solid transparent;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--muted);
-  cursor: pointer;
-  font-size: 14px;
-  line-height: 1;
-}
-.custom-range-close:hover,
-.custom-range-nav-btn:hover {
-  color: var(--text);
-  background: rgba(var(--overlay-rgb), 0.06);
-  border-color: rgba(var(--line-rgb), 0.12);
-}
-.custom-range-month-nav {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 8px;
-}
-.custom-range-month-label {
-  font-size: 12px;
-  font-weight: 600;
-}
-.custom-range-weekdays,
-.custom-range-grid {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  gap: 2px;
-}
-.custom-range-weekdays {
-  margin-bottom: 4px;
-}
-.custom-range-weekdays span {
-  text-align: center;
-  font-size: 9px;
-  color: var(--muted);
-  padding: 2px 0;
-}
-.custom-range-day {
-  height: 28px;
-  border: 1px solid transparent;
-  border-radius: 7px;
-  background: transparent;
-  color: var(--text);
-  font-size: 11px;
-  cursor: pointer;
-}
-.custom-range-day:hover:not(:disabled) {
-  background: rgba(var(--overlay-rgb), 0.07);
-}
-.custom-range-day:disabled {
-  opacity: 0.28;
-  cursor: default;
-}
-.custom-range-day.outside {
-  color: var(--muted);
-  opacity: 0.55;
-}
-.custom-range-day.in-range {
-  background: rgba(var(--accent-rgb), 0.12);
-  border-color: rgba(var(--accent-rgb), 0.08);
-}
-.custom-range-day.range-endpoint {
-  color: var(--success);
-  background: rgba(var(--accent-rgb), 0.2);
-  border-color: rgba(var(--accent-rgb), 0.45);
-  font-weight: 600;
-}
-.custom-range-fields {
-  display: grid;
-  gap: 8px;
-  margin-top: 12px;
-}
-.custom-range-field {
-  display: grid;
-  gap: 4px;
-  font-size: 11px;
-  color: var(--muted);
-}
-.custom-range-field-controls {
-  display: grid;
-  grid-template-columns: 1fr 78px;
-  gap: 6px;
-}
-.custom-range-field-controls input,
-.custom-range-field-controls select {
-  height: 28px;
-  border: 1px solid rgba(var(--line-rgb), 0.14);
-  border-radius: 7px;
-  background: rgba(var(--overlay-rgb), 0.04);
-  color: var(--text);
-  font-size: 11px;
-  padding: 0 8px;
-}
-.custom-range-error {
-  margin-top: 8px;
-  color: #ff8e8e;
-  font-size: 11px;
-}
-.custom-range-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  margin-top: 12px;
-}
-.custom-range-secondary,
-.custom-range-primary {
-  height: 28px;
-  min-width: 68px;
-  padding: 0 12px;
-  border-radius: 7px;
-  border: 1px solid rgba(var(--line-rgb), 0.14);
-  font-size: 11px;
-  cursor: pointer;
-}
-.custom-range-secondary {
-  background: transparent;
-  color: var(--muted);
-}
-.custom-range-secondary:hover {
-  color: var(--text);
-  background: rgba(var(--overlay-rgb), 0.06);
-}
-.custom-range-primary {
-  background: rgba(var(--accent-rgb), 0.16);
-  border-color: rgba(var(--accent-rgb), 0.42);
-  color: var(--success);
-}
-.custom-range-primary:hover {
-  background: rgba(var(--accent-rgb), 0.24);
-}
-.custom-range-primary:disabled,
-.custom-range-secondary:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-.shell.custom-range-open .title-controls .tabs,
-.shell.custom-range-open .title-controls .period-calendar-button {
-  opacity: 1 !important;
-  transform: none !important;
-  pointer-events: auto !important;
-}
 @media (prefers-reduced-motion: reduce) {
   .tray-composer-item { transition: none; }
-  .settings-panel .limit-provider-row { transition: none; }
-  .tool-preference-row { transition: none; }
-  .tool-preference-main .cursor-disclosure-icon { transition: none; }
 }

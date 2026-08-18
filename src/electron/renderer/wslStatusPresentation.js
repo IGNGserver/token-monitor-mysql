@@ -23,20 +23,5 @@
       });
   }
 
-  function shouldShowSqliteHelp(status) {
-    const state = String(status?.state || '').toLowerCase();
-    if (state !== 'active' && state !== 'no-data') return false;
-    const detected = Array.isArray(status?.detected) ? status.detected : [];
-    const withData = new Set(
-      (Array.isArray(status?.withData) ? status.withData : [])
-        .map((id) => String(id || '').trim().toLowerCase())
-        .filter(Boolean)
-    );
-    return detected.some((id) => {
-      const clientId = String(id || '').trim().toLowerCase();
-      return clientId && !withData.has(clientId);
-    });
-  }
-
-  return { sqliteHelpClients, shouldShowSqliteHelp };
+  return { sqliteHelpClients };
 });

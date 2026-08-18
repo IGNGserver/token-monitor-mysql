@@ -180,7 +180,6 @@ test('Home activity heatmap contains horizontal overscroll and prevents native p
   const app = readRendererFile('app.js');
   const css = readRendererFile('styles.css');
   const setupBody = functionBody(app, 'setupHomeActivityScroller', 'renderHomeTrendsModule');
-  assert.match(cssRule(css, '.home-activity-scroll'), /cursor:\s*default/);
   assert.match(cssRule(css, '.home-activity-scroll'), /overscroll-behavior-x:\s*contain/);
   assert.match(setupBody, /pointerdown[\s\S]*event\.preventDefault\(\)/);
   assert.match(setupBody, /pointermove[\s\S]*event\.preventDefault\(\)/);
@@ -231,7 +230,7 @@ test('Home limit provider settings stay compact and list only enabled providers'
   assert.match(homeLimitRows, /const hasConfiguredOrder = Boolean\(state\.settings\?\.homeLimitProviderOrder\)/);
   assert.doesNotMatch(homeLimitRows, /normalizeLimitProviderOrder\(state\.settings\?\.limitProviderOrder, LIMIT_PROVIDERS\)\.join\(','\) !== DEFAULT_LIMIT_PROVIDER_ORDER/);
   assert.match(homeLimitRows, /sort: hasConfiguredOrder \? 'configured' : 'remaining'/);
-  assert.match(homeLimitRows, /limitAccountTitle\(id, provider, index, providerEntries\)/);
+  assert.match(homeLimitRows, /homeLimitAccountTitle\(id, provider, index, providerEntries\)/);
   assert.match(homeLimitRows, /showHomeLimitProviderNames === true \|\| state\.settings\?\.showToolIcons === false/);
   assert.match(homeLimitRows, /`\$\{providerTitle\} · \$\{accountTitle\}`/);
   assert.match(renderHomeLimitProviderList, /enabledLimitProviderSet\(\)/);
@@ -255,9 +254,9 @@ test('Home limit provider settings expand with the shared accordion transition',
   assert.match(renderHomeSettingsList, /accordion-animation-inner/);
   assert.match(renderHomeSettingsList, /container\.classList\.toggle\('hidden', !state\.homeLimitSettingsExpanded\)/);
   assert.doesNotMatch(renderHomeSettingsList, /if \(id === 'limits' && state\.homeLimitSettingsExpanded\) wrap\.append\(renderHomeLimitProviderList\(\)\)/);
-  assert.match(css, /\.tool-preference-list,\s*\.settings-nested-list,\s*\.cursor-settings-details-inner/);
-  assert.match(css, /\.tool-preference-list > \* \+ \*,\s*\.settings-nested-list > \* \+ \*/);
-  assert.doesNotMatch(cssRule(css, '.settings-nested-list'), /gap:\s*6px/);
+  assert.match(css, /\.home-settings-list,\s*\.home-limit-provider-list,\s*\.cursor-settings-details-inner/);
+  assert.match(css, /\.home-settings-list > \* \+ \*,\s*\.home-limit-provider-list > \* \+ \*/);
+  assert.doesNotMatch(cssRule(css, '.home-settings-list'), /gap:\s*6px/);
 });
 
 test('view switcher preserves click-to-cycle and direct selection without crowding settings', () => {
@@ -354,7 +353,7 @@ test('Home-launched secondary views expose an accessible return action', () => {
 test('Projects view separates visibility from metadata collection', () => {
   const app = readRendererFile('app.js');
   assert.match(app, /state\.projectSettingsExpanded = false/);
-  assert.match(app, /projectsEnabled === false\) ids\.push\('project'\)/);
+  assert.match(app, /id === 'project' && !projectsEnabled/);
   assert.match(app, /projectSettingsContainer/);
   assert.match(app, /function renderProjectSettingsList/);
   assert.match(app, /settings\.views\.enableProjects/);

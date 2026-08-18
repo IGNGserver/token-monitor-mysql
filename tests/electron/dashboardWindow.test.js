@@ -12,7 +12,7 @@ const { usageConfigFromSettings } = require('../../src/electron/runtimeConfig');
 test('preload exposes the dashboard IPC surface', () => {
   const preload = read('src', 'electron', 'preload.js');
   assert.match(preload, /openDashboard: \(\) => ipcRenderer\.invoke\('dashboard:open'\)/);
-  assert.match(preload, /getDashboardHistory: \(options\) => ipcRenderer\.invoke\('dashboard:getHistory', options\)/);
+  assert.match(preload, /getDashboardHistory: \(\) => ipcRenderer\.invoke\('dashboard:getHistory'\)/);
   assert.match(preload, /ipcRenderer\.on\('dashboard:historyChanged', listener\)/);
   assert.match(preload, /dashboard: \{/);
   assert.match(preload, /ready: \(\) => ipcRenderer\.send\('dashboard:ready'\)/);
@@ -33,28 +33,24 @@ test('main registers dashboard handlers and a sender-scoped close', () => {
 
 test('dashboard readiness waits for data and recovers only from actual failures', () => {
   const main = read('src', 'electron', 'main.js');
-  const historySource = read('src', 'electron', 'historySource.js');
   assert.doesNotMatch(main, /dashboardShowFallback|armDashboardShowFallback/);
   assert.match(main, /webContents\.on\('did-fail-load'/);
   assert.match(main, /errorCode === -3/);
   assert.match(main, /webContents\.on\('render-process-gone'/);
   assert.match(main, /win\.on\('unresponsive'/);
   assert.match(main, /function discardFailedDashboardWindow\(win, reason\)[\s\S]*?win\.destroy\(\)/);
-  assert.match(historySource, /const controller = new AbortController\(\);[\s\S]*?signal: controller\.signal[\s\S]*?clearTimeout\(timeout\)/);
+  assert.match(main, /const controller = new AbortController\(\);[\s\S]*?signal: controller\.signal[\s\S]*?clearTimeout\(timeout\)/);
 });
 
-test('Dashboard and Widget share the complete local/host/client history resolver', () => {
+test('getDashboardHistory mirrors the local/sync split of fetchStats', () => {
   const main = read('src', 'electron', 'main.js');
-  const historySource = read('src', 'electron', 'historySource.js');
-  assert.match(main, /return resolveCompleteHistory\(historyResolverOptions\(\)\)/);
-  assert.match(historySource, /mode === 'local'/);
-  assert.match(historySource, /hubMode === 'host' && embeddedHub/);
-  assert.match(historySource, /\/api\/history/);
+  assert.match(main, /aggregateHistory\(localDevice \? \[localDevice\] : \[\]\)/);
+  assert.match(main, /\/api\/history/);
 });
 
 test('getDashboardHistory reads local history directly without a blocking collection tick', () => {
   const main = read('src', 'electron', 'main.js');
-  const fn = /async function getDashboardHistory\(options = \{\}\)\s*\{([\s\S]*?)\n\}/.exec(main);
+  const fn = /async function getDashboardHistory\(\)\s*\{([\s\S]*?)\n\}/.exec(main);
   assert.ok(fn, 'getDashboardHistory should be defined');
   // Awaiting a full collection tick here delayed the fetch for seconds; on a
   // quick close/reopen the response outlived the renderer and the dashboard
@@ -62,20 +58,11 @@ test('getDashboardHistory reads local history directly without a blocking collec
   assert.doesNotMatch(fn[1], /localCollectorHandle\.tick/);
 });
 
-test('fixed ranges request existing per-device History without changing ingest', () => {
-  const main = read('src', 'electron', 'main.js');
-  const historySource = read('src', 'electron', 'historySource.js');
-  assert.match(main, /includeDevices[\s\S]*?resolveCompleteHistoryWithDevices/);
-  assert.match(main, /ipcMain\.handle\('dashboard:getHistory', \(_event, options\) => getDashboardHistory\(options\)\)/);
-  assert.match(historySource, /\/api\/devices/);
-  assert.match(historySource, /deviceHistories: parseDeviceHistories\(devices\)/);
-});
-
 test('dashboard history is gated by the historyEnabled setting', () => {
   const main = read('src', 'electron', 'main.js');
   assert.match(main, /historyEnabled:\s*true/);
   assert.match(main, /historyEnabled:\s*parseBoolean\(patch\.historyEnabled[\s\S]*?,\s*false\)/);
-  assert.match(read('src', 'electron', 'historySource.js'), /historyEnabled === false/);
+  assert.match(main, /if \(settings\?\.historyEnabled === false\) return aggregateHistory\(\[\]\)/);
   assert.equal(usageConfigFromSettings({ historyEnabled: true }).historyEnabled, true);
   assert.equal(usageConfigFromSettings({ historyEnabled: false }).historyEnabled, false);
   assert.match(main, /usageConfigFromSettings\(settings, \{/);
@@ -90,12 +77,6 @@ test('agent history collection defaults to enabled, matching the widget', () => 
   assert.match(configDoc, /TOKEN_MONITOR_HISTORY_ENABLED=/);
 });
 
-test('headless agent leaves Claude Web credentials to the widget transport', () => {
-  const agent = read('src', 'agent', 'agent.js');
-  assert.match(agent, /claudeWebCookie: ''/);
-  assert.doesNotMatch(agent, /CLAUDE_WEB_COOKIE|claudeWebCookieRuntime/);
-});
-
 test('dashboard.html wires the shared modules and the two panels', () => {
   const html = read('src', 'electron', 'renderer', 'dashboard.html');
   assert.match(html, /<link rel="stylesheet" href="styles\.css" \/>/);
@@ -103,19 +84,8 @@ test('dashboard.html wires the shared modules and the two panels', () => {
   assert.match(html, /<script src="usageCharts\.js"><\/script>/);
   assert.match(html, /<script src="i18n\.js"><\/script>/);
   assert.match(html, /<script src="\.\.\/\.\.\/shared\/currency\.js"><\/script>/);
-  assert.match(html, /<script src="\.\.\/\.\.\/shared\/compactMoney\.js"><\/script>/);
   assert.match(html, /<script src="dashboard\.js"><\/script>/);
-  const scriptOrder = [
-    '<script src="../../shared/compactTokens.js"></script>',
-    '<script src="../../shared/currency.js"></script>',
-    '<script src="../../shared/compactMoney.js"></script>',
-    '<script src="dashboard.js"></script>'
-  ].map((script) => html.indexOf(script));
-  assert.ok(scriptOrder.every((index) => index >= 0), 'dashboard should include every compact money dependency');
-  assert.ok(
-    scriptOrder.every((index, position) => position === 0 || scriptOrder[position - 1] < index),
-    'compact money should load after its token and currency dependencies'
-  );
+  assert.match(html, /<script src="\.\.\/windowsBackdropMode\.js"><\/script>[\s\S]*<script src="dashboard\.js"><\/script>/);
   assert.match(html, /id="trendsTab"/);
   assert.match(html, /id="activityTab"/);
   assert.match(html, /id="dashChart"/);
@@ -124,6 +94,26 @@ test('dashboard.html wires the shared modules and the two panels', () => {
   assert.match(html, /data-control="mode"/);
   assert.match(html, /data-control="stack"/);
   assert.match(html, /id="rangeSelect"/);
+});
+
+test('dashboard keeps native Windows material as its base layer', () => {
+  const css = read('src', 'electron', 'renderer', 'dashboard.css');
+  const js = read('src', 'electron', 'renderer', 'dashboard.js');
+  const main = read('src', 'electron', 'main.js');
+  assert.match(css, /html\.is-windows\[data-windows-backdrop\] body[\s\S]*background:\s*transparent/);
+  assert.match(js, /function applyWindowsBackdrop\(settings\)/);
+  assert.match(js, /windowsBackdropUnsupported/);
+  assert.match(js, /document\.documentElement\.dataset\.windowsBackdrop/);
+  assert.match(main, /const dashboardQuery = process\.platform === 'win32' && glass && !nativeWindowsBackdrop/);
+  assert.match(main, /function rebuildDashboardWindow\(\)/);
+});
+
+test('dashboard reapplies theme colours when the system appearance changes', () => {
+  const js = read('src', 'electron', 'renderer', 'dashboard.js');
+  assert.match(js, /prefers-color-scheme: dark/);
+  assert.match(js, /systemDarkThemeMedia\?\.addEventListener/);
+  assert.match(js, /themeCssVarEntries\(overrides,\s*\{[\s\S]*nativeBackdrop/);
+  assert.match(js, /state\.settings = \{ \.\.\.state\.settings, \.\.\.next \}/);
 });
 
 test('dashboard.css declares chart classes and a flat theme override', () => {
@@ -194,7 +184,7 @@ test('dashboard motion is data-scoped and respects reduced-motion preferences', 
 
 test('main invalidates an open dashboard only when stats history changes', () => {
   const main = read('src', 'electron', 'main.js');
-  const sendPush = /function sendPush\(payload[^)]*\)\s*\{([\s\S]*?)\n\}\n\nfunction statsHistoryRevision/.exec(main);
+  const sendPush = /function sendPush\(payload\)\s*\{([\s\S]*?)\n\}\n\nfunction statsHistoryRevision/.exec(main);
   assert.ok(sendPush, 'sendPush should be defined before statsHistoryRevision');
   assert.match(sendPush[1], /if \(payload\?\.data\?\.stats\) \{[\s\S]*?nextHistoryRevision !== previousHistoryRevision[\s\S]*?dashboardWindow\.webContents\.send\('dashboard:historyChanged'\)/);
 });
@@ -211,22 +201,6 @@ test('dashboard repains on a rate-only settings push, not just a currency-code c
   // Both the rate path and the currency-code path must be able to trigger render.
   assert.match(handler[1], /needsRender\s*=\s*true/);
   assert.match(handler[1], /if \(needsRender\) render\(\)/);
-});
-
-test('dashboard shares localized token units and repaints when the setting or language changes', () => {
-  const js = read('src', 'electron', 'renderer', 'dashboard.js');
-  const html = read('src', 'electron', 'renderer', 'dashboard.html');
-  const handler = /window\.tokenMonitor\.onSettingsPush\?\.\(\(next\)\s*=>\s*\{([\s\S]*?)\n\}\);/.exec(js);
-  assert.ok(handler, 'dashboard should subscribe to settings pushes');
-  assert.match(html, /<script src="\.\.\/\.\.\/shared\/compactTokens\.js"><\/script>/);
-  assert.match(js, /const compactMoneyApi = window\.TokenMonitorCompactMoney/);
-  assert.match(js, /const compactTokenApi = window\.TokenMonitorCompactTokens/);
-  assert.match(js, /compactTokenApi\.formatCompactTokens\(value, effectiveCompactTokenUnits\(\), state\.locale\)/);
-  assert.match(js, /compactMoneyApi\.formatCompactCurrencyFromUsd\(\s*usd,\s*state\.currency,\s*effectiveCompactTokenUnits\(\),\s*state\.locale/s);
-  assert.match(js, /state\.locale = i18n\.resolveLocale\(settings\.locale \|\| settings\.language, navigator\.languages\)/);
-  assert.match(handler[1], /nextLocale = i18n\.resolveLocale\(next\.locale \|\| next\.language, navigator\.languages\)/);
-  assert.match(handler[1], /nextCompactTokenUnits = compactTokenApi\.normalizeCompactTokenUnits\(next\.compactTokenUnits\)/);
-  assert.match(handler[1], /needsRender = true/);
 });
 
 test('the trends preview opens the dashboard via IPC', () => {

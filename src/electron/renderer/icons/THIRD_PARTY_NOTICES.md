@@ -2,18 +2,14 @@ Renderer icon assets include local copies of open-source SVG icons.
 
 Sources:
 - Lucide Icons: https://github.com/lucide-icons/lucide
-  - actions/arrow-left.svg: arrow-left
   - actions/settings.svg: settings
   - settings/general.svg: sliders-horizontal
   - settings/main.svg: panels-top-left
   - settings/collection.svg: database
   - settings/accounts.svg: users-round
-  - settings/subscriptions.svg: credit-card
   - settings/sync.svg: cloud-sync
   - settings/appearance.svg: palette
   - views/home.svg: house
-  - views/project.svg: folder
-  - views/project-row.svg: folder
 - Tabler Icons: https://github.com/tabler/tabler-icons
   - settings/window.svg: app-window
 

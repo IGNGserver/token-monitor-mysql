@@ -2,6 +2,8 @@
 
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
+const { EventEmitter } = require('node:events');
+const Module = require('node:module');
 const path = require('node:path');
 const test = require('node:test');
 const zlib = require('node:zlib');
@@ -13,7 +15,7 @@ const {
   formatTrayText,
   reconcileCodexAccountSelection,
   pickUsageTrayIconId,
-  runTrayMenuAction,
+  refreshTrayMenu,
   shouldUseTemplateTrayIcon,
   sortCodexAccountsForDisplay
 } = require('../../src/electron/tray');
@@ -25,11 +27,7 @@ const {
   pickConfiguredLimitProviders,
   pickConfiguredSessionLimits,
   pickLimitProviderByKindPriority,
-  pickRecentUsageActivity,
-  pickRecentUsageProviderId,
-  pickWorstLimitProvider,
-  trayShowsTitle,
-  usageSessionActivityTimestampMs
+  pickWorstLimitProvider
 } = require('../../src/shared/trayText');
 
 const stats = {
@@ -45,138 +43,40 @@ const stats = {
   }
 };
 
-function fakeTrayElectron(calls) {
-  class FakeTray {
-    constructor(icon) {
-      this.destroyed = false;
-      this.handlers = {};
-      calls.icons.push(icon);
+function decodeRgbaScanlines(scanlines, width, height) {
+  const bytesPerPixel = 4;
+  const rowBytes = width * bytesPerPixel;
+  const rows = [];
+  let offset = 0;
+  let previous = Buffer.alloc(rowBytes);
+  for (let y = 0; y < height; y += 1) {
+    const filter = scanlines[offset++];
+    const filtered = scanlines.subarray(offset, offset + rowBytes);
+    offset += rowBytes;
+    const row = Buffer.alloc(rowBytes);
+    for (let i = 0; i < rowBytes; i += 1) {
+      const left = i >= bytesPerPixel ? row[i - bytesPerPixel] : 0;
+      const up = previous[i];
+      const upLeft = i >= bytesPerPixel ? previous[i - bytesPerPixel] : 0;
+      const value = filtered[i];
+      if (filter === 0) row[i] = value;
+      else if (filter === 1) row[i] = (value + left) & 0xff;
+      else if (filter === 2) row[i] = (value + up) & 0xff;
+      else if (filter === 3) row[i] = (value + Math.floor((left + up) / 2)) & 0xff;
+      else if (filter === 4) {
+        const estimate = left + up - upLeft;
+        const pa = Math.abs(estimate - left);
+        const pb = Math.abs(estimate - up);
+        const pc = Math.abs(estimate - upLeft);
+        const predictor = pa <= pb && pa <= pc ? left : pb <= pc ? up : upLeft;
+        row[i] = (value + predictor) & 0xff;
+      } else throw new Error(`unsupported PNG filter ${filter}`);
     }
-
-    isDestroyed() { return this.destroyed; }
-    on(name, callback) { this.handlers[name] = callback; }
-    popUpContextMenu(menu) { calls.popups.push(menu); }
-    setContextMenu(menu) { calls.contextMenus.push(menu); }
-    setToolTip(value) { calls.tooltips.push(value); }
+    rows.push(row);
+    previous = row;
   }
-
-  return {
-    Menu: {
-      buildFromTemplate(template) {
-        calls.templates.push(template);
-        return { template };
-      }
-    },
-    Tray: FakeTray,
-    nativeImage: {
-      createFromPath(iconPath) {
-        calls.iconPaths.push(iconPath);
-        return { resize: (size) => ({ iconPath, size }) };
-      }
-    }
-  };
+  return rows;
 }
-
-function trayCalls() {
-  return {
-    contextMenus: [],
-    iconPaths: [],
-    icons: [],
-    popups: [],
-    templates: [],
-    tooltips: []
-  };
-}
-
-test('recent usage provider follows the newest valid session timestamp', () => {
-  const recentStats = {
-    periods: {
-      today: {
-        sessions: {
-          'claude:older': { client: 'claude', lastUsedAt: '2026-08-12T10:00:00.000Z' },
-          'openclaw:newer': { client: 'openclaw', lastUsedAt: '2026-08-12T10:01:00.000Z' },
-          'unknown:newest': { client: 'unknown', lastUsedAt: '2026-08-12T10:02:00.000Z' }
-        }
-      },
-      allTime: {
-        sessions: {
-          'codex:invalid': { client: 'codex', lastUsedAt: 'not-a-date' }
-        }
-      }
-    }
-  };
-
-  assert.deepEqual(pickRecentUsageActivity(recentStats), {
-    provider: 'unknown',
-    timestampMs: Date.parse('2026-08-12T10:02:00.000Z')
-  });
-  recentStats.localRecentUsageActivity = pickRecentUsageActivity(recentStats);
-  assert.equal(pickRecentUsageProviderId(recentStats), 'unknown');
-  assert.equal(
-    pickRecentUsageProviderId(recentStats, ['claude', 'openclaw', 'codex']),
-    null
-  );
-  assert.equal(pickRecentUsageProviderId({ periods: { today: {} } }), null);
-});
-
-test('recent usage provider includes the local Reasonix native session view', () => {
-  const recentStats = {
-    periods: {
-      today: {
-        sessions: {
-          'claude:older': { client: 'claude', lastUsedAt: '2026-08-12T10:00:00.000Z' }
-        }
-      }
-    },
-    nativeSessions: {
-      today: {
-        'reasonix:newer': {
-          client: 'reasonix',
-          lastMessageAt: '2026-08-12T10:05:00.000Z',
-          lastUsedAt: '2026-08-12T10:06:00.000Z'
-        }
-      },
-      month: {},
-      allTime: {}
-    }
-  };
-
-  recentStats.localRecentUsageActivity = pickRecentUsageActivity(recentStats);
-  assert.equal(pickRecentUsageProviderId(recentStats), 'reasonix');
-  assert.equal(pickRecentUsageProviderId(recentStats, ['claude', 'reasonix']), 'reasonix');
-});
-
-test('Reasonix title metadata cannot masquerade as recent activity', () => {
-  const renamedReasonix = {
-    client: 'reasonix',
-    createdAt: '2026-08-12T09:00:00.000Z',
-    lastUsedAt: '2026-08-12T10:05:00.000Z',
-    updatedAt: '2026-08-12T10:05:00.000Z'
-  };
-  assert.equal(
-    usageSessionActivityTimestampMs(renamedReasonix, 'native'),
-    Date.parse('2026-08-12T09:00:00.000Z')
-  );
-
-  const statsAfterRename = {
-    periods: {
-      today: {
-        sessions: {
-          'claude:active': { client: 'claude', lastUsedAt: '2026-08-12T10:00:00.000Z' }
-        }
-      }
-    },
-    nativeSessions: {
-      today: {},
-      month: {},
-      allTime: { 'reasonix:renamed': renamedReasonix }
-    }
-  };
-  assert.equal(pickRecentUsageActivity(statsAfterRename)?.provider, 'claude');
-
-  statsAfterRename.nativeSessions.allTime['reasonix:renamed'].lastMessageAt = '2026-08-12T10:10:00.000Z';
-  assert.equal(pickRecentUsageActivity(statsAfterRename)?.provider, 'reasonix');
-});
 
 test('fallback tray icon source stays transparent and high-resolution', () => {
   const icon = fs.readFileSync(path.join(__dirname, '..', '..', 'assets', 'icons', 'tray-token-monitor.png'));
@@ -193,7 +93,21 @@ test('fallback tray icon source stays transparent and high-resolution', () => {
     offset += 12 + length;
   }
   const scanlines = zlib.inflateSync(Buffer.concat(idat));
-  assert.equal(scanlines[4], 0, 'tray PNG corner should remain fully transparent');
+  const rows = decodeRgbaScanlines(scanlines, 44, 44);
+  assert.equal(rows[0][3], 0, 'tray PNG corner should remain fully transparent');
+
+  let visiblePixels = 0;
+  for (const row of rows) {
+    for (let x = 0; x < 44; x += 1) {
+      const offset = x * 4;
+      const alpha = row[offset + 3];
+      if (alpha === 0) continue;
+      visiblePixels += 1;
+      assert.equal(row[offset], row[offset + 1], 'template icon must not contain a red tint');
+      assert.equal(row[offset + 1], row[offset + 2], 'template icon must not contain a colored tint');
+    }
+  }
+  assert.ok(visiblePixels > 0, 'tray PNG should contain the T mark');
 });
 
 test('macOS tray icon downsamples the high-resolution template like provider icons', () => {
@@ -244,171 +158,42 @@ test('non-macOS tray icon keeps the resized full-color app asset', () => {
   assert.deepEqual(calls.slice(1), [['resize', { width: 20, height: 20 }]]);
 });
 
-test('Linux tray exports current menu state and skips unchanged D-Bus rebuilds', () => {
-  const calls = trayCalls();
-  let state = {
-    activeCodexAccountId: 'one',
-    codexAccounts: [
-      { id: 'one', email: 'one@example.com' },
-      { id: 'two', email: 'two@example.com' }
-    ],
-    codexSwitching: false,
-    locale: 'en',
-    maskAccountEmails: false,
-    refreshing: false,
-    trayContent: 'tokens',
-    trayMode: true,
-    viewEnabled: { project: true }
-  };
-  const tray = createTray({
-    electron: fakeTrayElectron(calls),
-    getMenuState: () => state,
-    onToggle() {},
-    platform: 'linux'
-  });
-
-  assert.equal(calls.contextMenus.length, 1);
-  assert.equal(calls.contextMenus[0].template[0].label, 'Refresh Now');
-  tray.refreshContextMenu();
-  assert.equal(calls.contextMenus.length, 1, 'unchanged menu state should not be exported again');
-
-  state = { ...state, refreshing: true };
-  tray.refreshContextMenu();
-  assert.equal(calls.contextMenus.length, 2);
-  assert.equal(calls.contextMenus[1].template[0].label, 'Refreshing…');
-  assert.equal(calls.contextMenus[1].template[0].enabled, false);
-
-  state = { ...state, refreshing: false };
-  tray.refreshContextMenu();
-  assert.equal(calls.contextMenus.length, 3);
-  assert.equal(calls.contextMenus[2].template[0].label, 'Refresh Now');
-  assert.equal(calls.contextMenus[2].template[0].enabled, true);
-
-  state = { ...state, codexSwitching: true };
-  tray.refreshContextMenu();
-  assert.equal(calls.contextMenus.length, 4);
-  assert.equal(calls.contextMenus[3].template[2].submenu.every((item) => item.enabled === false), true);
-
-  state = { ...state, activeCodexAccountId: 'two', codexSwitching: false };
-  tray.refreshContextMenu();
-  assert.equal(calls.contextMenus.length, 5);
-  assert.deepEqual(
-    calls.contextMenus[4].template[2].submenu.map((item) => item.checked),
-    [false, true]
-  );
-
-  state = {
-    ...state,
-    activeCodexAccountId: 'three',
-    codexAccounts: [
-      { id: 'one', email: 'one@example.com' },
-      { id: 'three', email: 'three@example.com' }
-    ],
-    maskAccountEmails: true,
-    viewEnabled: { project: false }
-  };
-  tray.refreshContextMenu();
-  assert.equal(calls.contextMenus.length, 6);
-  const settingsMenu = calls.contextMenus[5].template;
-  assert.equal(
-    settingsMenu[1].submenu.find((item) => item.label === 'Projects').enabled,
-    false
-  );
-  assert.doesNotMatch(JSON.stringify(settingsMenu[2]), /one@example\.com|three@example\.com|two@example\.com/);
-  assert.deepEqual(settingsMenu[2].submenu.map((item) => item.checked), [false, true]);
-
-  tray.destroyed = true;
-  state = { ...state, refreshing: true };
-  tray.refreshContextMenu();
-  assert.equal(calls.contextMenus.length, 6);
-});
-
-test('Windows tray keeps building its menu when right-clicked', () => {
-  const calls = trayCalls();
-  let state = { refreshing: false, trayContent: 'tokens', trayMode: true };
-  const tray = createTray({
-    electron: fakeTrayElectron(calls),
-    getMenuState: () => state,
-    onToggle() {},
-    platform: 'win32'
-  });
-
-  assert.equal(calls.contextMenus.length, 0);
-  tray.refreshContextMenu();
-  assert.equal(calls.contextMenus.length, 0);
-
-  state = { ...state, refreshing: true };
-  tray.handlers['right-click']();
-  assert.equal(calls.popups.length, 1);
-  assert.equal(calls.popups[0].template[0].label, 'Refreshing…');
-});
-
-test('Linux tray re-exports the checked window presentation after a menu action', () => {
-  const calls = trayCalls();
-  let state = {
-    locale: 'en',
-    trayContent: 'tokens',
-    trayMode: false,
-    windowBehavior: 'floating'
-  };
-  createTray({
-    electron: fakeTrayElectron(calls),
-    getMenuState: () => state,
-    onSetWindowPresentation(value) {
-      state = {
-        ...state,
-        trayMode: value === 'tray',
-        ...(value === 'tray' ? {} : { windowBehavior: value })
-      };
+test('Linux trays bind the context menu and refresh its state without right-click events', () => {
+  const nativeImage = { createFromPath: () => ({ resize: () => ({}) }) };
+  const fakeElectron = {
+    Menu: { buildFromTemplate: (template) => ({ template }) },
+    Tray: class FakeTray extends EventEmitter {
+      constructor(icon) {
+        super();
+        this.icon = icon;
+        this.contextMenus = [];
+      }
+      isDestroyed() { return false; }
+      setContextMenu(menu) { this.contextMenus.push(menu); }
+      setToolTip() {}
     },
-    onToggle() {},
-    platform: 'linux'
-  });
+    nativeImage
+  };
+  const originalLoad = Module._load;
+  Module._load = function load(request, parent, isMain) {
+    if (request === 'electron') return fakeElectron;
+    return originalLoad.call(this, request, parent, isMain);
+  };
 
-  const presentationItems = calls.contextMenus[0].template
-    .find((item) => item.label === 'Window Presentation').submenu;
-  assert.deepEqual(presentationItems.map((item) => item.checked), [false, true, false, false]);
+  try {
+    let state = { appVersion: '1.0.0', trayContent: 'tokens', trayMode: true, windowBehavior: 'floating' };
+    const tray = createTray({ platform: 'linux', getMenuState: () => state, onToggle: () => {} });
+    assert.equal(tray.contextMenus.length, 1);
+    assert.equal(tray.contextMenus[0].template[0].enabled, true);
+    assert.equal(tray.listenerCount('right-click'), 0);
 
-  presentationItems.find((item) => item.label === 'Normal Window').click();
-
-  assert.equal(calls.contextMenus.length, 2);
-  const refreshedItems = calls.contextMenus[1].template
-    .find((item) => item.label === 'Window Presentation').submenu;
-  assert.deepEqual(refreshedItems.map((item) => item.checked), [false, false, true, false]);
-});
-
-test('tray menu actions publish both in-flight transitions', async () => {
-  let inFlight = false;
-  let finish;
-  const published = [];
-  const result = runTrayMenuAction({
-    setInFlight: (value) => { inFlight = value; },
-    refreshContextMenu: () => published.push(inFlight),
-    action: () => new Promise((resolve) => { finish = resolve; })
-  });
-
-  assert.equal(inFlight, true);
-  assert.deepEqual(published, [true]);
-  finish('done');
-  assert.equal(await result, 'done');
-  assert.equal(inFlight, false);
-  assert.deepEqual(published, [true, false]);
-});
-
-test('tray menu actions clear in-flight state after failure', async () => {
-  let inFlight = false;
-  const published = [];
-
-  await assert.rejects(
-    runTrayMenuAction({
-      setInFlight: (value) => { inFlight = value; },
-      refreshContextMenu: () => published.push(inFlight),
-      action: async () => { throw new Error('failed'); }
-    }),
-    /failed/
-  );
-  assert.equal(inFlight, false);
-  assert.deepEqual(published, [true, false]);
+    state = { ...state, refreshing: true };
+    refreshTrayMenu(tray);
+    assert.equal(tray.contextMenus.length, 2);
+    assert.equal(tray.contextMenus[1].template[0].enabled, false);
+  } finally {
+    Module._load = originalLoad;
+  }
 });
 
 test('tray context menu complements the primary click with useful commands', () => {
@@ -501,7 +286,7 @@ test('tray context menu switches between enabled Codex accounts', () => {
     onSwitchCodexAccount: (id) => calls.push(id)
   });
 
-  assert.equal(template[2].label, 'Codex · p***r@example.com · Personal');
+  assert.equal(template[2].label, 'Codex Account · p***r@example.com · Personal');
   assert.deepEqual(template[2].submenu.map((item) => [item.label, item.checked]), [
     ['p***r@example.com · Personal', true],
     ['p***r@example.com · Team', false]
@@ -637,17 +422,7 @@ test('Codex tray account selection waits for a post-switch local provider snapsh
 
 test('tray main-process actions surface refresh errors and expand a collapsed bubble before tray mode', () => {
   const source = fs.readFileSync(path.join(__dirname, '../../src/electron/main.js'), 'utf8');
-  const refreshAction = source.slice(
-    source.indexOf('async function refreshFromTray'),
-    source.indexOf('function setTrayContentFromMenu')
-  );
-  const codexSwitchAction = source.slice(
-    source.indexOf('async function switchCodexAccountFromTray'),
-    source.indexOf('function configureWindowToggleShortcut')
-  );
-  assert.match(refreshAction, /catch \(error\)[\s\S]*?showTrayRefreshError\(error\?\.message \|\| error\)/);
-  assert.match(refreshAction, /return runTrayMenuAction\(\{[\s\S]*?trayRefreshInFlight = value;[\s\S]*?refreshContextMenu: refreshTrayContextMenu/);
-  assert.match(codexSwitchAction, /return runTrayMenuAction\(\{[\s\S]*?trayCodexSwitchInFlight = value;[\s\S]*?refreshContextMenu: refreshTrayContextMenu/);
+  assert.match(source, /async function refreshFromTray[\s\S]*?catch \(error\)[\s\S]*?showTrayRefreshError\(error\?\.message \|\| error\)/);
   assert.match(source, /if \(value === 'tray'\)[\s\S]*?saveSettings\(\);\s*syncFloatingBubbleAvailability\(\);\s*enterTrayMode\(\);/);
 });
 
@@ -1040,48 +815,4 @@ test('tray cost text uses the selected display currency', () => {
   assert.equal(formatTrayText({ periods: { today: { costUsd: 1, totalTokens: 12_000 } } }, 'cost'), '$1.0000');
   assert.equal(formatTrayText({ periods: { today: { costUsd: 1, totalTokens: 12_000 } } }, 'cost', 'TWD'), 'NT$31.50');
   assert.equal(formatTrayText({ periods: { today: { costUsd: 1, totalTokens: 12_000 } } }, 'both', 'HKD'), '12.0K · HK$7.80');
-});
-
-test('tray token text follows the shared localized unit setting', () => {
-  assert.equal(
-    formatTrayText(
-      { periods: { today: { totalTokens: 12_000, costUsd: 1 } } },
-      'both',
-      'HKD',
-      { compactTokenUnits: 'localized', locale: 'zh-TW' }
-    ),
-    '1.2萬 · HK$7.80'
-  );
-});
-
-test('only macOS draws a tray title beside the icon', () => {
-  // main.js gates tray.setTitle() on darwin; Windows and Linux show the icon
-  // alone and put the text in the tooltip. The settings Live preview reads the
-  // same helper so it cannot promise text the platform will never render.
-  assert.equal(trayShowsTitle('darwin'), true);
-  assert.equal(trayShowsTitle('win32'), false);
-  assert.equal(trayShowsTitle('linux'), false);
-  assert.equal(trayShowsTitle(undefined), false);
-});
-
-test('every tray helper main.js destructures is actually exported', () => {
-  // main.js pulls its tray helpers off ./tray, which re-exports a chosen subset
-  // of ../shared/trayText. Adding a helper to the shared module and to main.js
-  // without widening that re-export leaves main.js holding undefined, and no
-  // test drives updateTrayDisplay(), so the suite stays green while the real
-  // tray throws on every refresh.
-  const trayModule = require('../../src/electron/tray');
-  const mainSource = fs.readFileSync(
-    path.join(__dirname, '..', '..', 'src', 'electron', 'main.js'),
-    'utf8'
-  );
-  const block = mainSource.match(/const \{([^}]+)\} = require\('\.\/tray'\);/);
-  assert.ok(block, 'main.js should destructure its tray helpers from ./tray');
-  const names = block[1]
-    .split(',')
-    .map((entry) => entry.trim())
-    .filter(Boolean);
-  assert.ok(names.length > 0);
-  const missing = names.filter((name) => typeof trayModule[name] === 'undefined');
-  assert.deepEqual(missing, []);
 });

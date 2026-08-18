@@ -51,18 +51,6 @@
     return { ...item, period };
   }
 
-  function costDisplayPatch(item, rowIndex, patch) {
-    return Array.isArray(item?.rows)
-      ? sourcePatch(item, rowIndex, patch)
-      : { ...item, ...patch };
-  }
-
-  function usageScopePatch(item, rowIndex, usageScope) {
-    return Array.isArray(item?.rows)
-      ? sourcePatch(item, rowIndex, { usageScope })
-      : { ...item, usageScope };
-  }
-
   function accountModeSourcePatch(source, accounts, accountMode) {
     if (accountMode !== 'specific') {
       return { accountMode, accountKey: '', window: source.window };
@@ -102,16 +90,6 @@
     };
   }
 
-  function handlePickerDocumentScroll(picker, eventTarget, actions = {}) {
-    if (picker?.menu?.contains?.(eventTarget)) return 'ignore';
-    if (!picker?.owner?.isConnected || !picker?.trigger?.isConnected) {
-      actions.close?.();
-      return 'close';
-    }
-    actions.reposition?.();
-    return 'reposition';
-  }
-
   function syncTrayComposerSurfaces(surfaces, composers, createComposer) {
     for (const surface of surfaces) {
       surface.root?.classList.toggle('hidden', !surface.visible);
@@ -134,9 +112,6 @@
       getStylePreview,
       getFontStylePreview,
       renderItem,
-      getPreview,
-      isEditable,
-      onCustomize,
       onLayoutChange,
       providerChoices,
       accountChoices,
@@ -161,10 +136,6 @@
 
     function layout() {
       return layoutApi.normalizeTrayLayout(getLayout());
-    }
-
-    function editing() {
-      return isEditable?.() !== false;
     }
 
     function emit(nextLayout, commit = true) {
@@ -457,14 +428,8 @@
         closePickerMenu();
       };
       const onDocumentScroll = (event) => {
-        // Stats updates can adjust the settings page's scroll position while a
-        // picker is open. Keep the in-progress control stable and follow its
-        // connected trigger instead of treating that layout correction as an
-        // outside dismissal.
-        handlePickerDocumentScroll(activePicker, event.target, {
-          close: () => closePickerMenu({ restoreFocus: false }),
-          reposition: positionPickerMenu
-        });
+        if (menu.contains(event.target)) return;
+        closePickerMenu({ restoreFocus: false });
       };
       activePicker = {
         owner,
@@ -641,45 +606,6 @@
       ];
     }
 
-    function costDisplayEditors(item, rowIndex = 0) {
-      const source = Array.isArray(item.rows) ? sourceForItem(item, rowIndex) : item;
-      return [
-        picker(
-          l('trayComposer.costFormat', 'Cost format'),
-          [
-            { value: 'compact', label: l('trayComposer.costFormat.compact', 'Compact') },
-            { value: 'full', label: l('trayComposer.costFormat.full', 'Full number') }
-          ],
-          source.costFormat,
-          (costFormat) => updateItem(item, costDisplayPatch(item, rowIndex, { costFormat }))
-        ),
-        picker(
-          l('trayComposer.costDecimals', 'Decimal places'),
-          [
-            { value: 'auto', label: l('trayComposer.costDecimals.auto', 'Automatic') },
-            ...[0, 1, 2, 3, 4].map((value) => ({ value, label: String(value) }))
-          ],
-          source.costDecimals,
-          (costDecimals) => updateItem(item, costDisplayPatch(item, rowIndex, {
-            costDecimals: costDecimals === 'auto' ? 'auto' : Number(costDecimals)
-          }))
-        )
-      ];
-    }
-
-    function usageScopeEditor(item, rowIndex = 0) {
-      const source = Array.isArray(item.rows) ? sourceForItem(item, rowIndex) : item;
-      return picker(
-        l('trayComposer.usageScope', 'Usage source'),
-        [
-          { value: 'all', label: l('trayComposer.usageScope.all', 'All AI tools') },
-          { value: 'recent', label: l('trayComposer.usageScope.recent', 'Most recently active tool') }
-        ],
-        source.usageScope,
-        (usageScope) => updateItem(item, usageScopePatch(item, rowIndex, usageScope))
-      );
-    }
-
     function sourceEditor(item, rowIndex, title = '', options = {}) {
       const source = sourceForItem(item, rowIndex);
       const section = document.createElement('section');
@@ -702,14 +628,12 @@
 
       if (metric === 'tokens' || metric === 'cost') {
         const currentPeriod = Array.isArray(item.rows) ? source.period : item.period;
-        section.append(usageScopeEditor(item, rowIndex));
         section.append(picker(
           l('trayComposer.period', 'Period'),
           periodChoices(),
           currentPeriod,
           (period) => updateItem(item, periodItemPatch(item, rowIndex, period))
         ));
-        if (metric === 'cost') section.append(...costDisplayEditors(item, rowIndex));
         return section;
       }
 
@@ -740,10 +664,6 @@
           {
             value: 'lowestLimit',
             label: l('trayComposer.icon.auto.lowestLimit', 'Lowest remaining quota')
-          },
-          {
-            value: 'recent',
-            label: l('trayComposer.icon.auto.recent', 'Most recently active tool')
           },
           {
             value: 'tokens',
@@ -1049,14 +969,12 @@
         ));
         popover.append(fontStyleEditor(item));
         if (item.metric === 'tokens' || item.metric === 'cost') {
-          popover.append(usageScopeEditor(item));
           popover.append(picker(
             l('trayComposer.period', 'Period'),
             periodChoices(),
             item.period,
             (period) => updateItem(item, { ...item, period })
           ));
-          if (item.metric === 'cost') popover.append(...costDisplayEditors(item));
         } else {
           popover.append(sourceEditor(item, 0, '', {
             includeValue: item.metric === 'percent' || item.metric === 'percentReset'
@@ -1115,10 +1033,7 @@
       window.addEventListener('pointermove', moveDrag, true);
       window.addEventListener('pointerup', endDrag, true);
       window.addEventListener('pointercancel', cancelDrag, true);
-      // Not capture: see the note on the limit provider drag. A capture `blur`
-      // listener on `window` also catches every element's blur, so the press
-      // moving focus off the last-clicked control killed the drag immediately.
-      window.addEventListener('blur', cancelDrag);
+      window.addEventListener('blur', cancelDrag, true);
       itemEl.addEventListener('lostpointercapture', cancelDrag, { once: true });
       try { itemEl.setPointerCapture?.(event.pointerId); } catch (_) {}
     }
@@ -1183,7 +1098,7 @@
       window.removeEventListener('pointermove', moveDrag, true);
       window.removeEventListener('pointerup', endDrag, true);
       window.removeEventListener('pointercancel', cancelDrag, true);
-      window.removeEventListener('blur', cancelDrag);
+      window.removeEventListener('blur', cancelDrag, true);
       itemEl.removeEventListener('lostpointercapture', cancelDrag);
       try {
         if (itemEl.hasPointerCapture?.(pointerId)) itemEl.releasePointerCapture(pointerId);
@@ -1207,40 +1122,20 @@
     }
 
     function render() {
-      const editable = editing();
       const current = layout();
       const heading = document.createElement('div');
       heading.className = 'tray-composer-heading';
       const title = document.createElement('span');
-      title.textContent = l('trayComposer.preview', 'Live preview');
-      if (editable) {
-        const hint = document.createElement('span');
-        hint.textContent = l('trayComposer.dragHint', 'Drag to reorder · Click to configure');
-        heading.append(title, hint);
-      } else {
-        const customize = button('tray-composer-customize', l('settings.tray.custom', 'Customize…'), onCustomize);
-        heading.append(title, customize);
-      }
+      title.textContent = l('trayComposer.preview', 'Live menu bar preview');
+      const hint = document.createElement('span');
+      hint.textContent = l('trayComposer.dragHint', 'Drag to reorder · Click to configure');
+      heading.append(title, hint);
 
       const strip = document.createElement('div');
       strip.className = 'tray-composer-strip';
       const items = document.createElement('div');
       items.className = 'tray-composer-items';
-      if (!editable) {
-        const preview = getPreview?.() || {};
-        const content = document.createElement('span');
-        content.className = 'tray-composer-live-preview';
-        if (preview.generatedSrc) {
-          content.classList.add('is-menubar');
-          content.append(image(preview.generatedSrc, 'tray-composer-menubar-generated'));
-        } else if (preview.src) {
-          content.append(image(preview.src, 'tray-composer-preview-image'));
-        } else {
-          content.classList.add('is-text');
-          content.textContent = preview.text || 'Σ';
-        }
-        items.append(content);
-      } else if (!current.items.length) {
+      if (!current.items.length) {
         const empty = document.createElement('span');
         empty.className = 'tray-composer-empty';
         empty.textContent = l('trayComposer.empty', 'Add your first item');
@@ -1263,15 +1158,11 @@
           items.append(itemEl);
         });
       }
-      strip.append(items);
-      if (editable) {
-        const add = button('tray-composer-add', '+', () => openAddPopover(add));
-        add.setAttribute('aria-label', l('trayComposer.add', 'Add display item'));
-        strip.append(add);
-      }
+      const add = button('tray-composer-add', '+', () => openAddPopover(add));
+      add.setAttribute('aria-label', l('trayComposer.add', 'Add display item'));
+      strip.append(items, add);
       root.replaceChildren(heading, strip);
-      root.classList.toggle('is-editing', editable);
-      root.classList.toggle('is-empty', editable && current.items.length === 0);
+      root.classList.toggle('is-empty', current.items.length === 0);
     }
 
     function refresh() {
@@ -1307,13 +1198,10 @@
 
   return {
     accountModeSourcePatch,
-    costDisplayPatch,
     createTrayComposer,
     duplicateTrayLayoutItem,
-    handlePickerDocumentScroll,
     moveTrayLayoutItemByKey,
     periodItemPatch,
-    syncTrayComposerSurfaces,
-    usageScopePatch
+    syncTrayComposerSurfaces
   };
 });
