@@ -2411,6 +2411,16 @@ function macosLiquidGlassIsAvailable() {
   }) && macosLiquidGlassSupported();
 }
 
+// Electron's backgroundMaterial requires Windows 11 22H2 (build 22621); on
+// older Windows it is silently ignored and the window stays opaque, which
+// reads as a solid white slab behind the translucent surface. Fall back to
+// the transparent CSS-blur window there instead of forcing the material.
+function windowsNativeBackdropSupported() {
+  if (process.platform !== 'win32') return false;
+  const build = Number(String(os.release()).split('.')[2] || 0);
+  return Number.isFinite(build) && build >= 22621;
+}
+
 function keepNativeBlurActive() {
   if (!mainWindow) return;
   if (!nativeBlurEnabled()) return;
@@ -5412,7 +5422,8 @@ function createWindow(boundsOverride, options = {}) {
   const collapsedFloatingBubble = options.collapsedFloatingBubble === true;
   const glass = nativeBlurEnabled();
   const windowsBackdrop = normalizeWindowsBackdropMode(settings?.windowsBackdrop);
-  const windowsAccent = process.platform === 'win32' && glass && windowsBackdrop === WINDOWS_BACKDROP_ACCENT;
+  const nativeWindowsBackdrop = glass && windowsNativeBackdropSupported();
+  const windowsAccent = process.platform === 'win32' && nativeWindowsBackdrop && windowsBackdrop === WINDOWS_BACKDROP_ACCENT;
   const bounds = boundsOverride || restoredBounds() || DEFAULT_WINDOW;
   const collapsedSizeLimits = {
     minWidth: bounds.width,
@@ -5426,7 +5437,7 @@ function createWindow(boundsOverride, options = {}) {
     ...(typeof bounds.x === 'number' ? { x: bounds.x, y: bounds.y } : {}),
     ...(collapsedFloatingBubble ? collapsedSizeLimits : WINDOW_LIMITS),
     frame: false,
-    transparent: !(process.platform === 'win32' && glass),
+    transparent: !(process.platform === 'win32' && nativeWindowsBackdrop),
     resizable: !collapsedFloatingBubble,
     show: false,
     backgroundColor: '#00000000',
@@ -5436,7 +5447,7 @@ function createWindow(boundsOverride, options = {}) {
     ...(settings?.trayMode ? { maximizable: false } : {}),
     ...floatingBubbleWindowChrome(process.platform, collapsedFloatingBubble),
     ...(process.platform === 'darwin' && glass ? { vibrancy: 'hud', visualEffectState: 'active' } : {}),
-    ...(process.platform === 'win32' && glass && !windowsAccent
+    ...(process.platform === 'win32' && nativeWindowsBackdrop && !windowsAccent
       ? { backgroundMaterial: windowsElectronBackgroundMaterial(windowsBackdrop) }
       : {}),
     webPreferences: {
@@ -5517,6 +5528,7 @@ function createWindow(boundsOverride, options = {}) {
         viewState: rendererViewState
       }),
       ...(settings?.systemGlass === false ? { systemGlassDisabled: '1' } : {}),
+      ...(process.platform === 'win32' && glass && !nativeWindowsBackdrop ? { windowsBackdropUnsupported: '1' } : {}),
       ...(windowsAccentFallback ? { windowsBackdropFallback: '1' } : {})
     }
   });
@@ -5573,20 +5585,21 @@ function createDashboardWindow() {
   }
   const glass = nativeBlurEnabled();
   const windowsBackdrop = normalizeWindowsBackdropMode(settings?.windowsBackdrop);
-  const windowsAccent = process.platform === 'win32' && glass && windowsBackdrop === WINDOWS_BACKDROP_ACCENT;
+  const nativeWindowsBackdrop = glass && windowsNativeBackdropSupported();
+  const windowsAccent = process.platform === 'win32' && nativeWindowsBackdrop && windowsBackdrop === WINDOWS_BACKDROP_ACCENT;
   const win = new BrowserWindow({
     width: 920,
     height: 620,
     minWidth: 560,
     minHeight: 420,
     frame: false,
-    transparent: !(process.platform === 'win32' && glass),
+    transparent: !(process.platform === 'win32' && nativeWindowsBackdrop),
     show: false,
     backgroundColor: '#00000000',
     icon: APP_ICON_PATH,
     skipTaskbar: false,
     ...(process.platform === 'darwin' && glass ? { vibrancy: 'hud', visualEffectState: 'active' } : {}),
-    ...(process.platform === 'win32' && glass && !windowsAccent
+    ...(process.platform === 'win32' && nativeWindowsBackdrop && !windowsAccent
       ? { backgroundMaterial: windowsElectronBackgroundMaterial(windowsBackdrop) }
       : {}),
     webPreferences: {
@@ -5626,10 +5639,14 @@ function createDashboardWindow() {
     if (!win.isVisible()) discardFailedDashboardWindow(win, 'renderer became unresponsive while opening');
   });
   win.on('closed', () => { dashboardWindow = null; });
-  const dashboardQuery = windowsAccentFallback ? { windowsBackdropFallback: '1' } : undefined;
+  const dashboardQuery = {
+    ...(process.platform === 'win32' && glass && !nativeWindowsBackdrop ? { windowsBackdropUnsupported: '1' } : {}),
+    ...(windowsAccentFallback ? { windowsBackdropFallback: '1' } : {})
+  };
+  const dashboardLoadQuery = Object.keys(dashboardQuery).length ? dashboardQuery : undefined;
   win.loadFile(
     path.join(__dirname, 'renderer', 'dashboard.html'),
-    dashboardQuery ? { query: dashboardQuery } : undefined
+    dashboardLoadQuery ? { query: dashboardLoadQuery } : undefined
   )
     .catch((error) => discardFailedDashboardWindow(win, `load failed: ${error.message}`));
   return win;
@@ -7265,7 +7282,6 @@ app.whenReady().then(() => {
     });
     return { ok: true };
   });
-  ipcMain.handle('codex:accounts', () => codexAccountsForRenderer());
   ipcMain.handle('codex:accounts', () => codexAccountsForRenderer());
   ipcMain.handle('codex:setAccountEnabled', (_event, id, enabled) => setCodexManagedAccountEnabled(id, enabled));
   ipcMain.handle('codex:addAccount', async (event, request = {}) => {

@@ -10,13 +10,13 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, (backdropModeApi) => {
   const { normalizeWindowsBackdropMode } = backdropModeApi;
 
-  function appearanceState(settings = {}, { isWindows = false } = {}) {
+  function appearanceState(settings = {}, { isWindows = false, backdropSupported = true } = {}) {
     const systemGlassEnabled = settings.systemGlass !== false;
     const backdropMode = normalizeWindowsBackdropMode(settings.windowsBackdrop);
     return {
-      showBackdropControl: isWindows && systemGlassEnabled,
-      showAccentNote: isWindows && systemGlassEnabled && backdropMode === 'accent',
-      showMicaNote: isWindows && systemGlassEnabled && backdropMode === 'mica',
+      showBackdropControl: isWindows && systemGlassEnabled && backdropSupported !== false,
+      showAccentNote: isWindows && systemGlassEnabled && backdropSupported !== false && backdropMode === 'accent',
+      showMicaNote: isWindows && systemGlassEnabled && backdropSupported !== false && backdropMode === 'mica',
       backdropMode
     };
   }

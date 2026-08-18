@@ -7708,9 +7708,12 @@ function applyAppearanceSettings(settings) {
   const depth = clamp(settings?.glassBlur ?? 32, 0, 100) / 100;
   const systemGlassDisabled = settings?.systemGlass === false;
   const isWindows = navigator.userAgent.toLowerCase().includes('windows');
-  const windowsGlass = windowsGlassApi.appearanceState(settings, { isWindows });
   const windowsBackdropUnsupported = isWindows
     && new URLSearchParams(window.location.search).get('windowsBackdropUnsupported') === '1';
+  const windowsGlass = windowsGlassApi.appearanceState(settings, {
+    isWindows,
+    backdropSupported: !windowsBackdropUnsupported
+  });
   const nativeWindowsBackdropEnabled = isWindows
     && !systemGlassDisabled
     && !windowsBackdropUnsupported

@@ -60,6 +60,18 @@ test('Windows glass appearance state covers platform and system-glass boundaries
     showMicaNote: false,
     backdropMode: 'acrylic'
   });
+  assert.deepEqual(appearanceState({ windowsBackdrop: 'mica' }, { isWindows: true, backdropSupported: false }), {
+    showBackdropControl: false,
+    showAccentNote: false,
+    showMicaNote: false,
+    backdropMode: 'mica'
+  });
+  assert.deepEqual(appearanceState({ windowsBackdrop: 'accent' }, { isWindows: true, backdropSupported: false }), {
+    showBackdropControl: false,
+    showAccentNote: false,
+    showMicaNote: false,
+    backdropMode: 'accent'
+  });
 });
 
 test('Accent blur passes the native HWND and configured tint to the native adapter', () => {
@@ -169,6 +181,9 @@ test('main process preserves the selected material and falls back to Acrylic on 
   assert.match(main, /windowsAccent && !applyWindowsAccentBlur\(win\)/);
   assert.match(main, /win\.setBackgroundMaterial\('acrylic'\)/);
   assert.match(main, /windowsBackdropFallback: '1'/);
+  assert.match(main, /windowsNativeBackdropSupported\(\)/);
+  assert.match(main, /build >= 22621/);
+  assert.match(main, /windowsBackdropUnsupported: '1'/);
   assert.match(main, /previousWindowsBackdrop !== nextWindowsBackdrop/);
   assert.doesNotMatch(main, /windowsLayeredBlur/);
 });
@@ -186,6 +201,8 @@ test('Windows exposes the legacy Acrylic/Mica selector and experimental Accent o
   assert.match(html, /id="windowsBackdropNote"/);
   assert.match(html, /<script src="\.\.\/windowsBackdropMode\.js"><\/script>[\s\S]*<script src="windowsGlass\.js"><\/script>[\s\S]*<script src="app\.js"><\/script>/);
   assert.match(app, /windowsBackdropRow\?\.classList\.toggle\('hidden', !windowsGlass\.showBackdropControl\)/);
+  assert.match(app, /backdropSupported: !windowsBackdropUnsupported/);
+  assert.match(app, /windowsBackdropUnsupported/);
   assert.match(app, /classList\.toggle\('hidden', !windowsGlass\.showAccentNote && !showMicaNote\)/);
   assert.doesNotMatch(app, /backdropControlDisabled/);
   assert.equal((i18n.match(/'settings\.appearance\.glassEffectSystem':/g) || []).length, 5);
