@@ -3,19 +3,18 @@
 ## What's changed
 
 <!-- app-update-notes:en:start -->
-### Fixed
-- **Desktop startup:** The widget no longer fails to start because `codex:accounts` was registered twice.
-- **Windows 10 glass:** On Windows builds older than 11 22H2, the window falls back to CSS blur instead of becoming an opaque white slab. Native backdrop options stay hidden until the OS can host them.
-- **Icon attribution:** Renderer Lucide and Tabler icon copies are listed in `THIRD_PARTY_NOTICES.md`.
+### Changed
+- **Desktop shell:** The Electron widget and dashboard are restored to the `0.37.23-rev.3` desktop tree. Hub, agent, Worker, and shared collection stay on the 0.45 line.
+- **Windows 10 glass:** Native backdrop still requires Windows 11 22H2 or newer. Older Windows keeps the CSS-blur window instead of an opaque white slab.
 <!-- app-update-notes:en:end -->
 
 ## Download
 
-- **macOS Apple Silicon** — [Token-Monitor-0.45.0-rev.4-arm64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.45.0-rev.4/Token-Monitor-0.45.0-rev.4-arm64.dmg)
-- **macOS Intel** — [Token-Monitor-0.45.0-rev.4-x64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.45.0-rev.4/Token-Monitor-0.45.0-rev.4-x64.dmg)
-- **Windows Installer** — [Token-Monitor-Setup-0.45.0-rev.4.exe](https://github.com/Javis603/token-monitor/releases/download/v0.45.0-rev.4/Token-Monitor-Setup-0.45.0-rev.4.exe) (recommended)
-- **Windows Portable** — [Token-Monitor-0.45.0-rev.4.exe](https://github.com/Javis603/token-monitor/releases/download/v0.45.0-rev.4/Token-Monitor-0.45.0-rev.4.exe) (no install required)
-- **Linux x64** — [Token-Monitor-0.45.0-rev.4.AppImage](https://github.com/Javis603/token-monitor/releases/download/v0.45.0-rev.4/Token-Monitor-0.45.0-rev.4.AppImage)
+- **macOS Apple Silicon** — [Token-Monitor-0.45.0-rev.5-arm64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.45.0-rev.5/Token-Monitor-0.45.0-rev.5-arm64.dmg)
+- **macOS Intel** — [Token-Monitor-0.45.0-rev.5-x64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.45.0-rev.5/Token-Monitor-0.45.0-rev.5-x64.dmg)
+- **Windows Installer** — [Token-Monitor-Setup-0.45.0-rev.5.exe](https://github.com/Javis603/token-monitor/releases/download/v0.45.0-rev.5/Token-Monitor-Setup-0.45.0-rev.5.exe) (recommended)
+- **Windows Portable** — [Token-Monitor-0.45.0-rev.5.exe](https://github.com/Javis603/token-monitor/releases/download/v0.45.0-rev.5/Token-Monitor-0.45.0-rev.5.exe) (no install required)
+- **Linux x64** — [Token-Monitor-0.45.0-rev.5.AppImage](https://github.com/Javis603/token-monitor/releases/download/v0.45.0-rev.5/Token-Monitor-0.45.0-rev.5.AppImage)
 
 <details>
 <summary><strong>First launch and other notes</strong></summary>
@@ -52,19 +51,18 @@ open-source: https://github.com/junhoyeo/tokscale
 ## 更新内容
 
 <!-- app-update-notes:zh:start -->
-### 修复
-- **桌面启动：** 小部件不再因为 `codex:accounts` 被重复注册而无法启动。
-- **Windows 10 玻璃：** Windows 构建小于 11 22H2 时，窗口回退到 CSS blur 而不是变成不透明的白板。原生材质选项在操作系统支持时才显示。
-- **图标归属：** Renderer 的 Lucide 和 Tabler 图标副本已列在 `THIRD_PARTY_NOTICES.md`。
+### 变更
+- **桌面端：** Electron 小部件和仪表盘已完整回退到 `0.37.23-rev.3` 桌面树。中枢、采集端、Worker 和共享采集仍走 0.45。
+- **Windows 10 玻璃：** 原生材质仍需要 Windows 11 22H2 或更新。更旧的 Windows 继续使用 CSS blur，而不是不透明白板。
 <!-- app-update-notes:zh:end -->
 
 ## 下载
 
-- **macOS Apple Silicon** — [Token-Monitor-0.45.0-rev.4-arm64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.45.0-rev.4/Token-Monitor-0.45.0-rev.4-arm64.dmg)
-- **macOS Intel** — [Token-Monitor-0.45.0-rev.4-x64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.45.0-rev.4/Token-Monitor-0.45.0-rev.4-x64.dmg)
-- **Windows 安装版** — [Token-Monitor-Setup-0.45.0-rev.4.exe](https://github.com/Javis603/token-monitor/releases/download/v0.45.0-rev.4/Token-Monitor-Setup-0.45.0-rev.4.exe)（推荐）
-- **Windows 便携版** — [Token-Monitor-0.45.0-rev.4.exe](https://github.com/Javis603/token-monitor/releases/download/v0.45.0-rev.4/Token-Monitor-0.45.0-rev.4.exe)（免安装）
-- **Linux x64** — [Token-Monitor-0.45.0-rev.4.AppImage](https://github.com/Javis603/token-monitor/releases/download/v0.45.0-rev.4/Token-Monitor-0.45.0-rev.4.AppImage)
+- **macOS Apple Silicon** — [Token-Monitor-0.45.0-rev.5-arm64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.45.0-rev.5/Token-Monitor-0.45.0-rev.5-arm64.dmg)
+- **macOS Intel** — [Token-Monitor-0.45.0-rev.5-x64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.45.0-rev.5/Token-Monitor-0.45.0-rev.5-x64.dmg)
+- **Windows 安装版** — [Token-Monitor-Setup-0.45.0-rev.5.exe](https://github.com/Javis603/token-monitor/releases/download/v0.45.0-rev.5/Token-Monitor-Setup-0.45.0-rev.5.exe)（推荐）
+- **Windows 便携版** — [Token-Monitor-0.45.0-rev.5.exe](https://github.com/Javis603/token-monitor/releases/download/v0.45.0-rev.5/Token-Monitor-0.45.0-rev.5.exe)（免安装）
+- **Linux x64** — [Token-Monitor-0.45.0-rev.5.AppImage](https://github.com/Javis603/token-monitor/releases/download/v0.45.0-rev.5/Token-Monitor-0.45.0-rev.5.AppImage)
 
 <details>
 <summary><strong>首次启动与其他说明</strong></summary>
@@ -97,7 +95,7 @@ https://github.com/junhoyeo/tokscale
 ---
 
 <details>
-<summary><strong>Full Changelog:</strong> <a href="https://github.com/Javis603/token-monitor/compare/v0.44.0...v0.45.0-rev.4">v0.44.0...v0.45.0-rev.4</a></summary>
+<summary><strong>Full Changelog:</strong> <a href="https://github.com/Javis603/token-monitor/compare/v0.45.0-rev.4...v0.45.0-rev.5">v0.45.0-rev.4...v0.45.0-rev.5</a></summary>
 
 <!-- github-generated-release-notes -->
 
@@ -114,19 +112,18 @@ https://github.com/junhoyeo/tokscale
 ## 更新內容
 
 <!-- app-update-notes:zh-TW:start -->
-### 修復
-- **桌面啟動：** 小工具不再因為 `codex:accounts` 被重複註冊而無法啟動。
-- **Windows 10 玻璃：** Windows 組建小於 11 22H2 時，視窗回退到 CSS blur 而不是變成不透明的白板。原生材質選項在作業系統支援時才顯示。
-- **圖示歸屬：** Renderer 的 Lucide 和 Tabler 圖示副本已列在 `THIRD_PARTY_NOTICES.md`。
+### 變更
+- **桌面端：** Electron 小工具與儀表板已完整回退到 `0.37.23-rev.3` 桌面樹。中樞、採集端、Worker 與共享採集仍走 0.45。
+- **Windows 10 玻璃：** 原生材質仍需要 Windows 11 22H2 或更新。更舊的 Windows 繼續使用 CSS blur，而不是不透明白板。
 <!-- app-update-notes:zh-TW:end -->
 
 ## 下載
 
-- **macOS Apple Silicon** — [Token-Monitor-0.45.0-rev.4-arm64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.45.0-rev.4/Token-Monitor-0.45.0-rev.4-arm64.dmg)
-- **macOS Intel** — [Token-Monitor-0.45.0-rev.4-x64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.45.0-rev.4/Token-Monitor-0.45.0-rev.4-x64.dmg)
-- **Windows 安裝版** — [Token-Monitor-Setup-0.45.0-rev.4.exe](https://github.com/Javis603/token-monitor/releases/download/v0.45.0-rev.4/Token-Monitor-Setup-0.45.0-rev.4.exe)（推薦）
-- **Windows 便攜版** — [Token-Monitor-0.45.0-rev.4.exe](https://github.com/Javis603/token-monitor/releases/download/v0.45.0-rev.4/Token-Monitor-0.45.0-rev.4.exe)（免安裝）
-- **Linux x64** — [Token-Monitor-0.45.0-rev.4.AppImage](https://github.com/Javis603/token-monitor/releases/download/v0.45.0-rev.4/Token-Monitor-0.45.0-rev.4.AppImage)
+- **macOS Apple Silicon** — [Token-Monitor-0.45.0-rev.5-arm64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.45.0-rev.5/Token-Monitor-0.45.0-rev.5-arm64.dmg)
+- **macOS Intel** — [Token-Monitor-0.45.0-rev.5-x64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.45.0-rev.5/Token-Monitor-0.45.0-rev.5-x64.dmg)
+- **Windows 安裝版** — [Token-Monitor-Setup-0.45.0-rev.5.exe](https://github.com/Javis603/token-monitor/releases/download/v0.45.0-rev.5/Token-Monitor-Setup-0.45.0-rev.5.exe)（推薦）
+- **Windows 便攜版** — [Token-Monitor-0.45.0-rev.5.exe](https://github.com/Javis603/token-monitor/releases/download/v0.45.0-rev.5/Token-Monitor-0.45.0-rev.5.exe)（免安裝）
+- **Linux x64** — [Token-Monitor-0.45.0-rev.5.AppImage](https://github.com/Javis603/token-monitor/releases/download/v0.45.0-rev.5/Token-Monitor-0.45.0-rev.5.AppImage)
 
 </details>
 
@@ -138,19 +135,18 @@ https://github.com/junhoyeo/tokscale
 ## 업데이트 내용
 
 <!-- app-update-notes:ko:start -->
-### 수정
-- **데스크톱 시작:** `codex:accounts`가 두 번 등록되어 위젯이 시작에 실패하던 문제를 수정했습니다.
-- **Windows 10 유리 효과:** Windows 11 22H2보다 낮은 빌드에서는 불투명한 흰 창 대신 CSS blur로 돌아갑니다. 네이티브 배경 옵션은 OS가 지원할 때만 표시됩니다.
-- **아이콘 출처:** Renderer의 Lucide 및 Tabler 아이콘 사본이 `THIRD_PARTY_NOTICES.md`에 정리되어 있습니다.
+### 변경
+- **데스크톱:** Electron 위젯과 대시보드를 `0.37.23-rev.3` 데스크톱 트리로 되돌렸습니다. 허브, 에이전트, Worker, 공유 수집은 0.45를 유지합니다.
+- **Windows 10 유리 효과:** 네이티브 배경은 여전히 Windows 11 22H2 이상이 필요합니다. 더 오래된 Windows는 불투명한 흰 창 대신 CSS blur를 사용합니다.
 <!-- app-update-notes:ko:end -->
 
 ## 다운로드
 
-- **macOS Apple Silicon** — [Token-Monitor-0.45.0-rev.4-arm64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.45.0-rev.4/Token-Monitor-0.45.0-rev.4-arm64.dmg)
-- **macOS Intel** — [Token-Monitor-0.45.0-rev.4-x64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.45.0-rev.4/Token-Monitor-0.45.0-rev.4-x64.dmg)
-- **Windows 설치 버전** — [Token-Monitor-Setup-0.45.0-rev.4.exe](https://github.com/Javis603/token-monitor/releases/download/v0.45.0-rev.4/Token-Monitor-Setup-0.45.0-rev.4.exe) (권장)
-- **Windows 포터블 버전** — [Token-Monitor-0.45.0-rev.4.exe](https://github.com/Javis603/token-monitor/releases/download/v0.45.0-rev.4/Token-Monitor-0.45.0-rev.4.exe) (설치 필요 없음)
-- **Linux x64** — [Token-Monitor-0.45.0-rev.4.AppImage](https://github.com/Javis603/token-monitor/releases/download/v0.45.0-rev.4/Token-Monitor-0.45.0-rev.4.AppImage)
+- **macOS Apple Silicon** — [Token-Monitor-0.45.0-rev.5-arm64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.45.0-rev.5/Token-Monitor-0.45.0-rev.5-arm64.dmg)
+- **macOS Intel** — [Token-Monitor-0.45.0-rev.5-x64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.45.0-rev.5/Token-Monitor-0.45.0-rev.5-x64.dmg)
+- **Windows 설치 버전** — [Token-Monitor-Setup-0.45.0-rev.5.exe](https://github.com/Javis603/token-monitor/releases/download/v0.45.0-rev.5/Token-Monitor-Setup-0.45.0-rev.5.exe) (권장)
+- **Windows 포터블 버전** — [Token-Monitor-0.45.0-rev.5.exe](https://github.com/Javis603/token-monitor/releases/download/v0.45.0-rev.5/Token-Monitor-0.45.0-rev.5.exe) (설치 필요 없음)
+- **Linux x64** — [Token-Monitor-0.45.0-rev.5.AppImage](https://github.com/Javis603/token-monitor/releases/download/v0.45.0-rev.5/Token-Monitor-0.45.0-rev.5.AppImage)
 
 </details>
 
@@ -162,19 +158,18 @@ https://github.com/junhoyeo/tokscale
 ## 更新内容
 
 <!-- app-update-notes:ja:start -->
-### 修正
-- **デスクトップ起動:** `codex:accounts` が二重登録されてウィジェットが起動できなくなる問題を修正しました。
-- **Windows 10 のガラス:** Windows 11 22H2 より前のビルドでは、不透明な白い窓ではなく CSS blur にフォールバックします。ネイティブ背景の選択肢は OS が対応しているときだけ表示されます。
-- **アイコンの出典:** Renderer の Lucide / Tabler アイコン複製を `THIRD_PARTY_NOTICES.md` に記載しました。
+### 変更
+- **デスクトップ:** Electron ウィジェットとダッシュボードを `0.37.23-rev.3` のデスクトップツリーに戻しました。ハブ、エージェント、Worker、共有収集は 0.45 のままです。
+- **Windows 10 のガラス:** ネイティブ背景は引き続き Windows 11 22H2 以降が必要です。それより前の Windows では不透明な白い窓ではなく CSS blur を使います。
 <!-- app-update-notes:ja:end -->
 
 ## ダウンロード
 
-- **macOS Apple Silicon** — [Token-Monitor-0.45.0-rev.4-arm64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.45.0-rev.4/Token-Monitor-0.45.0-rev.4-arm64.dmg)
-- **macOS Intel** — [Token-Monitor-0.45.0-rev.4-x64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.45.0-rev.4/Token-Monitor-0.45.0-rev.4-x64.dmg)
-- **Windows インストーラー** — [Token-Monitor-Setup-0.45.0-rev.4.exe](https://github.com/Javis603/token-monitor/releases/download/v0.45.0-rev.4/Token-Monitor-Setup-0.45.0-rev.4.exe)（推奨）
-- **Windows ポータブル版** — [Token-Monitor-0.45.0-rev.4.exe](https://github.com/Javis603/token-monitor/releases/download/v0.45.0-rev.4/Token-Monitor-0.45.0-rev.4.exe)（インストール不要）
-- **Linux x64** — [Token-Monitor-0.45.0-rev.4.AppImage](https://github.com/Javis603/token-monitor/releases/download/v0.45.0-rev.4/Token-Monitor-0.45.0-rev.4.AppImage)
+- **macOS Apple Silicon** — [Token-Monitor-0.45.0-rev.5-arm64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.45.0-rev.5/Token-Monitor-0.45.0-rev.5-arm64.dmg)
+- **macOS Intel** — [Token-Monitor-0.45.0-rev.5-x64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.45.0-rev.5/Token-Monitor-0.45.0-rev.5-x64.dmg)
+- **Windows インストーラー** — [Token-Monitor-Setup-0.45.0-rev.5.exe](https://github.com/Javis603/token-monitor/releases/download/v0.45.0-rev.5/Token-Monitor-Setup-0.45.0-rev.5.exe)（推奨）
+- **Windows ポータブル版** — [Token-Monitor-0.45.0-rev.5.exe](https://github.com/Javis603/token-monitor/releases/download/v0.45.0-rev.5/Token-Monitor-0.45.0-rev.5.exe)（インストール不要）
+- **Linux x64** — [Token-Monitor-0.45.0-rev.5.AppImage](https://github.com/Javis603/token-monitor/releases/download/v0.45.0-rev.5/Token-Monitor-0.45.0-rev.5.AppImage)
 
 </details>
 
