@@ -8,6 +8,8 @@ import com.igng.tokenmonitor.android.data.model.PricingListDto
 import com.igng.tokenmonitor.android.data.model.PricingRequestDto
 import com.igng.tokenmonitor.android.data.model.PricingResponseDto
 import com.igng.tokenmonitor.android.data.model.StatsDto
+import com.igng.tokenmonitor.android.data.model.SubscriptionsDto
+import com.igng.tokenmonitor.android.data.model.SubscriptionsRequestDto
 import com.igng.tokenmonitor.android.data.model.UsageRangeDto
 import retrofit2.http.Body
 import retrofit2.http.GET
@@ -21,6 +23,8 @@ interface HubApi {
   @GET("api/stats") suspend fun stats(): StatsDto
   @GET("api/history") suspend fun history(): HistoryDto
   @GET("api/devices") suspend fun devices(): DevicesResponseDto
+  @GET("api/subscriptions") suspend fun subscriptions(): SubscriptionsDto
+  @PUT("api/subscriptions") suspend fun putSubscriptions(@Body request: SubscriptionsRequestDto): SubscriptionsDto
   @GET("api/usage/range") suspend fun usageRange(
     @Query("startDate") startDate: String,
     @Query("endDate") endDate: String,

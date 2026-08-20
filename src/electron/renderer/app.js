@@ -1,6 +1,6 @@
 'use strict';
 
-const clientLabels = { claude: 'Claude Code', codex: 'Codex', hermes: 'Hermes', gemini: 'Gemini', cursor: 'Cursor', opencode: 'OpenCode', openclaw: 'OpenClaw', antigravity: 'Antigravity', cline: 'Cline', kimi: 'Kimi', qwen: 'Qwen', grok: 'Grok Build', copilot: 'GitHub Copilot', pi: 'Pi', zed: 'Zed', kilocode: 'Kilo Code', commandcode: 'Command Code', micode: 'MiMo Code', zcode: 'ZCode', kiro: 'Kiro', codebuddy: 'CodeBuddy', workbuddy: 'WorkBuddy', proma: 'Proma', 'claude-desktop': 'Claude Desktop' };
+const clientLabels = { claude: 'Claude Code', codex: 'Codex', hermes: 'Hermes', gemini: 'Gemini', cursor: 'Cursor', opencode: 'OpenCode', openclaw: 'OpenClaw', antigravity: 'Antigravity', cline: 'Cline', kimi: 'Kimi', qwen: 'Qwen', grok: 'Grok Build', copilot: 'GitHub Copilot', pi: 'Pi', zed: 'Zed', kilocode: 'Kilo Code', commandcode: 'Command Code', micode: 'MiMo Code', zcode: 'ZCode', kiro: 'Kiro', codebuddy: 'CodeBuddy', workbuddy: 'WorkBuddy', proma: 'Proma', 'deepseek-harness': 'DeepSeek Harness', 'claude-desktop': 'Claude Desktop' };
 const { clientColors, fallbackModelColors, modelVendorFor, modelColor } = window.TokenMonitorUsageCharts;
 const subscriptionDisplayApi = window.TokenMonitorSubscriptionDisplay;
 const motionPreferenceApi = window.TokenMonitorMotionPreference;
@@ -12,7 +12,7 @@ const wslStatusPresentationApi = window.TokenMonitorWslStatusPresentation;
 const reducedMotionMedia = window.matchMedia?.('(prefers-reduced-motion: reduce)');
 const systemDarkThemeMedia = window.matchMedia?.('(prefers-color-scheme: dark)');
 const clientsWithIcon = new Set([
-  'claude', 'codex', 'gemini', 'cursor', 'opencode', 'openclaw', 'hermes', 'antigravity', 'cline', 'kimi', 'qwen', 'grok', 'copilot', 'pi', 'zed', 'kilocode', 'commandcode', 'micode', 'zcode', 'kiro', 'codebuddy', 'workbuddy', 'proma', 'claude-desktop',
+  'claude', 'codex', 'gemini', 'cursor', 'opencode', 'openclaw', 'hermes', 'antigravity', 'cline', 'kimi', 'qwen', 'grok', 'copilot', 'pi', 'zed', 'kilocode', 'commandcode', 'micode', 'zcode', 'kiro', 'codebuddy', 'workbuddy', 'proma', 'deepseek-harness', 'claude-desktop',
   'xai', 'openrouter', 'deepseek', 'meta', 'mistral', 'qwen', 'moonshot', 'zai', 'zaiteam', 'cohere', 'xiaomi', 'mimo', 'minimax', 'doubao', 'volcengine', 'qoder', 'ollama', 'thirdparty'
 ]);
 
@@ -69,6 +69,7 @@ const KNOWN_CLIENTS = [
   { id: 'codebuddy', label: 'CodeBuddy' },
   { id: 'workbuddy', label: 'WorkBuddy' },
   { id: 'proma', label: 'Proma' },
+  { id: 'deepseek-harness', label: 'DeepSeek Harness' },
   { id: 'claude-desktop', label: 'Claude Desktop' }
 ];
 const LIMIT_PROVIDERS = [
@@ -249,6 +250,8 @@ function normalizeInitialViewValue(value, allowed, fallback) {
 }
 
 const state = { period: normalizeInitialViewValue(initialViewState.period, viewPeriodValues, 'today'), appUpdate: null, breakdown: normalizeInitialViewValue(initialViewState.breakdown, viewBreakdownValues, 'home'), viewSwitcherOpen: false, viewSwitcherHasOpened: false, limitDetailTooltipHasOpened: false, limitDetailTooltipActive: false, limitDetailTooltipRenderPending: false, settings: null, stats: null, homeHistory: null, homeHistoryBusy: false, homeHistoryRequested: false, homeHistorySignature: '', homeHistoryRetries: 0, homeHistoryRetryTimer: null, homeActivityScrollLeft: null, homeActivityFollowEnd: true, homeActivityResizeObserver: null, serviceStatus: null, serviceStatusBusy: false, serviceProvidersExpanded: false, trendSettingsExpanded: false, trendsActivating: false, homeSettingsExpanded: false, homeLimitSettingsExpanded: false, serviceStatusTicker: null, refreshTimer: null, refreshBusy: false, refreshFeedbackTimer: null, currentTotal: 0, rowSignature: '', streamConnected: false, streamFailure: null, mode: 'idle', appInfo: null, tokscaleStatus: null, tokscaleCheck: null, tokscaleBusy: false, hubInfo: null, cursorAccount: { status: null, error: '' }, cursorAccountExpanded: false, codexAccountExpanded: false, codexAccountError: '', codexSignInBusy: false, codexSignInFlowId: '', codexLoginUrl: '', codexLoginStatus: '', codexLoginOutput: '', codexWorkspaceChoices: [], codexWorkspaceId: '', codexActiveAccount: null, codexPendingActiveAccount: null, codexPendingActiveAccountUntil: 0, codexPendingActiveAccountTimer: null, codexSystemSwitchingAccountId: '', codexSystemSwitchErrorAccountId: '', codexSystemSwitchError: '', codexSwitchPopoverHasOpened: false, codexSwitchPopoverActive: false, codexSwitchPopoverRenderPending: false, customPricingExpanded: false, claudeAccountExpanded: false, claudePendingCheckSince: 0, commandcodeAccountExpanded: false, commandcodePendingCheckSince: 0, thirdPartyProfileCount: 0, thirdPartyAccountExpanded: false, opencodeProfileCount: 0, opencodeCookieExpanded: false, openrouterProfileCount: 0, openrouterAccountExpanded: false, deepseekAccountExpanded: false, deepseekPendingCheckSince: 0, minimaxAccountExpanded: false, minimaxPendingCheckSince: 0, zaiAccountExpanded: false, zaiPendingCheckSince: 0, zaiteamAccountExpanded: false, zaiteamPendingCheckSince: 0, volcengineAccountExpanded: false, volcenginePendingCheckSince: 0, qoderAccountExpanded: false, qoderPendingCheckSince: 0, kimiAccountExpanded: false, kimiPendingCheckSince: 0, ollamaAccountExpanded: false, ollamaPendingCheckSince: 0, mimoAccountExpanded: false, mimoAccountError: '', copilotAccountExpanded: false, copilotManualExpanded: false, copilotPendingCheckSince: 0, copilotSignInBusy: false, copilotSignInCancelable: false, copilotSignInFlowId: '', copilotAuthorizeMessage: '', copilotLoginStatus: '', copilotErrorMessage: '', floatingBubble: initialFloatingBubble, suppressInitialNumberAnimation: window.__TOKEN_MONITOR_SUPPRESS_INITIAL_NUMBER_ANIMATION__ === true, openSession: null, detailSort: 'time', recordingWindowShortcut: false, windowShortcutInvalid: false };
+state.codexLoginDeviceCode = '';
+state.codexLoginUrlOpened = false;
 state.homeHistoryLoadedSignature = '';
 state.homeHistoryRetrySignature = '';
 state.homeReturnVisible = false;
@@ -9594,13 +9597,16 @@ function renderCodexLoginStatus() {
   const refreshButton = document.getElementById('codexRefreshAccountsButton');
   const openButton = document.getElementById('codexOpenLoginUrlButton');
   const copyButton = document.getElementById('codexCopyLoginUrlButton');
+  const copyDeviceCodeButton = document.getElementById('codexCopyDeviceCodeButton');
   const statusEl = document.getElementById('codexLoginStatus');
   const workspaceSelection = document.getElementById('codexWorkspaceSelection');
   const workspaceSelect = document.getElementById('codexWorkspaceSelect');
   const urlActions = document.getElementById('codexLoginUrlActions');
+  const deviceCodePanel = document.getElementById('codexDeviceCodePanel');
+  const deviceCodeEl = document.getElementById('codexDeviceCode');
   const details = document.getElementById('codexLoginDetails');
   const output = document.getElementById('codexLoginOutput');
-  if (!addButton || !cancelButton || !refreshButton || !openButton || !copyButton || !statusEl || !workspaceSelection || !workspaceSelect || !urlActions || !details || !output) return;
+  if (!addButton || !cancelButton || !refreshButton || !openButton || !copyButton || !copyDeviceCodeButton || !statusEl || !workspaceSelection || !workspaceSelect || !urlActions || !deviceCodePanel || !deviceCodeEl || !details || !output) return;
 
   addButton.classList.toggle('hidden', state.codexSignInBusy);
   cancelButton.classList.toggle('hidden', !state.codexSignInBusy);
@@ -9620,6 +9626,9 @@ function renderCodexLoginStatus() {
   urlActions.classList.toggle('hidden', !state.codexSignInBusy);
   openButton.classList.toggle('hidden', !state.codexLoginUrl);
   copyButton.classList.toggle('hidden', !state.codexLoginUrl);
+  copyDeviceCodeButton.classList.toggle('hidden', !state.codexLoginDeviceCode);
+  deviceCodePanel.classList.toggle('hidden', !state.codexLoginDeviceCode);
+  deviceCodeEl.textContent = state.codexLoginDeviceCode;
   output.textContent = state.codexLoginOutput;
   details.classList.toggle('hidden', !state.codexLoginOutput);
 }
@@ -10521,6 +10530,26 @@ function openrouterProfileErrorText(result) {
   return result?.error || t('settings.openrouter.saveFailedShort');
 }
 
+function thirdPartyProfileAuthLabel(profile) {
+  return t(profile?.adapter === 'newapi-token'
+    ? 'settings.thirdparty.apiKeyAuth'
+    : 'settings.thirdparty.accountAuth');
+}
+
+function thirdPartyProfileErrorText(result) {
+  const errorKeys = {
+    invalidName: 'settings.thirdparty.invalidName',
+    invalidAdapter: 'settings.thirdparty.invalidAdapter',
+    invalidBaseUrl: 'settings.thirdparty.invalidEndpoint',
+    missingAccessToken: 'settings.thirdparty.missingAccessToken',
+    missingApiKey: 'settings.thirdparty.missingApiKey',
+    invalidCredential: 'settings.thirdparty.invalidCredential',
+    unavailable: 'settings.thirdparty.unavailable'
+  };
+  const key = errorKeys[result?.errorCode];
+  return key ? t(key) : result?.error || t('settings.thirdparty.saveFailed');
+}
+
 function renderThirdPartyProfiles() {
   const list = document.getElementById('thirdpartyProfileList');
   const api = window.tokenMonitor.thirdparty;
@@ -10532,33 +10561,114 @@ function renderThirdPartyProfiles() {
     state.thirdPartyProfileCount = entries.length + (hasEnvVar ? 1 : 0);
     const status = document.getElementById('thirdpartyStatus');
     if (status) status.textContent = state.thirdPartyProfileCount
-      ? `${state.thirdPartyProfileCount} configured`
+      ? t('settings.thirdparty.configuredCount', { count: state.thirdPartyProfileCount })
       : t('settings.thirdparty.statusNotSet');
+
+    if (hasEnvVar) {
+      const environment = document.createElement('article');
+      environment.className = 'thirdparty-profile-card environment';
+      const icon = document.createElement('span');
+      icon.className = 'thirdparty-profile-icon';
+      icon.setAttribute('aria-hidden', 'true');
+      const main = document.createElement('div');
+      main.className = 'thirdparty-profile-main';
+      const name = document.createElement('div');
+      name.className = 'thirdparty-profile-name';
+      name.textContent = t('settings.thirdparty.environment');
+      const meta = document.createElement('div');
+      meta.className = 'thirdparty-profile-meta';
+      meta.textContent = t('settings.thirdparty.environmentHint');
+      main.append(name, meta);
+      const stateLabel = document.createElement('span');
+      stateLabel.className = 'thirdparty-profile-state';
+      stateLabel.textContent = t('settings.thirdparty.environmentBadge');
+      environment.append(icon, main, stateLabel);
+      list.append(environment);
+    }
+
     for (const [name, profile] of entries) {
-      const row = document.createElement('div');
-      row.className = 'managed-account-row';
+      const row = document.createElement('article');
+      row.className = 'thirdparty-profile-card';
+      const enabled = profile.enabled !== false;
+      row.classList.toggle('disabled', !enabled);
+      const icon = document.createElement('span');
+      icon.className = 'thirdparty-profile-icon';
+      icon.setAttribute('aria-hidden', 'true');
+      const main = document.createElement('div');
+      main.className = 'thirdparty-profile-main';
+      const label = document.createElement('div');
+      label.className = 'thirdparty-profile-name';
+      label.textContent = name;
+      const meta = document.createElement('div');
+      meta.className = 'thirdparty-profile-meta';
+      meta.textContent = [thirdPartyProfileAuthLabel(profile), profile.baseUrl].filter(Boolean).join(' · ');
+      meta.title = meta.textContent;
+      main.append(label, meta);
+      const right = document.createElement('div');
+      right.className = 'thirdparty-profile-right';
+      const stateLabel = document.createElement('span');
+      stateLabel.className = 'thirdparty-profile-state';
+      stateLabel.textContent = enabled
+        ? t('settings.thirdparty.enabled')
+        : t('settings.thirdparty.disabled');
+      const switchLabel = document.createElement('label');
+      switchLabel.className = 'thirdparty-profile-switch';
+      switchLabel.title = enabled
+        ? t('settings.thirdparty.disable')
+        : t('settings.thirdparty.enable');
       const toggle = document.createElement('input');
+      toggle.className = 'thirdparty-profile-toggle';
       toggle.type = 'checkbox';
-      toggle.checked = profile.enabled !== false;
-      toggle.setAttribute('aria-label', name);
+      toggle.checked = enabled;
+      toggle.setAttribute('aria-label', `${name}: ${switchLabel.title}`);
       toggle.addEventListener('change', async () => {
         const result = await api.setProfileEnabled(name, toggle.checked);
-        if (!result?.ok) toggle.checked = !toggle.checked;
+        if (!result?.ok) {
+          toggle.checked = !toggle.checked;
+          switchLabel.title = toggle.checked
+            ? t('settings.thirdparty.disable')
+            : t('settings.thirdparty.enable');
+          return;
+        }
+        renderThirdPartyProfiles();
       });
-      const label = document.createElement('span');
-      label.className = 'managed-account-email';
-      label.textContent = name;
+      switchLabel.append(toggle);
       const remove = document.createElement('button');
       remove.type = 'button';
-      remove.className = 'managed-account-remove';
-      remove.textContent = 'x';
-      remove.title = 'Delete account';
+      remove.className = 'thirdparty-profile-delete';
+      remove.textContent = '✕';
+      remove.title = t('settings.thirdparty.delete');
+      let confirming = false;
       remove.addEventListener('click', async () => {
+        if (!confirming) {
+          confirming = true;
+          remove.classList.add('confirming');
+          remove.textContent = '✓';
+          remove.title = t('settings.thirdparty.deleteConfirm', { name });
+          return;
+        }
+        remove.disabled = true;
         const result = await api.deleteProfile(name);
-        if (result?.ok) renderThirdPartyProfiles();
+        if (result?.ok) {
+          renderThirdPartyProfiles();
+          return;
+        }
+        remove.disabled = false;
+        confirming = false;
+        remove.classList.remove('confirming');
+        remove.textContent = '✕';
+        remove.title = result?.error || t('settings.thirdparty.deleteFailed');
       });
-      row.append(toggle, label, remove);
+      right.append(stateLabel, switchLabel, remove);
+      row.append(icon, main, right);
       list.append(row);
+    }
+
+    if (entries.length === 0 && !hasEnvVar) {
+      const empty = document.createElement('p');
+      empty.className = 'settings-note';
+      empty.textContent = t('settings.thirdparty.empty');
+      list.append(empty);
     }
     renderSettingsSummaries();
   }).catch(() => {});
@@ -11012,8 +11122,27 @@ function setupCursorAccountUI() {
       if (status.phase !== 'output') return;
       state.codexLoginOutput = (state.codexLoginOutput + String(status.text || '')).slice(-3000);
       if (status.loginUrl) state.codexLoginUrl = status.loginUrl;
-      state.codexLoginStatus = t(state.codexLoginUrl ? 'settings.codex.loginWaiting' : 'settings.codex.loginStarting');
+      if (status.deviceCode) state.codexLoginDeviceCode = status.deviceCode;
+      state.codexLoginStatus = t(
+        state.codexLoginDeviceCode
+          ? 'settings.codex.loginDeviceCode'
+          : state.codexLoginUrl
+            ? 'settings.codex.loginWaiting'
+            : 'settings.codex.loginStarting'
+      );
       renderCodexLoginStatus();
+      if (
+        state.codexLoginUrl
+        && state.codexLoginUrl.includes('/codex/device')
+        && !state.codexLoginUrlOpened
+      ) {
+        state.codexLoginUrlOpened = true;
+        void window.tokenMonitor.openExternal(state.codexLoginUrl).then((result) => {
+          if (result?.ok) return;
+          state.codexAccountError = result?.error || t('settings.codex.openLoginUrlFailed');
+          renderCodexAccounts();
+        });
+      }
     });
     codexAddButton.addEventListener('click', async () => {
       if (state.codexSignInBusy) return;
@@ -11021,6 +11150,8 @@ function setupCursorAccountUI() {
       state.codexSignInFlowId = flowId;
       state.codexSignInBusy = true;
       state.codexLoginUrl = '';
+      state.codexLoginDeviceCode = '';
+      state.codexLoginUrlOpened = false;
       state.codexLoginOutput = '';
       state.codexWorkspaceChoices = [];
       state.codexWorkspaceId = '';
@@ -11059,6 +11190,8 @@ function setupCursorAccountUI() {
           state.codexSignInBusy = false;
           state.codexSignInFlowId = '';
           state.codexLoginUrl = '';
+          state.codexLoginDeviceCode = '';
+          state.codexLoginUrlOpened = false;
           state.codexWorkspaceChoices = [];
           state.codexWorkspaceId = '';
           renderCodexLoginStatus();
@@ -11075,6 +11208,8 @@ function setupCursorAccountUI() {
       state.codexSignInBusy = false;
       state.codexSignInFlowId = '';
       state.codexLoginUrl = '';
+      state.codexLoginDeviceCode = '';
+      state.codexLoginUrlOpened = false;
       state.codexLoginStatus = '';
       state.codexLoginOutput = '';
       state.codexWorkspaceChoices = [];
@@ -11117,6 +11252,11 @@ function setupCursorAccountUI() {
 
     codexCopyUrlButton.addEventListener('click', () => {
       if (state.codexLoginUrl) copyToClipboard(state.codexLoginUrl, codexCopyUrlButton);
+    });
+
+    const codexCopyDeviceCodeButton = document.getElementById('codexCopyDeviceCodeButton');
+    codexCopyDeviceCodeButton?.addEventListener('click', () => {
+      if (state.codexLoginDeviceCode) copyToClipboard(state.codexLoginDeviceCode, codexCopyDeviceCodeButton);
     });
 
     renderCodexLoginStatus();
@@ -11958,11 +12098,13 @@ function setupCursorAccountUI() {
 
   document.getElementById('thirdpartyModeInput')?.addEventListener('change', () => {
     const token = document.getElementById('thirdpartyModeInput').value === 'token';
-    document.getElementById('thirdpartyAccessTokenInput')?.classList.toggle('hidden', token);
-    document.getElementById('thirdpartyApiKeyInput')?.classList.toggle('hidden', !token);
+    document.getElementById('thirdpartyAccessTokenField')?.classList.toggle('hidden', token);
+    document.getElementById('thirdpartyApiKeyField')?.classList.toggle('hidden', !token);
   });
   document.getElementById('thirdpartyProfileSubmit')?.addEventListener('click', async () => {
     const mode = document.getElementById('thirdpartyModeInput')?.value || 'account';
+    const errorEl = document.getElementById('thirdpartyErrorMessage');
+    errorEl?.classList.add('hidden');
     const profile = {
       name: document.getElementById('thirdpartyProfileName')?.value,
       adapter: mode === 'token' ? 'newapi-token' : 'newapi-account',
@@ -11972,9 +12114,8 @@ function setupCursorAccountUI() {
       userId: ''
     };
     const result = await window.tokenMonitor.thirdparty.saveProfile(profile);
-    const errorEl = document.getElementById('thirdpartyErrorMessage');
     if (!result?.ok) {
-      if (errorEl) { errorEl.textContent = result?.error || result?.errorCode || 'Save failed'; errorEl.classList.remove('hidden'); }
+      if (errorEl) { errorEl.textContent = thirdPartyProfileErrorText(result); errorEl.classList.remove('hidden'); }
       return;
     }
     document.getElementById('thirdpartyProfileName').value = '';

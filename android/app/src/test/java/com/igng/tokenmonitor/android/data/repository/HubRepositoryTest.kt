@@ -3,8 +3,12 @@ package com.igng.tokenmonitor.android.data.repository
 import com.igng.tokenmonitor.android.data.local.ConnectionConfig
 import com.igng.tokenmonitor.android.data.local.ConnectionStorage
 import com.igng.tokenmonitor.android.data.remote.HubApiFactory
+import com.igng.tokenmonitor.android.data.model.SubscriptionDto
+import com.igng.tokenmonitor.android.data.model.SubscriptionsRequestDto
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
@@ -76,6 +80,62 @@ class HubRepositoryTest {
     val error = (result as HubResult.Failure).error
     assertEquals(HubError.Kind.Api, error.kind)
     assertTrue(error.message.contains("pricing_not_found"))
+  }
+
+  @Test fun subscriptionsReturnsDocumentFor200() = runBlocking {
+    server.enqueue(MockResponse().setResponseCode(200).setBody("""
+      {"ok":true,"version":1,"updatedAt":"2026-08-20T08:00:00.000Z","subscriptions":[]}
+    """.trimIndent()))
+
+    val result = repository.subscriptions()
+
+    assertTrue(result is HubResult.Success)
+    assertEquals("2026-08-20T08:00:00.000Z", (result as HubResult.Success).value.updatedAt)
+    val request = server.takeRequest()
+    assertEquals("GET", request.method)
+    assertEquals("/api/subscriptions", request.path)
+  }
+
+  @Test fun subscriptionsMapsStaleWriteToConflict() = runBlocking {
+    server.enqueue(MockResponse().setResponseCode(409).setBody("""
+      {"error":"stale_write","updatedAt":"2026-08-20T08:00:00.000Z","subscriptions":[]}
+    """.trimIndent()))
+
+    val result = repository.putSubscriptions(
+      SubscriptionsRequestDto(
+        subscriptions = listOf(SubscriptionDto(provider = "codex")),
+        baseUpdatedAt = "old"
+      )
+    )
+
+    assertTrue(result is HubResult.Failure)
+    assertEquals(HubError.Kind.Conflict, (result as HubResult.Failure).error.kind)
+    assertTrue((result as HubResult.Failure).error.message.contains("刷新"))
+    val request = server.takeRequest()
+    assertEquals("PUT", request.method)
+    assertEquals("/api/subscriptions", request.path)
+  }
+
+  @Test fun statsEventsDecodeTheHubSnapshotAndAttachAuth() = runBlocking {
+    server.enqueue(
+      MockResponse()
+        .setResponseCode(200)
+        .setHeader("Content-Type", "text/event-stream")
+        .setChunkedBody(
+          "event: snapshot\r\ndata: {\"type\":\"snapshot\",\"stats\":{\"updatedAt\":\"2026-08-20T08:00:00.000Z\",\"devices\":[{\"deviceId\":\"dev-1\"}]}}\r\n\r\n",
+          1
+        )
+    )
+
+    val event = withTimeout(3_000) {
+      repository.statsEvents().first { it.stats != null }
+    }
+
+    assertEquals("2026-08-20T08:00:00.000Z", event.stats?.updatedAt)
+    assertEquals("dev-1", event.stats?.devices?.single()?.deviceId)
+    val request = server.takeRequest(1, TimeUnit.SECONDS)
+    assertEquals("/api/stats/stream", request?.path)
+    assertEquals("Bearer shared-secret", request?.getHeader("Authorization"))
   }
 
   private class FakeConnectionStorage(private var config: ConnectionConfig) : ConnectionStorage {

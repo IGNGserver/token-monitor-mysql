@@ -179,6 +179,26 @@ fun clientStatusLabel(state: String?): String = when (state?.trim()?.lowercase()
   else -> state.orEmpty()
 }
 
+fun clientHealthOverallLabel(state: String?): String = when (state?.trim()?.lowercase()) {
+  "healthy" -> "正常"
+  "waiting" -> "等待用量"
+  "attention" -> "需要处理"
+  "unavailable" -> "不可用"
+  "unknown" -> "未知"
+  else -> state.orEmpty().ifBlank { "未知" }
+}
+
+fun clientHealthDiagnosticLabel(code: String?): String = when (code?.trim()?.lowercase()) {
+  "source-missing" -> "未发现数据源"
+  "sync-failed" -> "同步失败"
+  "sync-timeout" -> "同步超时"
+  "sync-spawn-failed" -> "无法启动同步"
+  "sync-exit-error" -> "同步进程异常退出"
+  "no-usage-observed" -> "尚未观察到用量"
+  "wsl-detected-no-data" -> "WSL 已发现但没有数据"
+  else -> code.orEmpty().ifBlank { "未知诊断" }
+}
+
 fun wslStatusLabel(state: String?): String = when (state?.trim()?.lowercase()) {
   "active" -> "活跃"
   "no-data" -> "无数据"

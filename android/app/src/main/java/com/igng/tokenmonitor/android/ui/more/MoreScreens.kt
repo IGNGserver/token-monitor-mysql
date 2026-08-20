@@ -83,6 +83,10 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 
 import androidx.compose.material.icons.filled.Add
 
+import androidx.compose.material.icons.filled.Delete
+
+import androidx.compose.material.icons.filled.Edit
+
 import androidx.compose.material.icons.filled.Refresh
 
 import androidx.compose.material.icons.outlined.AttachMoney
@@ -118,6 +122,8 @@ import androidx.compose.material3.TextButton
 
 import androidx.compose.material3.TopAppBar
 
+import androidx.compose.material3.Switch
+
 import androidx.compose.runtime.Composable
 
 import androidx.compose.runtime.getValue
@@ -146,6 +152,10 @@ import androidx.compose.ui.unit.dp
 
 import androidx.navigation.NavHostController
 
+import java.time.LocalDate
+
+import java.util.Locale
+
 import com.igng.tokenmonitor.android.BuildConfig
 
 import com.igng.tokenmonitor.android.data.model.BatchPricingResultDto
@@ -160,6 +170,12 @@ import com.igng.tokenmonitor.android.data.model.PricingRequestDto
 import com.igng.tokenmonitor.android.data.model.SessionDto
 
 import com.igng.tokenmonitor.android.data.model.StatsDto
+
+import com.igng.tokenmonitor.android.data.model.SubscriptionBindingDto
+
+import com.igng.tokenmonitor.android.data.model.SubscriptionDto
+
+import com.igng.tokenmonitor.android.data.model.SubscriptionTopUpDto
 
 import com.igng.tokenmonitor.android.ui.ConnectionUiState
 
@@ -192,6 +208,13 @@ import com.igng.tokenmonitor.android.ui.components.formatTokens
 import com.igng.tokenmonitor.android.ui.components.formatTokensShort
 
 import com.igng.tokenmonitor.android.ui.components.formatUsd
+
+import com.igng.tokenmonitor.android.ui.components.formatMoneyAmount
+
+import com.igng.tokenmonitor.android.ui.more.isTopUp
+import com.igng.tokenmonitor.android.ui.more.subscriptionMonthlyTotals
+import com.igng.tokenmonitor.android.ui.more.subscriptionNextRenewalDate
+import com.igng.tokenmonitor.android.ui.more.subscriptionTopUpTotalMinor
 
 
 
@@ -258,6 +281,14 @@ fun MoreHubScreen(navController: NavHostController) {
         )
       }
       item {
+        MoreNavCard(
+          title = "订阅",
+          subtitle = "记录 AI 服务费用与续费周期",
+          icon = Icons.Outlined.AttachMoney,
+          onClick = { navController.navigate("subscriptions") }
+        )
+      }
+      item {
 
         MoreNavCard(
 
@@ -293,6 +324,651 @@ fun MoreHubScreen(navController: NavHostController) {
 
   }
 
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SubscriptionsScreen(
+  state: HubUiState,
+  viewModel: HubViewModel,
+  onBack: () -> Unit,
+  onHome: (() -> Unit)? = null
+) {
+  val haptics = rememberAppHaptics()
+  val document = state.subscriptions
+  val today = LocalDate.now()
+  val monthlyTotals = subscriptionMonthlyTotals(document?.subscriptions.orEmpty(), today)
+  val upcomingRenewals = document?.subscriptions.orEmpty()
+    .mapNotNull { subscription ->
+      subscriptionNextRenewalDate(subscription, today)?.let { subscription to it }
+    }
+    .sortedBy { it.second }
+  var editing by remember { mutableStateOf<SubscriptionDto?>(null) }
+  var deleting by remember { mutableStateOf<SubscriptionDto?>(null) }
+  var deletingTopUp by remember { mutableStateOf<Pair<SubscriptionDto, SubscriptionTopUpDto>?>(null) }
+  var topUpRecord by remember { mutableStateOf<SubscriptionDto?>(null) }
+  var topUpEntry by remember { mutableStateOf<SubscriptionTopUpDto?>(null) }
+  var addChoiceVisible by remember { mutableStateOf(false) }
+  var editorVisible by remember { mutableStateOf(false) }
+  var topUpEditorVisible by remember { mutableStateOf(false) }
+  Column(Modifier.fillMaxSize()) {
+    TopAppBar(
+      title = { Text("订阅") },
+      navigationIcon = {
+        IconButton(onClick = {
+          haptics.perform(HapticEvent.Tap)
+          onBack()
+        }) {
+          Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+        }
+      },
+      actions = {
+        if (document != null) {
+          IconButton(
+            onClick = {
+              haptics.perform(HapticEvent.Tap)
+              addChoiceVisible = true
+            },
+            enabled = !state.subscriptionsLoading
+          ) {
+            Icon(Icons.Filled.Add, contentDescription = "新增订阅")
+          }
+        }
+        IconButton(
+          onClick = {
+            haptics.perform(HapticEvent.Tap)
+            viewModel.refreshSubscriptions()
+          },
+          enabled = !state.subscriptionsLoading
+        ) {
+          Icon(Icons.Filled.Refresh, contentDescription = "刷新")
+        }
+        NavigateHomeAction(onHome)
+      }
+    )
+    when {
+      state.subscriptionsLoading && document == null -> {
+        EmptyState(title = "正在加载订阅", text = "从 Hub 获取共享订阅记录。")
+      }
+      document == null -> {
+        EmptyState(title = "暂无订阅数据", text = "请确认已连接到支持订阅接口的 0.45 Hub。")
+      }
+      document.subscriptions.isEmpty() -> {
+        EmptyState(title = "暂无订阅", text = "Hub 中还没有保存的订阅或充值记录。")
+      }
+      else -> {
+        LazyColumn(
+          contentPadding = PaddingValues(16.dp),
+          verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+          item {
+            SubscriptionSummaryCard(
+              subscriptions = document.subscriptions,
+              monthlyTotals = monthlyTotals,
+              upcomingRenewals = upcomingRenewals
+            )
+          }
+          item {
+            AppCard {
+              SectionHeader(
+                title = "共享记录",
+                subtitle = document.updatedAt.takeIf { it.isNotBlank() }?.let { "更新 ${formatRelativeTime(it)}" }
+                  ?: "来自 Hub"
+              )
+              Spacer(Modifier.height(6.dp))
+              Text(
+                "这些记录由 Hub 统一保存，多个设备会看到同一份数据。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+              )
+            }
+          }
+          items(document.subscriptions, key = { it.id }) { subscription ->
+            SubscriptionCard(
+              subscription = subscription,
+              today = today,
+              onEdit = if (subscription.kind.equals("topup", ignoreCase = true)) null else {
+                {
+                  haptics.perform(HapticEvent.Tap)
+                  editing = subscription
+                  editorVisible = true
+                }
+              },
+              onDelete = {
+                haptics.perform(HapticEvent.Tap)
+                deleting = subscription
+              },
+              onAddTopUp = if (isTopUp(subscription)) {
+                {
+                  haptics.perform(HapticEvent.Tap)
+                  topUpRecord = subscription
+                  topUpEntry = null
+                  topUpEditorVisible = true
+                }
+              } else null,
+              onEditTopUp = if (isTopUp(subscription)) {
+                { entry ->
+                  haptics.perform(HapticEvent.Tap)
+                  topUpRecord = subscription
+                  topUpEntry = entry
+                  topUpEditorVisible = true
+                }
+              } else null,
+              onDeleteTopUp = if (isTopUp(subscription)) {
+                { entry ->
+                  haptics.perform(HapticEvent.Tap)
+                  deletingTopUp = subscription to entry
+                }
+              } else null
+            )
+          }
+        }
+      }
+    }
+  }
+  if (editorVisible) {
+    SubscriptionEditorDialog(
+      initial = editing,
+      onDismiss = { editorVisible = false },
+      onSave = { draft ->
+        val current = document
+        if (current != null) {
+          val next = current.subscriptions
+            .filterNot { it.id == draft.id }
+            .plus(draft)
+          viewModel.saveSubscriptions(next, current.updatedAt)
+        }
+        editorVisible = false
+      }
+    )
+  }
+  if (addChoiceVisible) {
+    AlertDialog(
+      onDismissRequest = { addChoiceVisible = false },
+      title = { Text("新增记录") },
+      text = { Text("选择要记录的 AI 服务费用类型。") },
+      confirmButton = {
+        Button(onClick = {
+          addChoiceVisible = false
+          editing = null
+          editorVisible = true
+        }) { Text("订阅计划") }
+      },
+      dismissButton = {
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+          TextButton(onClick = {
+            addChoiceVisible = false
+            topUpRecord = null
+            topUpEntry = null
+            topUpEditorVisible = true
+          }) { Text("充值账本") }
+          TextButton(onClick = { addChoiceVisible = false }) { Text("取消") }
+        }
+      }
+    )
+  }
+  deleting?.let { target ->
+    AlertDialog(
+      onDismissRequest = { deleting = null },
+      title = { Text("删除订阅记录？") },
+      text = { Text("删除后会同步到 Hub 上的所有客户端。") },
+      confirmButton = {
+        Button(onClick = {
+          val current = document
+          if (current != null) {
+            viewModel.saveSubscriptions(
+              current.subscriptions.filterNot { it.id == target.id },
+              current.updatedAt
+            )
+          }
+          deleting = null
+        }) { Text("删除") }
+      },
+      dismissButton = { TextButton(onClick = { deleting = null }) { Text("取消") } }
+    )
+  }
+  deletingTopUp?.let { target ->
+    AlertDialog(
+      onDismissRequest = { deletingTopUp = null },
+      title = { Text("删除这笔充值？") },
+      text = { Text("删除后会同步到 Hub 上的所有客户端。") },
+      confirmButton = {
+        Button(onClick = {
+          val current = document
+          val record = current?.subscriptions?.firstOrNull { it.id == target.first.id }
+          if (current != null && record != null) {
+            val remaining = record.topUps.filterNot { it.id == target.second.id }
+            val next = if (remaining.isEmpty()) {
+              current.subscriptions.filterNot { it.id == record.id }
+            } else {
+              current.subscriptions.map {
+                if (it.id == record.id) it.copy(topUps = remaining, updatedAt = "") else it
+              }
+            }
+            viewModel.saveSubscriptions(next, current.updatedAt)
+          }
+          deletingTopUp = null
+        }) { Text("删除") }
+      },
+      dismissButton = { TextButton(onClick = { deletingTopUp = null }) { Text("取消") } }
+    )
+  }
+  if (topUpEditorVisible) {
+    TopUpEditorDialog(
+      initialRecord = topUpRecord,
+      initialEntry = topUpEntry,
+      onDismiss = { topUpEditorVisible = false },
+      onSave = { draft ->
+        val current = document
+        if (current != null) {
+          val entry = SubscriptionTopUpDto(
+            id = topUpEntry?.id ?: "android-topup-${System.currentTimeMillis()}",
+            date = draft.date,
+            amountMinor = draft.amountMinor
+          )
+          val targetRecord = topUpRecord
+          val next = if (targetRecord == null) {
+            current.subscriptions + SubscriptionDto(
+              id = "android-topup-record-${System.currentTimeMillis()}",
+              provider = draft.provider,
+              kind = "topup",
+              binding = draft.binding,
+              planName = draft.planName,
+              currency = draft.currency,
+              topUps = listOf(entry),
+              autoRenew = false,
+              note = draft.note
+            )
+          } else {
+            current.subscriptions.map { record ->
+              if (record.id != targetRecord.id) {
+                record
+              } else {
+                record.copy(
+                  provider = draft.provider,
+                  binding = draft.binding,
+                  planName = draft.planName,
+                  currency = draft.currency,
+                  topUps = record.topUps.filterNot { it.id == entry.id } + entry,
+                  autoRenew = false,
+                  note = draft.note,
+                  updatedAt = ""
+                )
+              }
+            }
+          }
+          viewModel.saveSubscriptions(next, current.updatedAt)
+        }
+        topUpEditorVisible = false
+      }
+    )
+  }
+}
+
+@Composable
+private fun SubscriptionSummaryCard(
+  subscriptions: List<SubscriptionDto>,
+  monthlyTotals: Map<String, Double>,
+  upcomingRenewals: List<Pair<SubscriptionDto, LocalDate>>
+) {
+  AppCard {
+    SectionHeader(title = "费用概览", subtitle = "按记录币种计算，不跨币种换算")
+    Spacer(Modifier.height(8.dp))
+    if (monthlyTotals.isEmpty()) {
+      Text(
+        "本月暂无有效订阅或充值记录。",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+      )
+    } else {
+      monthlyTotals.forEach { (currency, amount) ->
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+          Text("本月等价成本", style = MaterialTheme.typography.bodySmall)
+          Text(formatMoneyAmount(amount, currency), style = MaterialTheme.typography.bodyMedium)
+        }
+      }
+    }
+    val topUpCount = subscriptions.filter(::isTopUp).sumOf { it.topUps.size }
+    if (topUpCount > 0) {
+      Spacer(Modifier.height(6.dp))
+      Text(
+        "已记录充值 $topUpCount 笔",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+      )
+    }
+    if (upcomingRenewals.isNotEmpty()) {
+      Spacer(Modifier.height(8.dp))
+      Text("近期续费", style = MaterialTheme.typography.labelLarge)
+      upcomingRenewals.take(3).forEach { (subscription, date) ->
+        Text(
+          "${subscription.provider.ifBlank { "未知服务" }} · $date",
+          style = MaterialTheme.typography.bodySmall,
+          color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+      }
+    }
+  }
+}
+
+@Composable
+private fun SubscriptionCard(
+  subscription: SubscriptionDto,
+  today: LocalDate,
+  onEdit: (() -> Unit)?,
+  onDelete: () -> Unit,
+  onAddTopUp: (() -> Unit)?,
+  onEditTopUp: ((SubscriptionTopUpDto) -> Unit)?,
+  onDeleteTopUp: ((SubscriptionTopUpDto) -> Unit)?
+) {
+  val topUp = isTopUp(subscription)
+  val amount = if (topUp) {
+    subscriptionTopUpTotalMinor(subscription) / 100.0
+  } else {
+    subscription.amountMinor / 100.0
+  }
+  AppCard {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+      Column(Modifier.weight(1f)) {
+        Text(
+          subscription.provider.ifBlank { "未知服务" },
+          style = MaterialTheme.typography.titleMedium,
+          fontWeight = FontWeight.SemiBold
+        )
+        val plan = subscription.planName.ifBlank { if (topUp) "充值记录" else "未命名计划" }
+        Text(plan, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
+      }
+      Column(horizontalAlignment = Alignment.End) {
+        Text(
+          formatMoneyAmount(amount, subscription.currency),
+          style = MaterialTheme.typography.titleSmall,
+          fontWeight = FontWeight.SemiBold
+        )
+        Row {
+          if (topUp && onAddTopUp != null) {
+            IconButton(onClick = onAddTopUp) {
+              Icon(Icons.Filled.Add, contentDescription = "新增充值")
+            }
+          } else if (onEdit != null) {
+            IconButton(onClick = onEdit) {
+              Icon(Icons.Filled.Edit, contentDescription = "编辑")
+            }
+          }
+          IconButton(onClick = onDelete) {
+            Icon(Icons.Filled.Delete, contentDescription = "删除")
+          }
+        }
+      }
+    }
+    Spacer(Modifier.height(8.dp))
+    val account = listOf(
+      subscription.binding.profileName,
+      subscription.binding.accountEmail
+    ).filter { it.isNotBlank() }.joinToString(" · ")
+    if (account.isNotBlank()) {
+      Text(account, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+    if (topUp) {
+      Text(
+        "累计充值 ${formatMoneyAmount(amount, subscription.currency)} · ${subscription.topUps.size} 笔",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+      )
+      subscription.topUps.sortedByDescending { it.date }.forEach { entry ->
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+          Text(
+            entry.date,
+            modifier = Modifier.weight(1f),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+          )
+          Text(formatMoneyAmount(entry.amountMinor / 100.0, subscription.currency), style = MaterialTheme.typography.bodySmall)
+          if (onEditTopUp != null) {
+            IconButton(onClick = { onEditTopUp(entry) }) {
+              Icon(Icons.Filled.Edit, contentDescription = "编辑充值")
+            }
+          }
+          if (onDeleteTopUp != null) {
+            IconButton(onClick = { onDeleteTopUp(entry) }) {
+              Icon(Icons.Filled.Delete, contentDescription = "删除充值")
+            }
+          }
+        }
+      }
+    } else {
+      val interval = if (subscription.interval.equals("year", ignoreCase = true)) "年" else "月"
+      Text(
+        "每 ${subscription.intervalCount.coerceAtLeast(1)}$interval · ${if (subscription.autoRenew) "自动续费" else "已停止续费"}",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+      )
+      subscriptionNextRenewalDate(subscription, today)?.let {
+        Text("下次续费 $it", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+      }
+    }
+    subscription.startDate?.let {
+      Text("开始 $it", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+    subscription.note.takeIf { it.isNotBlank() }?.let {
+      Spacer(Modifier.height(4.dp))
+      Text(it, style = MaterialTheme.typography.bodySmall)
+    }
+  }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SubscriptionEditorDialog(
+  initial: SubscriptionDto?,
+  onDismiss: () -> Unit,
+  onSave: (SubscriptionDto) -> Unit
+) {
+  val key = initial?.id ?: "new"
+  var provider by remember(key) { mutableStateOf(initial?.provider.orEmpty()) }
+  var planName by remember(key) { mutableStateOf(initial?.planName.orEmpty()) }
+  var amount by remember(key) {
+    mutableStateOf(initial?.let { String.format(Locale.US, "%.2f", it.amountMinor / 100.0) } ?: "0.00")
+  }
+  var currency by remember(key) { mutableStateOf(initial?.currency ?: "USD") }
+  var profileName by remember(key) { mutableStateOf(initial?.binding?.profileName.orEmpty()) }
+  var accountEmail by remember(key) { mutableStateOf(initial?.binding?.accountEmail.orEmpty()) }
+  var interval by remember(key) { mutableStateOf(initial?.interval ?: "month") }
+  var startDate by remember(key) { mutableStateOf(initial?.startDate ?: LocalDate.now().toString()) }
+  var autoRenew by remember(key) { mutableStateOf(initial?.autoRenew ?: true) }
+  var note by remember(key) { mutableStateOf(initial?.note.orEmpty()) }
+  val amountMinor = amount.trim().replace(',', '.').toDoubleOrNull()?.let { (it * 100.0).toLong() }
+  val validDate = runCatching { LocalDate.parse(startDate.trim()) }.isSuccess
+  val canSave = provider.isNotBlank() && amountMinor != null && amountMinor >= 0L && validDate
+
+  AlertDialog(
+    onDismissRequest = onDismiss,
+    title = { Text(if (initial == null) "新增订阅" else "编辑订阅") },
+    text = {
+      Column(
+        Modifier
+          .verticalScroll(rememberScrollState())
+          .padding(vertical = 4.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+      ) {
+        Text(
+          "只保存费用和账户展示信息，不保存 Provider 凭证。",
+          style = MaterialTheme.typography.bodySmall,
+          color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        OutlinedTextField(provider, { provider = it }, label = { Text("服务商") }, singleLine = true)
+        OutlinedTextField(planName, { planName = it }, label = { Text("计划名称") }, singleLine = true)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+          OutlinedTextField(
+            amount,
+            { amount = it },
+            modifier = Modifier.weight(1f),
+            label = { Text("金额") },
+            singleLine = true
+          )
+          OutlinedTextField(
+            currency,
+            { currency = it.uppercase(Locale.US).take(8) },
+            modifier = Modifier.width(100.dp),
+            label = { Text("币种") },
+            singleLine = true
+          )
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+          FilterChip(
+            selected = interval == "month",
+            onClick = { interval = "month" },
+            label = { Text("每月") }
+          )
+          FilterChip(
+            selected = interval == "year",
+            onClick = { interval = "year" },
+            label = { Text("每年") }
+          )
+        }
+        OutlinedTextField(startDate, { startDate = it }, label = { Text("开始日期 YYYY-MM-DD") }, singleLine = true)
+        OutlinedTextField(profileName, { profileName = it }, label = { Text("账户名称（可选）") }, singleLine = true)
+        OutlinedTextField(accountEmail, { accountEmail = it }, label = { Text("账户邮箱（可选）") }, singleLine = true)
+        Row(
+          Modifier.fillMaxWidth(),
+          horizontalArrangement = Arrangement.SpaceBetween,
+          verticalAlignment = Alignment.CenterVertically
+        ) {
+          Text("自动续费")
+          Switch(checked = autoRenew, onCheckedChange = { autoRenew = it })
+        }
+        OutlinedTextField(note, { note = it }, label = { Text("备注（可选）") })
+        if (!canSave) {
+          Text(
+            "请填写服务商、有效金额和开始日期。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.error
+          )
+        }
+      }
+    },
+    confirmButton = {
+      Button(
+        onClick = {
+          val draft = (initial ?: SubscriptionDto(
+            id = "android-${System.currentTimeMillis()}",
+            binding = SubscriptionBindingDto()
+          )).copy(
+            provider = provider.trim(),
+            planName = planName.trim(),
+            amountMinor = amountMinor ?: 0L,
+            currency = currency.trim().uppercase(Locale.US),
+            interval = interval,
+            startDate = startDate.trim(),
+            binding = (initial?.binding ?: SubscriptionBindingDto()).copy(
+              profileName = profileName.trim(),
+              accountEmail = accountEmail.trim().lowercase(Locale.US)
+            ),
+            autoRenew = autoRenew,
+            note = note.trim(),
+            updatedAt = ""
+          )
+          onSave(draft)
+        },
+        enabled = canSave
+      ) { Text("保存") }
+    },
+    dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } }
+  )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun TopUpEditorDialog(
+  initialRecord: SubscriptionDto?,
+  initialEntry: SubscriptionTopUpDto?,
+  onDismiss: () -> Unit,
+  onSave: (TopUpDraft) -> Unit
+) {
+  val key = "${initialRecord?.id ?: "new"}:${initialEntry?.id ?: "entry"}"
+  var provider by remember(key) { mutableStateOf(initialRecord?.provider.orEmpty()) }
+  var planName by remember(key) { mutableStateOf(initialRecord?.planName.orEmpty()) }
+  var amount by remember(key) {
+    mutableStateOf(initialEntry?.let { String.format(Locale.US, "%.2f", it.amountMinor / 100.0) } ?: "0.00")
+  }
+  var currency by remember(key) { mutableStateOf(initialRecord?.currency ?: "USD") }
+  var date by remember(key) { mutableStateOf(initialEntry?.date ?: LocalDate.now().toString()) }
+  var profileName by remember(key) { mutableStateOf(initialRecord?.binding?.profileName.orEmpty()) }
+  var accountEmail by remember(key) { mutableStateOf(initialRecord?.binding?.accountEmail.orEmpty()) }
+  var note by remember(key) { mutableStateOf(initialRecord?.note.orEmpty()) }
+  val amountMinor = amount.trim().replace(',', '.').toDoubleOrNull()?.let { (it * 100.0).toLong() }
+  val validDate = parseSubscriptionDate(date) != null
+  val canSave = provider.isNotBlank() && amountMinor != null && amountMinor >= 0L && validDate
+
+  AlertDialog(
+    onDismissRequest = onDismiss,
+    title = { Text(if (initialEntry == null) "新增充值" else "编辑充值") },
+    text = {
+      Column(
+        Modifier
+          .verticalScroll(rememberScrollState())
+          .padding(vertical = 4.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+      ) {
+        Text(
+          "充值会保存在对应的账本中，用于计算本月充值和累计余额。",
+          style = MaterialTheme.typography.bodySmall,
+          color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        OutlinedTextField(provider, { provider = it }, label = { Text("服务商") }, singleLine = true)
+        OutlinedTextField(planName, { planName = it }, label = { Text("账本名称（可选）") }, singleLine = true)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+          OutlinedTextField(
+            amount,
+            { amount = it },
+            modifier = Modifier.weight(1f),
+            label = { Text("金额") },
+            singleLine = true
+          )
+          OutlinedTextField(
+            currency,
+            { currency = it.uppercase(Locale.US).take(8) },
+            modifier = Modifier.width(100.dp),
+            label = { Text("币种") },
+            singleLine = true
+          )
+        }
+        OutlinedTextField(date, { date = it }, label = { Text("充值日期 YYYY-MM-DD") }, singleLine = true)
+        OutlinedTextField(profileName, { profileName = it }, label = { Text("账户名称（可选）") }, singleLine = true)
+        OutlinedTextField(accountEmail, { accountEmail = it }, label = { Text("账户邮箱（可选）") }, singleLine = true)
+        OutlinedTextField(note, { note = it }, label = { Text("备注（可选）") })
+        if (!canSave) {
+          Text(
+            "请填写服务商、有效金额和充值日期。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.error
+          )
+        }
+      }
+    },
+    confirmButton = {
+      Button(
+        onClick = {
+          onSave(
+            TopUpDraft(
+              provider = provider.trim(),
+              planName = planName.trim(),
+              amountMinor = amountMinor ?: 0L,
+              currency = currency.trim().uppercase(Locale.US),
+              date = date.trim(),
+              binding = SubscriptionBindingDto(
+                profileName = profileName.trim(),
+                accountEmail = accountEmail.trim().lowercase(Locale.US),
+                accountKey = initialRecord?.binding?.accountKey.orEmpty()
+              ),
+              note = note.trim()
+            )
+          )
+        },
+        enabled = canSave
+      ) { Text("保存") }
+    },
+    dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } }
+  )
 }
 
 
@@ -856,15 +1532,24 @@ fun ProjectsScreen(stats: StatsDto?, onBack: () -> Unit, onHome: (() -> Unit)? =
       }
     }
     Spacer(Modifier.height(8.dp))
-    val showIncomplete = periodKey == "allTime" && stats?.projectsIncomplete == true
+    val completenessNotes = buildList {
+      if (periodKey == "allTime" && stats?.projectsIncomplete == true) {
+        add("部分设备未上报完整的全部时间项目汇总")
+      }
+      stats?.periodProjectsOmitted?.get(periodKey)?.takeIf { it > 0L }?.let {
+        add("该周期有 $it 个项目归因被省略")
+      }
+      stats?.sessionDetailsOmitted?.get(periodKey)?.takeIf { it > 0L }?.let {
+        add("该周期有 $it 个会话详情被省略")
+      }
+    }
+    val showIncomplete = completenessNotes.isNotEmpty()
     if (projects.isEmpty()) {
       if (showIncomplete) {
         AppCard(modifier = Modifier.padding(horizontal = 16.dp)) {
-          Text(
-            "部分设备未上报全部时间的项目汇总，统计可能不完整。",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-          )
+          completenessNotes.forEach { note ->
+            Text(note, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
+          }
         }
         Spacer(Modifier.height(12.dp))
       }
@@ -878,11 +1563,9 @@ fun ProjectsScreen(stats: StatsDto?, onBack: () -> Unit, onHome: (() -> Unit)? =
       if (showIncomplete) {
         item {
           AppCard {
-            Text(
-              "部分设备未上报全部时间的项目汇总，统计可能不完整。",
-              style = MaterialTheme.typography.bodyMedium,
-              color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            completenessNotes.forEach { note ->
+              Text(note, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
+            }
           }
         }
       }
@@ -1687,6 +2370,7 @@ fun SettingsScreen(
           haptics.perform(HapticEvent.Error)
 
           viewModel.clear()
+          restartRealtime()
 
         }) { Text("清除本机连接") }
 
@@ -1742,6 +2426,20 @@ fun SettingsScreen(
 
         }
 
+        state.health?.hubBuild?.let { build ->
+
+          Text(
+
+            "Hub 构建：${build.runtime ?: "unknown"} · core r${build.coreRevision ?: "?"} · runtime r${build.runtimeRevision ?: "?"}",
+
+            style = MaterialTheme.typography.bodySmall,
+
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+
+          )
+
+        }
+
         Spacer(Modifier.height(4.dp))
 
         TextButton(
@@ -1768,18 +2466,24 @@ fun SettingsScreen(
 
 fun availableSessions(stats: StatsDto?): List<Pair<String, SessionDto>> {
 
-  val periods = listOf(stats?.periods?.today, stats?.periods?.month, stats?.periods?.allTime)
-
-  return periods
-
-    .firstOrNull { !it?.sessions.isNullOrEmpty() }
-
-    ?.sessions
-
-    .orEmpty()
-
-    .toList()
-
+  // The same session can appear in more than one cumulative period. Prefer the
+  // widest available snapshot for that key, but keep keys that only exist in an
+  // older period. Synchronized devices may intentionally omit allTime.sessions,
+  // so falling back to today/month is required for a complete recent list.
+  val selected = linkedMapOf<String, Pair<Int, SessionDto>>()
+  val periods = listOf(
+    0 to stats?.periods?.today,
+    1 to stats?.periods?.month,
+    2 to stats?.periods?.allTime
+  )
+  for ((rank, period) in periods) {
+    for ((key, session) in period?.sessions.orEmpty()) {
+      val existing = selected[key]
+      if (existing == null || rank >= existing.first) selected[key] = rank to session
+    }
+  }
+  return selected
+    .map { (key, ranked) -> key to ranked.second }
     .sortedByDescending { it.second.lastUsedAt.orEmpty() }
 
 }

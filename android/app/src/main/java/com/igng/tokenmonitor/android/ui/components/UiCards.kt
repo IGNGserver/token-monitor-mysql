@@ -175,6 +175,40 @@ fun CompactMetricCard(
 }
 
 @Composable
+fun TokenComponentsCard(
+  period: PeriodDto?,
+  title: String = "Token 构成",
+  modifier: Modifier = Modifier
+) {
+  if (period == null) return
+  val segments = listOf(
+    "缓存读取" to period.cacheReadTokens,
+    "缓存写入" to period.cacheWriteTokens,
+    "输出" to period.outputTokens,
+    "未分类" to period.unclassifiedTokens
+  )
+  val hasComponentData = segments.any { it.second > 0L } || period.capabilities != null
+  if (!hasComponentData) return
+  AppCard(modifier = modifier) {
+    SectionHeader(
+      title = title,
+      subtitle = if (period.capabilities?.tokenComponents == false) "部分 token 未能分类" else "来自 Hub 组件统计"
+    )
+    Spacer(Modifier.height(10.dp))
+    SegmentedTokenBar(segments)
+    if (period.timedDurationMs > 0L) {
+      Spacer(Modifier.height(8.dp))
+      Text(
+        "计时输出 ${formatTokensShort(period.timedOutputTokens)} · " +
+          "累计耗时 ${String.format(java.util.Locale.US, "%.1f", period.timedDurationMs / 1000.0)} 秒",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+      )
+    }
+  }
+}
+
+@Composable
 fun RealtimeStatusChip(status: RealtimeStatus, modifier: Modifier = Modifier) {
   val (label, color) = when (status) {
     RealtimeStatus.Live -> "实时连接" to MaterialTheme.colorScheme.primary

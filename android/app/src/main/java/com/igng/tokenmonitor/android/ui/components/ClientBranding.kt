@@ -25,6 +25,7 @@ object ClientBranding {
     "claude" to "Claude Code",
     "claude-desktop" to "Claude Desktop",
     "codex" to "Codex",
+    "commandcode" to "Command Code",
     "hermes" to "Hermes",
     "gemini" to "Gemini",
     "cursor" to "Cursor",
@@ -45,6 +46,7 @@ object ClientBranding {
     "codebuddy" to "CodeBuddy",
     "workbuddy" to "WorkBuddy",
     "proma" to "Proma",
+    "reasonix" to "Reasonix",
     "deepseek" to "DeepSeek",
     "xiaomi" to "Xiaomi",
     "mimo" to "MiMo",
@@ -60,6 +62,7 @@ object ClientBranding {
     "cohere" to "Cohere",
     "volcengine" to "Volcengine",
     "qoder" to "Qoder",
+    "qodercn" to "Qoder CN",
     "openrouter" to "OpenRouter"
   )
 
@@ -67,6 +70,7 @@ object ClientBranding {
     "claude" to Color(0xFFCC7C5E),
     "claude-desktop" to Color(0xFFD4927A),
     "codex" to Color(0xFF49A3B0),
+    "commandcode" to Color(0xFF7B61FF),
     "hermes" to Color(0xFFD4AF37),
     "gemini" to Color(0xFF4285F4),
     "antigravity" to Color(0xFF4285F4),
@@ -93,6 +97,7 @@ object ClientBranding {
     "codebuddy" to Color(0xFF6C4DFF),
     "workbuddy" to Color(0xFF0DC8A5),
     "proma" to Color(0xFF333333),
+    "reasonix" to Color(0xFFEF6C3A),
     "moonshot" to Color(0xFF16191E),
     "minimax" to Color(0xFFF23F5D),
     "doubao" to Color(0xFF1E37FC),
@@ -102,6 +107,7 @@ object ClientBranding {
     "cohere" to Color(0xFF39594D),
     "volcengine" to Color(0xFF006EFF),
     "qoder" to Color(0xFF2ADB5C),
+    "qodercn" to Color(0xFF1BAA70),
     "openrouter" to Color(0xFF6B57FF),
     "default" to Color(0xFF6AB4F0)
   )

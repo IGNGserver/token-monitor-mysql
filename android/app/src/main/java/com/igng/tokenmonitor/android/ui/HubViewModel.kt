@@ -9,7 +9,11 @@ import com.igng.tokenmonitor.android.data.model.PeriodDto
 import com.igng.tokenmonitor.android.data.model.PricingDto
 import com.igng.tokenmonitor.android.data.model.PricingRequestDto
 import com.igng.tokenmonitor.android.data.model.StatsDto
+import com.igng.tokenmonitor.android.data.model.SubscriptionDto
+import com.igng.tokenmonitor.android.data.model.SubscriptionsDto
+import com.igng.tokenmonitor.android.data.model.SubscriptionsRequestDto
 import com.igng.tokenmonitor.android.data.model.UsageRangeDto
+import com.igng.tokenmonitor.android.data.repository.HubError
 import com.igng.tokenmonitor.android.data.repository.HubRepository
 import com.igng.tokenmonitor.android.data.repository.HubResult
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -39,6 +43,8 @@ data class HubUiState(
   val history: HistoryDto? = null,
   val devices: List<DeviceDto> = emptyList(),
   val pricing: List<PricingDto> = emptyList(),
+  val subscriptions: SubscriptionsDto? = null,
+  val subscriptionsLoading: Boolean = false,
   val isLoading: Boolean = false,
   val error: String? = null,
   val realtime: RealtimeStatus = RealtimeStatus.Disconnected,
@@ -48,6 +54,31 @@ data class HubUiState(
   val customRangeResult: UsageRangeDto? = null,
   val customRangeLoading: Boolean = false
 )
+
+data class StatsSnapshotMerge(
+  val state: HubUiState,
+  val historyChanged: Boolean,
+  val subscriptionsChanged: Boolean
+)
+
+internal fun mergeStatsSnapshot(previous: HubUiState, next: StatsDto): StatsSnapshotMerge {
+  val hadPreviousStats = previous.stats != null
+  val historyChanged = hadPreviousStats
+    && next.historyRevision != null
+    && previous.stats?.historyRevision != next.historyRevision
+  val subscriptionsChanged = hadPreviousStats
+    && next.subscriptionsUpdatedAt != null
+    && previous.stats?.subscriptionsUpdatedAt != next.subscriptionsUpdatedAt
+  return StatsSnapshotMerge(
+    state = previous.copy(
+      stats = next,
+      devices = next.devices,
+      history = if (previous.history == null || historyChanged) next.historyPreview else previous.history
+    ),
+    historyChanged = historyChanged,
+    subscriptionsChanged = subscriptionsChanged
+  )
+}
 
 @HiltViewModel
 class HubViewModel @Inject constructor(private val repository: HubRepository) : ViewModel() {
@@ -63,6 +94,7 @@ class HubViewModel @Inject constructor(private val repository: HubRepository) : 
     refreshHistory()
     refreshDevices()
     refreshPricing()
+    refreshSubscriptions()
     val current = _state.value
     if (current.analyticsPeriod == AnalyticsPeriodKind.Custom && current.customRange != null) {
       val range = current.customRange
@@ -83,7 +115,10 @@ class HubViewModel @Inject constructor(private val repository: HubRepository) : 
   fun refreshStats() = viewModelScope.launch {
     _state.value = _state.value.copy(isLoading = true, error = null)
     when (val result = repository.stats()) {
-      is HubResult.Success -> _state.value = _state.value.copy(stats = result.value, isLoading = false)
+      is HubResult.Success -> {
+        _state.value = _state.value.copy(isLoading = false)
+        applyStatsSnapshot(result.value)
+      }
       is HubResult.Failure -> _state.value = _state.value.copy(isLoading = false, error = result.error.message, realtime = RealtimeStatus.Disconnected)
     }
   }
@@ -99,6 +134,43 @@ class HubViewModel @Inject constructor(private val repository: HubRepository) : 
     when (val result = repository.pricing()) {
       is HubResult.Success -> _state.value = _state.value.copy(pricing = result.value.pricing, error = null)
       is HubResult.Failure -> _state.value = _state.value.copy(error = result.error.message)
+    }
+  }
+
+  fun refreshSubscriptions() = viewModelScope.launch {
+    _state.value = _state.value.copy(subscriptionsLoading = true)
+    when (val result = repository.subscriptions()) {
+      is HubResult.Success -> _state.value = _state.value.copy(
+        subscriptions = result.value,
+        subscriptionsLoading = false
+      )
+      is HubResult.Failure -> {
+        val unsupported = result.error.kind == HubError.Kind.Api &&
+          result.error.message.startsWith("Hub 不支持此接口")
+        _state.value = _state.value.copy(
+          subscriptionsLoading = false,
+          error = if (unsupported) _state.value.error else result.error.message
+        )
+      }
+    }
+  }
+
+  fun saveSubscriptions(subscriptions: List<SubscriptionDto>, baseUpdatedAt: String = "") = viewModelScope.launch {
+    _state.value = _state.value.copy(subscriptionsLoading = true, error = null)
+    when (val result = repository.putSubscriptions(SubscriptionsRequestDto(subscriptions, baseUpdatedAt))) {
+      is HubResult.Success -> _state.value = _state.value.copy(
+        subscriptions = result.value,
+        subscriptionsLoading = false
+      )
+      is HubResult.Failure -> {
+        _state.value = _state.value.copy(
+          subscriptionsLoading = false,
+          error = result.error.message
+        )
+        if (result.error.kind == HubError.Kind.Conflict) {
+          refreshSubscriptions()
+        }
+      }
     }
   }
 
@@ -210,7 +282,24 @@ class HubViewModel @Inject constructor(private val repository: HubRepository) : 
     return tokens to costs
   }
 
-  fun restartRealtime() { sseJob?.cancel(); startRealtime() }
+  fun restartRealtime() {
+    sseJob?.cancel()
+    sseJob = null
+    if (!repository.connection().isComplete) {
+      rangeJob?.cancel()
+      rangeJob = null
+      _state.value = HubUiState()
+      return
+    }
+    startRealtime()
+  }
+
+  private fun applyStatsSnapshot(next: StatsDto) {
+    val merged = mergeStatsSnapshot(_state.value, next)
+    _state.value = merged.state
+    if (merged.historyChanged) refreshHistory()
+    if (merged.subscriptionsChanged) refreshSubscriptions()
+  }
 
   private fun startRealtime() {
     if (!repository.connection().isComplete) return
@@ -220,7 +309,10 @@ class HubViewModel @Inject constructor(private val repository: HubRepository) : 
         _state.value = _state.value.copy(realtime = RealtimeStatus.Reconnecting)
         runCatching {
           repository.statsEvents().collect { event ->
-            event.stats?.let { _state.value = _state.value.copy(stats = it, realtime = RealtimeStatus.Live, error = null) }
+            event.stats?.let {
+              applyStatsSnapshot(it)
+              _state.value = _state.value.copy(realtime = RealtimeStatus.Live, error = null)
+            }
             backoffMs = 1_000L
           }
         }.onFailure {

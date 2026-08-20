@@ -62,6 +62,13 @@ const {
   collectClaudeDesktopRows,
   desktopSessionWatchDirs
 } = require('./claudeDesktopUsage');
+const {
+  buildDeepSeekHarnessHistoryGraph,
+  buildDeepSeekHarnessPeriods,
+  buildDeepSeekHarnessRangeJson,
+  collectDeepSeekHarnessRows,
+  deepseekHarnessSessionsDir
+} = require('./deepseekHarnessUsage');
 const { hashKey } = require('./hashKey');
 const { filterPeriodByCustomRange, normalizeCustomRange } = require('./customRange');
 const { hostOsInfo, normalizeOsInfo } = require('./osVersion');
@@ -529,7 +536,7 @@ function resetPromaPricingCache() {
   promaPricingCache.clear();
 }
 
-const LOCAL_PARSED_CLIENTS = new Set(['proma', 'claude-desktop', 'qodercn']);
+const LOCAL_PARSED_CLIENTS = new Set(['proma', 'claude-desktop', 'deepseek-harness', 'qodercn']);
 
 function collectionDate(now) {
   const value = typeof now === 'function' ? now() : now;
@@ -964,6 +971,10 @@ async function collectHistoryOnce(options) {
     rawGraphs.push(options.qoderCnGraph);
     histories.push(normalizeHistory(parseGraphResult(options.qoderCnGraph), { capDays, todayKey }));
   }
+  if (options.deepseekHarnessGraph) {
+    rawGraphs.push(options.deepseekHarnessGraph);
+    histories.push(normalizeHistory(parseGraphResult(options.deepseekHarnessGraph), { capDays, todayKey }));
+  }
   if (options.dailyHistoryArchiveEnabled) {
     try {
       const retainedGraph = retainDailyHistory(rawGraphs, {
@@ -1030,12 +1041,14 @@ async function collectUsageOnce(options) {
     options.homeDir || os.homedir(),
     { ...localSessionMetadataDeps, retryMisses, resolveProjects: projectsEnabled }
   );
-  // Proma and Qoder CN remain local compatibility adapters. Reasonix aggregate
-  // usage is supplied by the same Tokscale path as every other tracked client.
-  const localClients = new Set(['proma', 'claude-desktop', 'qodercn']);
+  // Proma, DeepSeek Harness, and Qoder CN remain local compatibility adapters.
+  // Reasonix aggregate usage is supplied by the same Tokscale path as every
+  // other tracked client.
+  const localClients = new Set(['proma', 'claude-desktop', 'deepseek-harness', 'qodercn']);
   const tokscaleClients = tokscaleClientsCsv(normalizedClients);
   const includesProma = normalizedClients.split(',').includes('proma');
   const includesClaudeDesktop = normalizedClients.split(',').includes('claude-desktop');
+  const includesDeepSeekHarness = normalizedClients.split(',').includes('deepseek-harness');
   const includesQoderCn = normalizedClients.split(',').includes('qodercn');
   const trackedClientSet = new Set(normalizedClients.split(',').filter(Boolean));
   const targetClients = [...new Set(normalizeClientsCsv(options.targetClients).split(',').filter((client) => trackedClientSet.has(client)))];
@@ -1063,6 +1076,9 @@ async function collectUsageOnce(options) {
   let claudeDesktopPeriods = null;
   let claudeDesktopRows = null;
   let claudeDesktopPricing = null;
+  let deepSeekHarnessPeriods = null;
+  let deepSeekHarnessRows = null;
+  let deepSeekHarnessPricing = null;
   let qoderCnPeriods = null;
   let qoderCnRows = null;
   let qoderCnPricing = null;
@@ -1072,6 +1088,8 @@ async function collectUsageOnce(options) {
     const progress = { ...periods };
     if (claudeDesktopPeriods?.today && progress.today) progress.today = mergePeriods(progress.today, claudeDesktopPeriods.today);
     if (claudeDesktopPeriods?.month && progress.month) progress.month = mergePeriods(progress.month, claudeDesktopPeriods.month);
+    if (deepSeekHarnessPeriods?.today && progress.today) progress.today = mergePeriods(progress.today, deepSeekHarnessPeriods.today);
+    if (deepSeekHarnessPeriods?.month && progress.month) progress.month = mergePeriods(progress.month, deepSeekHarnessPeriods.month);
     if (qoderCnPeriods?.today && progress.today) progress.today = mergePeriods(progress.today, qoderCnPeriods.today);
     if (qoderCnPeriods?.month && progress.month) progress.month = mergePeriods(progress.month, qoderCnPeriods.month);
     try { options.onProgress({ ...progress, updatedAt: new Date().toISOString() }); } catch (_) {}
@@ -1126,6 +1144,33 @@ async function collectUsageOnce(options) {
         };
       } catch (error) {
         if (typeof options.logger === 'function') options.logger(`claude-desktop parse failed: ${error.message}`);
+      }
+    }
+    if (includesDeepSeekHarness && (!targetRequested || targetClients.includes('deepseek-harness'))) {
+      try {
+        deepSeekHarnessRows = collectDeepSeekHarnessRows({
+          homeDir: options.homeDir || os.homedir(),
+          env: options.env || process.env,
+          logger: options.logger
+        });
+        deepSeekHarnessPricing = await resolvePromaPricing(deepSeekHarnessRows, {
+          lookupModelPricing: options.lookupModelPricing,
+          commandTimeoutMs: options.pricingTimeoutMs ?? Math.min(commandTimeoutMs || PROMA_PRICING_LOOKUP_TIMEOUT_MS, PROMA_PRICING_LOOKUP_TIMEOUT_MS),
+          pricingRevision: options.pricingRevision
+        });
+        const harnessJson = buildDeepSeekHarnessPeriods({
+          now: collectedAt,
+          allTimeSince,
+          rows: deepSeekHarnessRows,
+          pricingByModel: deepSeekHarnessPricing
+        });
+        deepSeekHarnessPeriods = {
+          today: extractUsageFromTokscale(harnessJson.today),
+          month: extractUsageFromTokscale(harnessJson.month),
+          allTime: extractUsageFromTokscale(harnessJson.allTime)
+        };
+      } catch (error) {
+        if (typeof options.logger === 'function') options.logger(`deepseek-harness parse failed: ${error.message}`);
       }
     }
     if (includesQoderCn && (!targetRequested || targetClients.includes('qodercn'))) {
@@ -1185,6 +1230,7 @@ async function collectUsageOnce(options) {
       }
       if (promaPeriods) freshPartitions.proma = promaPeriods.today;
       if (claudeDesktopPeriods) freshPartitions['claude-desktop'] = claudeDesktopPeriods.today;
+      if (deepSeekHarnessPeriods) freshPartitions['deepseek-harness'] = deepSeekHarnessPeriods.today;
       if (qoderCnPeriods) freshPartitions.qodercn = qoderCnPeriods.today;
       if (qoderCnPeriodReadFailed && anchor.todayPartitions?.qodercn) {
         // A transient local.db read failure must not turn the existing Qoder CN
@@ -1240,6 +1286,12 @@ async function collectUsageOnce(options) {
       month = mergePeriods(month, claudeDesktopPeriods.month);
       allTime = mergePeriods(allTime, claudeDesktopPeriods.allTime);
       todayPartitions = { ...(todayPartitions || {}), 'claude-desktop': claudeDesktopPeriods.today };
+    }
+    if (deepSeekHarnessPeriods && !anchorUsed) {
+      today = mergePeriods(today, deepSeekHarnessPeriods.today);
+      month = mergePeriods(month, deepSeekHarnessPeriods.month);
+      allTime = mergePeriods(allTime, deepSeekHarnessPeriods.allTime);
+      todayPartitions = { ...(todayPartitions || {}), 'deepseek-harness': deepSeekHarnessPeriods.today };
     }
     if (qoderCnPeriods && !anchorUsed) {
       today = mergePeriods(today, qoderCnPeriods.today);
@@ -1460,6 +1512,16 @@ async function collectUsageOnce(options) {
         })
         : null,
       qoderCnGraph: historyQoderCnGraph || null,
+      deepseekHarnessGraph: includesDeepSeekHarness
+        ? buildDeepSeekHarnessHistoryGraph({
+          rows: deepSeekHarnessRows || collectDeepSeekHarnessRows({
+            homeDir: options.homeDir || os.homedir(),
+            env: options.env || process.env,
+            logger: options.logger
+          }),
+          pricingByModel: deepSeekHarnessPricing || {}
+        })
+        : null,
       historyEnabled: options.historyEnabled,
       commandTimeoutMs: options.historyTimeoutMs,
       capDays: options.historyCapDays,
@@ -1749,6 +1811,9 @@ function clientSourceRoots(clientsCsv) {
   add('workbuddy', ['workbuddy-projects', path.join(home, '.workbuddy', 'projects')]);
   // Proma — session transcripts at ~/.proma/agent-sessions/*.jsonl
   add('proma', ['proma-sessions', path.join(home, '.proma', 'agent-sessions')]);
+  // DeepSeek Harness — default JSONL session store at ~/.dsh/sessions, or the
+  // sessions directory under DSH_HOME when the upstream override is set.
+  add('deepseek-harness', ['deepseek-harness-sessions', deepseekHarnessSessionsDir({ homeDir: home, env: process.env })]);
   add('claude-desktop', ...desktopSessionWatchDirs({ homeDir: home, includeMissing: true }).map((dir) => ['claude-desktop-sessions', dir]));
   // Qoder CN — SQLite DB under the platform Application Support dir.
   const qoderCnPaths = qoderCnDataPaths({ homeDir: home, platform: process.platform, env: process.env });
@@ -3513,6 +3578,7 @@ async function collectCustomRangeOnce(options = {}) {
   const tokscaleClients = tokscaleClientsCsv(normalizedClients);
   const includesProma = includesLocalClient(normalizedClients, 'proma');
   const includesClaudeDesktop = includesLocalClient(normalizedClients, 'claude-desktop');
+  const includesDeepSeekHarness = includesLocalClient(normalizedClients, 'deepseek-harness');
   const homeDir = options.homeDir || os.homedir();
   let period = emptyPeriod();
 
@@ -3561,7 +3627,29 @@ async function collectCustomRangeOnce(options = {}) {
     }
   }
 
-  if (!tokscaleClients && !includesProma && !includesClaudeDesktop) {
+  if (includesDeepSeekHarness) {
+    try {
+      const harnessRows = collectDeepSeekHarnessRows({
+        homeDir,
+        env: options.env || process.env,
+        logger: options.logger
+      });
+      const harnessPricing = await resolvePromaPricing(harnessRows, {
+        lookupModelPricing: options.lookupModelPricing,
+        commandTimeoutMs: options.pricingTimeoutMs ?? Math.min(commandTimeoutMs || PROMA_PRICING_LOOKUP_TIMEOUT_MS, PROMA_PRICING_LOOKUP_TIMEOUT_MS),
+        pricingRevision: options.pricingRevision
+      });
+      const harnessJson = buildDeepSeekHarnessRangeJson(range, {
+        rows: harnessRows,
+        pricingByModel: harnessPricing
+      });
+      period = mergePeriods(period, extractUsageFromTokscale(harnessJson));
+    } catch (err) {
+      if (typeof options.logger === 'function') options.logger(`deepseek-harness custom-range parse failed: ${err.message}`);
+    }
+  }
+
+  if (!tokscaleClients && !includesProma && !includesClaudeDesktop && !includesDeepSeekHarness) {
     return { range, period: emptyPeriod(), updatedAt: new Date().toISOString() };
   }
 

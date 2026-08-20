@@ -48,6 +48,7 @@ const NODE_RUNTIME_SOURCE_FILES = Object.freeze([
   'src/shared/cursorAuth.js',
   'src/shared/customRange.js',
   'src/shared/dailyHistoryArchive.js',
+  'src/shared/deepseekHarnessUsage.js',
   'src/shared/hashKey.js',
   'src/shared/hermesProfiles.js',
   'src/shared/limitResetBoundary.js',

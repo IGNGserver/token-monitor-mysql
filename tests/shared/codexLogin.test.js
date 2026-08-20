@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 
 const {
+  codexLoginDeviceCodeFromOutput,
   codexLoginUrlFromOutput,
   isAllowedCodexLoginUrl
 } = require('../../src/shared/codexLogin');
@@ -13,6 +14,8 @@ test('isAllowedCodexLoginUrl accepts only OpenAI OAuth login URLs', () => {
   assert.equal(isAllowedCodexLoginUrl('https://auth.openai.com/oauth/authorize/callback?client_id=app'), true);
   assert.equal(isAllowedCodexLoginUrl('https://auth.openai.com/device'), true);
   assert.equal(isAllowedCodexLoginUrl('https://auth.openai.com/device/session'), true);
+  assert.equal(isAllowedCodexLoginUrl('https://auth.openai.com/codex/device'), true);
+  assert.equal(isAllowedCodexLoginUrl('https://auth.openai.com/codex/device/session'), true);
   assert.equal(isAllowedCodexLoginUrl('http://auth.openai.com/oauth/authorize'), false);
   assert.equal(isAllowedCodexLoginUrl('https://auth.openai.com.evil.example/oauth/authorize'), false);
   assert.equal(isAllowedCodexLoginUrl('https://auth.openai.com/device-claim'), false);
@@ -45,4 +48,16 @@ test('codexLoginUrlFromOutput stops before terminal control sequences', () => {
 
   assert.equal(codexLoginUrlFromOutput(`Open ${url}\x1b[0m`), url);
   assert.equal(codexLoginUrlFromOutput(`\x1b]8;;${url}\x07Open sign-in\x1b]8;;\x07`), url);
+});
+
+test('codexLoginDeviceCodeFromOutput extracts the current device-auth code', () => {
+  const output = [
+    'To authenticate, visit:',
+    'https://auth.openai.com/codex/device',
+    'Enter this one-time code:',
+    'AB12-CD34'
+  ].join('\n');
+
+  assert.equal(codexLoginDeviceCodeFromOutput(output), 'AB12-CD34');
+  assert.equal(codexLoginDeviceCodeFromOutput(`\x1b[1mEnter this one-time code:\x1b[0m\n\x1b[36mAB12-CD34\x1b[0m`), 'AB12-CD34');
 });

@@ -18,7 +18,7 @@ android {
     applicationId = "com.igng.tokenmonitor.android"
     minSdk = 26
     targetSdk = 36
-    val releaseVersion = providers.gradleProperty("tokenMonitorVersion").orElse("0.45.0-rev.7").get()
+    val releaseVersion = providers.gradleProperty("tokenMonitorVersion").orElse("0.45.0-rev.8").get()
     versionCode = releaseVersionCode(releaseVersion)
     versionName = releaseVersion
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -154,7 +154,9 @@ val runUnitTests = registerJunitCoreTask(
   "Runs all local unit tests via JUnitCore (Windows argfile workaround).",
   "com.igng.tokenmonitor.android.data.repository.HubRepositoryTest",
   "com.igng.tokenmonitor.android.data.model.HubDtosHistoryLimitsTest",
-  "com.igng.tokenmonitor.android.ui.components.FormattersHelpersTest"
+  "com.igng.tokenmonitor.android.ui.components.FormattersHelpersTest",
+  "com.igng.tokenmonitor.android.ui.HubViewModelStateTest",
+  "com.igng.tokenmonitor.android.ui.more.SubscriptionLogicTest"
 )
 
 tasks.withType<Test>().configureEach { enabled = false }

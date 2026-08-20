@@ -46,6 +46,7 @@ import com.igng.tokenmonitor.android.ui.more.SessionDetailScreen
 import com.igng.tokenmonitor.android.ui.more.SessionsScreen
 import com.igng.tokenmonitor.android.ui.more.StatusScreen
 import com.igng.tokenmonitor.android.ui.more.SettingsScreen
+import com.igng.tokenmonitor.android.ui.more.SubscriptionsScreen
 import com.igng.tokenmonitor.android.ui.overview.OverviewScreen
 import android.net.Uri
 import com.igng.tokenmonitor.android.ui.haptics.HapticEvent
@@ -162,6 +163,14 @@ fun TokenMonitorApp(
             onHome = navigateHome
           )
         }
+        composable("subscriptions") {
+          SubscriptionsScreen(
+            state = hubState,
+            viewModel = hubViewModel,
+            onBack = { navController.popBackStack() },
+            onHome = navigateHome
+          )
+        }
         composable("projects") {
           ProjectsScreen(
             stats = hubState.stats,
@@ -254,5 +263,4 @@ private fun AppNavigationBar(navController: NavHostController, currentRoute: Str
     }
   }
 }
-
 

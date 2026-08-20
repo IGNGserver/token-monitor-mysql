@@ -1,6 +1,7 @@
 package com.igng.tokenmonitor.android.data.model
 
 import kotlinx.serialization.json.Json
+import com.igng.tokenmonitor.android.ui.more.availableSessions
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
@@ -70,7 +71,13 @@ class HubDtosHistoryLimitsTest {
             "peakDayTokens": 500,
             "favoriteModel": "gpt-5",
             "messages": 40,
-            "activeTimeMs": 30000
+            "activeTimeMs": 30000,
+            "timeMetrics": {
+              "totalActiveTimeMs": 30000,
+              "longestContinuousMs": 12000,
+              "maxConcurrentSessions": 2,
+              "sessionCount": 8
+            }
           }
         },
         "limits": {
@@ -105,6 +112,8 @@ class HubDtosHistoryLimitsTest {
     assertEquals(2, stats.historyPreview!!.monthly.size)
     assertEquals(3.0, stats.historyPreview!!.summary.currentStreak, 0.001)
     assertEquals("gpt-5", stats.historyPreview!!.summary.favoriteModel)
+    assertEquals(12000.0, stats.historyPreview!!.summary.timeMetrics!!.longestContinuousMs, 0.001)
+    assertEquals(2.0, stats.historyPreview!!.summary.timeMetrics!!.maxConcurrentSessions, 0.001)
 
     assertNotNull(stats.limits)
     assertEquals(2, stats.limits!!.providers.size)
@@ -217,5 +226,145 @@ class HubDtosHistoryLimitsTest {
     assertEquals(5.0, device.limits?.providers?.first()?.balance?.monthSpend)
     assertEquals(1.0, device.limits?.providers?.first()?.resetCredits?.availableCount)
     assertEquals("credits", device.limits?.providers?.first()?.windows?.first()?.metric)
+  }
+
+  @Test
+  fun statsParsesVersion045DiagnosticsComponentsAndRevisions() {
+    val body = """
+      {
+        "updatedAt": "2026-08-20T08:00:00.000Z",
+        "historyRevision": "abc123",
+        "deviceHistoryRevision": "def456",
+        "subscriptionsUpdatedAt": "2026-08-19T08:00:00.000Z",
+        "sessionDetailsOmitted": { "month": 2 },
+        "periodProjectsOmitted": { "today": 1 },
+        "periods": {
+          "today": {
+            "totalTokens": 100,
+            "capabilities": { "tokenComponents": true },
+            "cacheReadTokens": 10,
+            "cacheWriteTokens": 5,
+            "outputTokens": 20,
+            "unclassifiedTokens": 0,
+            "timedTokens": 25,
+            "timedOutputTokens": 20,
+            "timedDurationMs": 4000,
+            "clientCacheReads": { "codex": 10 },
+            "modelOutputs": { "gpt-5": 20 }
+          }
+        },
+        "devices": [{
+          "deviceId": "dev-1",
+          "agentVersion": "0.45.0-rev.5",
+          "trackedClients": ["codex", "commandcode"],
+          "projectsEnabled": true,
+          "historyAvailable": true,
+          "syncUploadIntervalMs": 600000,
+          "periodWindows": {
+            "today": { "endsAt": "2026-08-21T00:00:00.000Z", "key": "2026-08-20" },
+            "timeZone": "Asia/Shanghai"
+          },
+          "clientHealth": {
+            "version": 1,
+            "observedAt": "2026-08-20T08:00:00.000Z",
+            "clients": {
+              "commandcode": {
+                "source": { "state": "detected", "detectedCount": 1, "checkedCount": 1, "checks": [{ "id": "commandcode-projects", "exists": true }] },
+                "collection": { "state": "ok", "lastSuccessAt": "2026-08-20T08:00:00.000Z" },
+                "data": { "liveTokens": 10, "lastActivityDay": "2026-08-20" },
+                "overall": "healthy"
+              }
+            }
+          }
+        }]
+      }
+    """.trimIndent()
+
+    val stats = json.decodeFromString(StatsDto.serializer(), body)
+    assertEquals("abc123", stats.historyRevision)
+    assertEquals(2L, stats.sessionDetailsOmitted["month"])
+    assertEquals(10L, stats.periods.today.cacheReadTokens)
+    assertEquals(4000L, stats.periods.today.timedDurationMs)
+    assertEquals(20L, stats.periods.today.modelOutputs["gpt-5"])
+    val device = stats.devices.single()
+    assertEquals("0.45.0-rev.5", device.agentVersion)
+    assertEquals("commandcode", device.trackedClients.last())
+    assertEquals("Asia/Shanghai", device.periodWindows?.timeZone)
+    assertEquals("healthy", device.clientHealth?.clients?.get("commandcode")?.overall)
+  }
+
+  @Test
+  fun subscriptionsParseNormalizedDocument() {
+    val body = """
+      {
+        "ok": true,
+        "version": 1,
+        "updatedAt": "2026-08-20T08:00:00.000Z",
+        "subscriptions": [{
+          "id": "sub_1",
+          "provider": "codex",
+          "kind": "subscription",
+          "binding": { "profileName": "Personal", "accountKey": "sha256:abc", "accountEmail": "u@example.com" },
+          "planName": "Plus",
+          "amountMinor": 2000,
+          "currency": "USD",
+          "interval": "month",
+          "intervalCount": 1,
+          "startDate": "2026-08-01",
+          "autoRenew": true,
+          "updatedAt": "2026-08-20T08:00:00.000Z"
+        }]
+      }
+    """.trimIndent()
+
+    val document = json.decodeFromString(SubscriptionsDto.serializer(), body)
+    assertEquals("2026-08-20T08:00:00.000Z", document.updatedAt)
+    assertEquals("Plus", document.subscriptions.single().planName)
+    assertEquals("u@example.com", document.subscriptions.single().binding.accountEmail)
+    assertEquals(2000L, document.subscriptions.single().amountMinor)
+  }
+
+  @Test
+  fun healthParsesHubBuildIdentity() {
+    val health = json.decodeFromString(
+      HealthDto.serializer(),
+      """
+        {
+          "ok": true,
+          "role": "hub",
+          "runtime": "node-hub",
+          "version": 1,
+          "hubBuild": {
+            "schemaVersion": 1,
+            "runtime": "node-hub",
+            "coreRevision": 4,
+            "coreBuildId": "sha256:abc",
+            "runtimeRevision": 2,
+            "runtimeBuildId": "sha256:def"
+          }
+        }
+      """.trimIndent()
+    )
+    assertEquals("node-hub", health.runtime)
+    assertEquals(4, health.hubBuild?.coreRevision)
+    assertEquals(2, health.hubBuild?.runtimeRevision)
+  }
+
+  @Test
+  fun availableSessionsKeepsKeysAcrossPeriodsAndPrefersWidestSnapshot() {
+    val today = SessionDto(sessionId = "today-only", lastUsedAt = "2026-08-20T10:00:00Z", totalTokens = 10)
+    val month = SessionDto(sessionId = "shared", lastUsedAt = "2026-08-19T10:00:00Z", totalTokens = 100)
+    val todayShared = month.copy(totalTokens = 20)
+    val stats = StatsDto(
+      periods = PeriodsDto(
+        today = PeriodDto(sessions = mapOf("codex:today-only" to today, "codex:shared" to todayShared)),
+        month = PeriodDto(sessions = mapOf("codex:shared" to month, "codex:month-only" to SessionDto(sessionId = "month-only")))
+      )
+    )
+
+    val sessions = availableSessions(stats).toMap()
+    assertEquals(3, sessions.size)
+    assertEquals(100L, sessions["codex:shared"]?.totalTokens)
+    assertTrue(sessions.containsKey("codex:month-only"))
   }
 }

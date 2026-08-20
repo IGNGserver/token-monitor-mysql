@@ -63,9 +63,11 @@ import com.igng.tokenmonitor.android.ui.components.LimitsSection
 import com.igng.tokenmonitor.android.ui.components.MonthlyTrendChart
 import com.igng.tokenmonitor.android.ui.components.ShareBarList
 import com.igng.tokenmonitor.android.ui.components.ShareEntry
+import com.igng.tokenmonitor.android.ui.components.TokenComponentsCard
 import com.igng.tokenmonitor.android.ui.components.TrendMetric
 import com.igng.tokenmonitor.android.ui.components.TrendRange
 import com.igng.tokenmonitor.android.ui.components.formatTokensShort
+import com.igng.tokenmonitor.android.ui.components.formatActiveTimeMs
 import com.igng.tokenmonitor.android.ui.components.formatUsd
 import com.igng.tokenmonitor.android.ui.components.takeMonths
 import com.igng.tokenmonitor.android.ui.components.takeRange
@@ -269,6 +271,9 @@ private fun ShareAnalyticsTab(
                 centerSecondary = formatUsd(period?.costUsd ?: 0.0, compact = true)
               )
             }
+          }
+          item {
+            TokenComponentsCard(period)
           }
           item {
             AppCard {
@@ -616,6 +621,23 @@ private fun TrendAnalyticsTab(state: HubUiState, onEnsureHistory: () -> Unit) {
       }
     }
 
+    summary?.timeMetrics?.let { metrics ->
+      item {
+        AppCard {
+          Text("时间统计", style = MaterialTheme.typography.titleMedium)
+          Spacer(Modifier.height(10.dp))
+          SummaryGrid(
+            listOf(
+              "总活跃" to formatActiveTimeMs(metrics.totalActiveTimeMs),
+              "最长连续" to formatActiveTimeMs(metrics.longestContinuousMs),
+              "并行峰值" to "${metrics.maxConcurrentSessions.toLong()} 会话",
+              "会话数" to metrics.sessionCount.toLong().toString()
+            )
+          )
+        }
+      }
+    }
+
     item {
       Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         listOf("all" to "全部活跃天", "year" to "近一年").forEach { (key, label) ->
@@ -728,6 +750,4 @@ private fun SummaryGrid(items: List<Pair<String, String>>) {
     }
   }
 }
-
-
 

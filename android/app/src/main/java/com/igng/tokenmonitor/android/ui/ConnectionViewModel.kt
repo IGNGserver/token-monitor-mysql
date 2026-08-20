@@ -33,7 +33,16 @@ class ConnectionViewModel @Inject constructor(private val repository: HubReposit
     val config = ConnectionConfig(_state.value.hubUrl, _state.value.secret)
     _state.value = _state.value.copy(testing = true, message = null)
     when (val result = repository.testConnection(config)) {
-      is HubResult.Success -> _state.value = _state.value.copy(testing = false, health = result.value, message = "连接成功：Hub v${result.value.version ?: "?"}")
+      is HubResult.Success -> {
+        val build = result.value.hubBuild?.let {
+          "${it.runtime ?: "hub"} core r${it.coreRevision ?: "?"} / runtime r${it.runtimeRevision ?: "?"}"
+        }
+        _state.value = _state.value.copy(
+          testing = false,
+          health = result.value,
+          message = "连接成功：${build ?: "Hub v${result.value.version ?: "?"}"}"
+        )
+      }
       is HubResult.Failure -> _state.value = _state.value.copy(testing = false, message = result.error.message)
     }
   }

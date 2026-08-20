@@ -20,6 +20,8 @@ test('Codex account login exposes browser, copy, and cancel controls', () => {
   assert.match(details, /<div id="codexLoginUrlActions" class="settings-actions hidden">[\s\S]*codexOpenLoginUrlButton[\s\S]*codexCopyLoginUrlButton[\s\S]*codexCancelLoginButton/);
   assert.match(details, /<button id="codexOpenLoginUrlButton"[\s\S]*data-i18n="settings\.codex\.openLoginUrl">/);
   assert.match(details, /<button id="codexCopyLoginUrlButton"[\s\S]*data-i18n="settings\.codex\.copyLoginUrl">/);
+  assert.match(details, /<button id="codexCopyDeviceCodeButton"[\s\S]*data-i18n="settings\.codex\.copyDeviceCode">/);
+  assert.match(details, /<div id="codexDeviceCodePanel" class="codex-device-code hidden"[\s\S]*id="codexDeviceCode"/);
   assert.match(details, /<div id="codexLoginStatus" class="settings-note hidden" role="status" aria-live="polite"><\/div>/);
   assert.match(details, /<details id="codexLoginDetails" class="codex-login-details hidden">/);
 });
@@ -51,6 +53,7 @@ test('Codex login IPC owns cancellation per flow and sends an allowlisted URL', 
   assert.match(addHandler, /signal: controller\.signal/);
   assert.match(addHandler, /onCommit: \(\) => \{[\s\S]*codexLoginCanCancel = false;/);
   assert.match(addHandler, /codexLoginUrlFromOutput\(streamed\)/);
+  assert.match(addHandler, /codexLoginDeviceCodeFromOutput\(streamed\)/);
   assert.match(addHandler, /event\.sender\.send\('codex:loginStatus', \{[\s\S]*flowId/);
   assert.match(cancelHandler, /controller\?\.abort\(\);/);
   assert.match(cancelHandler, /if \(!codexLoginCanCancel\) return \{ ok: false, cancelled: false, tooLate: true \};/);

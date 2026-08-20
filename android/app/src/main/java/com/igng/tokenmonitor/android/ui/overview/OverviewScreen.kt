@@ -48,6 +48,7 @@ import com.igng.tokenmonitor.android.ui.components.DonutChart
 import com.igng.tokenmonitor.android.ui.components.EmptyState
 import com.igng.tokenmonitor.android.ui.components.LimitsSection
 import com.igng.tokenmonitor.android.ui.components.MetricHeroCard
+import com.igng.tokenmonitor.android.ui.components.TokenComponentsCard
 import com.igng.tokenmonitor.android.ui.components.OverviewSkeleton
 import com.igng.tokenmonitor.android.ui.components.RealtimeStatusChip
 import com.igng.tokenmonitor.android.ui.components.SectionHeader
@@ -167,6 +168,10 @@ fun OverviewScreen(
                 }
               } else null
             )
+          }
+
+          item {
+            TokenComponentsCard(today)
           }
 
           item {
@@ -358,4 +363,3 @@ private fun SummaryChip(
     }
   }
 }
-

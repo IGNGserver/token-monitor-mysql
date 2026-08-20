@@ -2459,7 +2459,11 @@ function runCodexLoginWithCommand(command, options = {}, deps = {}) {
   const setTimer = deps.setTimeout || setTimeout;
   const clearTimer = deps.clearTimeout || clearTimeout;
   const onOutput = typeof options.onOutput === 'function' ? options.onOutput : () => {};
-  const timeoutMs = Number(options.timeoutMs || deps.codexLoginTimeoutMs || 180000);
+  const timeoutMs = Number(
+    options.timeoutMs
+      || deps.codexLoginTimeoutMs
+      || (options.deviceAuth ? 15 * 60 * 1000 : 180000)
+  );
   if (signal?.aborted) return Promise.resolve({ outcome: 'cancelled', exitCode: null, output: '' });
   const spec = codexLoginSpawnSpec(command, platform, options);
   let child;

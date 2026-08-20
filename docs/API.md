@@ -31,7 +31,16 @@ Example response:
 {
   "ok": true,
   "role": "hub",
+  "runtime": "node-hub",
   "version": 1,
+  "hubBuild": {
+    "schemaVersion": 1,
+    "runtime": "node-hub",
+    "coreRevision": 4,
+    "coreBuildId": "sha256:…",
+    "runtimeRevision": 2,
+    "runtimeBuildId": "sha256:…"
+  },
   "deviceCount": 2,
   "secretRequired": true,
   "now": "2026-05-18T00:00:00.000Z"
@@ -231,6 +240,23 @@ Response includes:
 - stale status for devices that have not reported recently
 
 If multiple devices report the same provider account, the hub keeps the freshest valid limits status for that account. Public Worker stats omit account identifiers.
+
+## `GET /api/subscriptions`
+
+Returns the shared subscription document stored by the Hub. The response contains `version`, `updatedAt`, and a normalized `subscriptions` array. A subscription records its provider, optional account binding, plan, amount in minor currency units, billing interval, renewal settings, and optional top-up entries. This endpoint contains display metadata only; provider credentials are never part of the document.
+
+## `PUT /api/subscriptions`
+
+Replaces the shared subscription list using optimistic concurrency:
+
+```json
+{
+  "baseUpdatedAt": "2026-08-20T08:00:00.000Z",
+  "subscriptions": []
+}
+```
+
+The response returns the normalized document. If another client changed the document after `baseUpdatedAt`, the Hub returns `409 stale_write` together with the current document so the client can refresh before retrying.
 
 ## `GET /api/devices`
 

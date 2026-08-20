@@ -11,6 +11,8 @@ import com.igng.tokenmonitor.android.data.model.PricingRequestDto
 import com.igng.tokenmonitor.android.data.model.PricingResponseDto
 import com.igng.tokenmonitor.android.data.model.SseStatsDto
 import com.igng.tokenmonitor.android.data.model.StatsDto
+import com.igng.tokenmonitor.android.data.model.SubscriptionsDto
+import com.igng.tokenmonitor.android.data.model.SubscriptionsRequestDto
 import com.igng.tokenmonitor.android.data.model.UsageRangeDto
 import com.igng.tokenmonitor.android.data.remote.HubApiFactory
 import java.io.IOException
@@ -21,6 +23,9 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.Response
 import okhttp3.sse.EventSource
 import okhttp3.sse.EventSourceListener
@@ -32,7 +37,7 @@ sealed interface HubResult<out T> {
 }
 
 data class HubError(val message: String, val kind: Kind) {
-  enum class Kind { NotConfigured, Unauthorized, Network, MalformedResponse, Api }
+  enum class Kind { NotConfigured, Unauthorized, Conflict, Network, MalformedResponse, Api }
 }
 
 @Singleton
@@ -49,6 +54,9 @@ class HubRepository @Inject constructor(
   suspend fun stats(): HubResult<StatsDto> = withConnection { apiFactory.create(it).stats() }
   suspend fun history(): HubResult<HistoryDto> = withConnection { apiFactory.create(it).history() }
   suspend fun devices(): HubResult<DevicesResponseDto> = withConnection { apiFactory.create(it).devices() }
+  suspend fun subscriptions(): HubResult<SubscriptionsDto> = withConnection { apiFactory.create(it).subscriptions() }
+  suspend fun putSubscriptions(request: SubscriptionsRequestDto): HubResult<SubscriptionsDto> =
+    withConnection { apiFactory.create(it).putSubscriptions(request) }
   suspend fun usageRange(
     startDate: String,
     endDate: String,
@@ -88,12 +96,20 @@ class HubRepository @Inject constructor(
   private suspend fun <T> safeCall(call: suspend () -> T): HubResult<T> = try {
     HubResult.Success(call())
   } catch (error: HttpException) {
+    val detail = httpErrorDetail(error)
     val message = when (error.code()) {
       401 -> "未授权：请检查共享密钥。"
-      404, 422 -> "请求未完成：${error.response()?.errorBody()?.string().orEmpty().ifBlank { "模型没有可用的上游定价。" }}"
+      409 -> "数据已被其他客户端更新，请先刷新后再保存。"
+      404 -> detail?.let { "Hub 不支持此接口：$it" } ?: "Hub 不支持此接口或资源不存在。"
+      422 -> detail?.let { "请求未完成：$it" } ?: "Hub 拒绝了这次请求。"
       else -> "Hub 返回 HTTP ${error.code()}。"
     }
-    HubResult.Failure(HubError(message, if (error.code() == 401) HubError.Kind.Unauthorized else HubError.Kind.Api))
+    val kind = when (error.code()) {
+      401 -> HubError.Kind.Unauthorized
+      409 -> HubError.Kind.Conflict
+      else -> HubError.Kind.Api
+    }
+    HubResult.Failure(HubError(message, kind))
   } catch (_: SerializationException) {
     HubResult.Failure(HubError("Hub 返回的数据格式无法解析，请确认客户端与 Hub 版本兼容。", HubError.Kind.MalformedResponse))
   } catch (error: IOException) {
@@ -101,5 +117,17 @@ class HubRepository @Inject constructor(
   } catch (error: IllegalArgumentException) {
     HubResult.Failure(HubError(error.message ?: "Hub 地址无效。", HubError.Kind.Api))
   }
-}
 
+  private fun httpErrorDetail(error: HttpException): String? {
+    val body = error.response()?.errorBody()?.string().orEmpty()
+    if (body.isBlank()) return null
+    return runCatching {
+      val jsonObject = json.parseToJsonElement(body).jsonObject
+      val code = jsonObject["error"]?.jsonPrimitive?.contentOrNull
+      val message = jsonObject["message"]?.jsonPrimitive?.contentOrNull
+      listOfNotNull(code, message)
+        .joinToString(": ")
+        .takeIf { it.isNotBlank() }
+    }.getOrNull() ?: body.trim().take(240).takeIf { it.isNotBlank() }
+  }
+}

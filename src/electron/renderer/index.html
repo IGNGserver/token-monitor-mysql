@@ -543,7 +543,12 @@
                 <div id="codexLoginUrlActions" class="settings-actions hidden">
                   <button id="codexOpenLoginUrlButton" type="button" data-i18n="settings.codex.openLoginUrl">Open browser</button>
                   <button id="codexCopyLoginUrlButton" type="button" data-i18n="settings.codex.copyLoginUrl">Copy link</button>
+                  <button id="codexCopyDeviceCodeButton" type="button" class="hidden" data-i18n="settings.codex.copyDeviceCode">Copy code</button>
                   <button id="codexCancelLoginButton" type="button" class="hidden" data-i18n="settings.common.cancel">Cancel</button>
+                </div>
+                <div id="codexDeviceCodePanel" class="codex-device-code hidden" role="status" aria-live="polite">
+                  <span class="codex-device-code-label" data-i18n="settings.codex.deviceCodePrompt">Enter this code in the browser</span>
+                  <code id="codexDeviceCode"></code>
                 </div>
                 <details id="codexLoginDetails" class="codex-login-details hidden">
                   <summary data-i18n="settings.codex.loginDetails">Details</summary>
@@ -1066,14 +1071,47 @@
         </div>
         <div class="settings-group settings-collapsible-group settings-thirdparty-group">
           <button id="thirdpartySettingsToggle" class="settings-section-toggle" type="button" data-settings-section="thirdparty" aria-expanded="false" aria-controls="thirdpartySettingsDetails">
-            <span class="settings-section-heading"><span data-i18n="settings.thirdparty.title">Third-party API Accounts</span></span>
+            <span class="settings-section-heading"><span class="settings-section-icon settings-section-icon-thirdparty" aria-hidden="true"></span><span data-i18n="settings.thirdparty.title">Third-party API Accounts</span></span>
             <span class="settings-section-meta"><span id="thirdpartyStatus" class="settings-section-summary"></span><span class="settings-section-disclosure" aria-hidden="true"></span></span>
           </button>
           <div id="thirdpartySettingsDetails" class="settings-section-details hidden">
-            <div id="thirdpartyProfileList" class="opencode-profile-list"></div>
-            <div class="settings-row"><input id="thirdpartyProfileName" type="text" placeholder="Account name" /><input id="thirdpartyBaseUrlInput" type="url" placeholder="https://api.example.com" /></div>
-            <div class="settings-row"><select id="thirdpartyModeInput"><option value="account">Account</option><option value="token">API key</option></select><input id="thirdpartyAccessTokenInput" type="password" placeholder="Access token" /><input id="thirdpartyApiKeyInput" class="hidden" type="password" placeholder="API key" /></div>
-            <div class="settings-actions"><button id="thirdpartyProfileSubmit" data-i18n="settings.thirdparty.saveProfile">Save account</button></div>
+            <p class="settings-note" data-i18n="settings.thirdparty.description">Track balances from New API-compatible services. Add one account for each endpoint.</p>
+            <div id="thirdpartyProfileList" class="thirdparty-profile-list"></div>
+            <div class="thirdparty-form-card">
+              <div class="thirdparty-form-heading">
+                <span class="thirdparty-form-icon" aria-hidden="true"></span>
+                <div>
+                  <strong data-i18n="settings.thirdparty.addAccount">Add API account</strong>
+                  <span data-i18n="settings.thirdparty.formHint">Credentials stay on this device and are never shown back in the list.</span>
+                </div>
+              </div>
+              <div class="thirdparty-form-grid">
+                <label>
+                  <span data-i18n="settings.thirdparty.accountName">Account name</span>
+                  <input id="thirdpartyProfileName" type="text" data-i18n-placeholder="settings.thirdparty.accountNamePlaceholder" placeholder="Personal relay" />
+                </label>
+                <label>
+                  <span data-i18n="settings.thirdparty.endpoint">API endpoint</span>
+                  <input id="thirdpartyBaseUrlInput" type="url" data-i18n-placeholder="settings.thirdparty.endpointPlaceholder" placeholder="https://api.example.com" />
+                </label>
+                <label class="thirdparty-form-full">
+                  <span data-i18n="settings.thirdparty.authentication">Authentication</span>
+                  <select id="thirdpartyModeInput">
+                    <option value="account" data-i18n="settings.thirdparty.accountAuth">New API account token</option>
+                    <option value="token" data-i18n="settings.thirdparty.apiKeyAuth">New API key</option>
+                  </select>
+                </label>
+                <label id="thirdpartyAccessTokenField" class="thirdparty-credential-field">
+                  <span data-i18n="settings.thirdparty.accessToken">Access token</span>
+                  <input id="thirdpartyAccessTokenInput" type="password" autocomplete="off" data-i18n-placeholder="settings.thirdparty.accessTokenPlaceholder" placeholder="Paste access token" />
+                </label>
+                <label id="thirdpartyApiKeyField" class="thirdparty-credential-field hidden">
+                  <span data-i18n="settings.thirdparty.apiKey">API key</span>
+                  <input id="thirdpartyApiKeyInput" type="password" autocomplete="off" data-i18n-placeholder="settings.thirdparty.apiKeyPlaceholder" placeholder="Paste API key" />
+                </label>
+              </div>
+              <div class="settings-actions"><button id="thirdpartyProfileSubmit" data-i18n="settings.thirdparty.saveProfile">Save account</button></div>
+            </div>
             <div id="thirdpartyErrorMessage" class="settings-note error hidden"></div>
           </div>
         </div>

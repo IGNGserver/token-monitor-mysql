@@ -22,6 +22,8 @@ import androidx.compose.material.icons.outlined.Devices
 import androidx.compose.material3.ExperimentalMaterial3Api
 import com.igng.tokenmonitor.android.ui.components.agentRuntimeLabel
 import com.igng.tokenmonitor.android.ui.components.clientStatusLabel
+import com.igng.tokenmonitor.android.ui.components.clientHealthDiagnosticLabel
+import com.igng.tokenmonitor.android.ui.components.clientHealthOverallLabel
 import com.igng.tokenmonitor.android.ui.components.devicePlatformLabel
 import com.igng.tokenmonitor.android.ui.components.wslStatusLabel
 import com.igng.tokenmonitor.android.ui.components.ClientBranding
@@ -51,6 +53,7 @@ import com.igng.tokenmonitor.android.ui.components.EmptyState
 import com.igng.tokenmonitor.android.ui.components.DevicesSkeleton
 import com.igng.tokenmonitor.android.ui.components.LimitsSection
 import com.igng.tokenmonitor.android.ui.components.MetricHeroCard
+import com.igng.tokenmonitor.android.ui.components.TokenComponentsCard
 import com.igng.tokenmonitor.android.ui.components.SectionHeader
 import com.igng.tokenmonitor.android.ui.components.ShareBarList
 import com.igng.tokenmonitor.android.ui.components.StatusDot
@@ -273,12 +276,79 @@ fun DeviceDetailScreen(
             }
         }
       }
-      device.wslStatus?.state?.takeIf { it.isNotBlank() }?.let { state ->
+      device.clientHealth?.takeIf { it.clients.isNotEmpty() }?.let { health ->
+        AppCard {
+          SectionHeader(
+            title = "采集诊断",
+            subtitle = health.observedAt?.let { "观测 ${formatRelativeTime(it)}" } ?: "来自 0.45 Hub"
+          )
+          Spacer(Modifier.height(10.dp))
+          health.clients.entries.sortedBy { it.key }.forEach { (client, entry) ->
+            Row(
+              Modifier
+                .fillMaxWidth()
+                .padding(vertical = 4.dp),
+              horizontalArrangement = Arrangement.SpaceBetween,
+              verticalAlignment = Alignment.Top
+            ) {
+              Column(Modifier.weight(1f)) {
+                Text(ClientBranding.label(client), style = MaterialTheme.typography.bodyMedium)
+                val source = entry.source?.state?.takeIf { it.isNotBlank() }
+                val collection = entry.collection?.state?.takeIf { it.isNotBlank() }
+                val liveTokens = entry.data?.liveTokens ?: 0L
+                Text(
+                  listOfNotNull(
+                    source?.let { "来源 $it" },
+                    collection?.let { "采集 $it" },
+                    if (liveTokens > 0) "实时 ${formatTokensShort(liveTokens)}" else null
+                  ).joinToString(" · "),
+                  style = MaterialTheme.typography.labelSmall,
+                  color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                entry.diagnostics.forEach { diagnostic ->
+                  Text(
+                    clientHealthDiagnosticLabel(diagnostic.code),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.error
+                  )
+                }
+              }
+              Text(
+                clientHealthOverallLabel(entry.overall),
+                style = MaterialTheme.typography.labelMedium,
+                color = if (entry.overall.equals("healthy", ignoreCase = true)) {
+                  MaterialTheme.colorScheme.primary
+                } else {
+                  MaterialTheme.colorScheme.error
+                }
+              )
+            }
+          }
+        }
+      }
+      val completenessNotes = buildList {
+        if (device.projectsEnabled == false) add("项目采集已关闭")
+        (device.allTimeProjectsOmitted == true || device.allTimeProjectsIncomplete == true)
+          .takeIf { it }?.let { add("全部时间项目归因不完整") }
+        device.sessionDetailsOmitted.forEach { (period, count) -> add("$period 省略 $count 个会话详情") }
+        device.periodProjectsOmitted.forEach { (period, count) -> add("$period 省略 $count 个项目归因") }
+      }
+      if (completenessNotes.isNotEmpty()) {
+        AppCard {
+          SectionHeader(title = "数据完整性", subtitle = "用量总数仍然保留")
+          Spacer(Modifier.height(8.dp))
+          completenessNotes.forEach { note ->
+            Text(note, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+          }
+        }
+      }
+      device.wslStatus?.let { wsl ->
+        wsl.state?.takeIf { it.isNotBlank() }?.let { state ->
         AppCard {
           SectionHeader(title = "WSL 状态", subtitle = wslStatusLabel(state))
           Spacer(Modifier.height(8.dp))
-          val detected = device.wslStatus?.detected.orEmpty()
-          val withData = device.wslStatus?.withData.orEmpty()
+          val detected = wsl.detected
+          val withData = wsl.withData
           if (detected.isNotEmpty()) {
             Text(
               "已检测：" + detected.joinToString { ClientBranding.label(it) },
@@ -293,6 +363,7 @@ fun DeviceDetailScreen(
               color = MaterialTheme.colorScheme.onSurfaceVariant
             )
           }
+        }
         }
       }
       Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -309,6 +380,7 @@ fun DeviceDetailScreen(
         }
       }
       MetricHeroCard(title = periodLabel, period = selectedPeriod)
+      TokenComponentsCard(selectedPeriod)
       Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         CompactMetricCard(
           title = "本月",

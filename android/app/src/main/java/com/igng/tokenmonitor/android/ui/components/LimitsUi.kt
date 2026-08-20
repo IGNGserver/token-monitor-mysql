@@ -42,6 +42,7 @@ private val providerLabels = mapOf(
   "mimo" to "MiMo",
   "grok" to "Grok",
   "copilot" to "Copilot",
+  "commandcode" to "Command Code",
   "kiro" to "Kiro",
   "zai" to "Z.ai",
   "zaiteam" to "Z.ai Team",
@@ -49,7 +50,8 @@ private val providerLabels = mapOf(
   "qoder" to "Qoder",
   "openrouter" to "OpenRouter",
   "kimi" to "Kimi",
-  "ollama" to "Ollama"
+  "ollama" to "Ollama",
+  "thirdparty" to "第三方"
 )
 
 fun providerDisplayName(id: String): String =
@@ -125,6 +127,8 @@ private fun LimitProviderCard(
           add(providerDisplayName(provider.provider))
           limitPlanLabel(provider).takeIf { it.isNotBlank() }?.let { add(it) }
           provider.source?.takeIf { it.isNotBlank() }?.let { add(it.uppercase(Locale.US)) }
+          provider.sourceDetail?.takeIf { it.isNotBlank() }?.let { add(it.uppercase(Locale.US)) }
+          provider.region?.takeIf { it.isNotBlank() }?.let { add(it.uppercase(Locale.US)) }
           provider.accountEmail
             ?.takeIf { it.isNotBlank() && it != displayName }
             ?.let { add(it) }
@@ -160,6 +164,21 @@ private fun LimitProviderCard(
         balance.allTimeSpend?.let { spend ->
           add("累计消耗 " + formatMoneyAmount(spend, balance.currency))
         }
+        balance.giftBalance?.let { amount ->
+          add("赠送余额 " + formatMoneyAmount(amount, balance.currency))
+        }
+        balance.cashBalance?.let { amount ->
+          add("现金余额 " + formatMoneyAmount(amount, balance.currency))
+        }
+        if (balance.planUsed != null || balance.planLimit != null) {
+          val used = balance.planUsed?.let { formatMoneyAmount(it, balance.currency) } ?: "—"
+          val limit = balance.planLimit?.let { formatMoneyAmount(it, balance.currency) } ?: "—"
+          add("计划用量 $used / $limit")
+        }
+        balance.planPercent?.let { percent ->
+          add("计划进度 " + String.format(Locale.US, "%.0f%%", percent.coerceIn(0.0, 100.0)))
+        }
+        balance.expiresAt?.let { expiresAt -> add("余额到期 ${formatRelativeTime(expiresAt)}") }
       }
       val credits = provider.resetCredits
       if (credits != null) {
@@ -175,6 +194,8 @@ private fun LimitProviderCard(
           }
           add("重置额度 $body")
         }
+        credits.nextExpiresAt?.let { add("下次额度到期 ${formatRelativeTime(it)}") }
+        if (credits.expirations.size > 1) add("可用额度到期日 ${credits.expirations.size} 个")
       }
     }
     balanceLines.forEach { line ->
@@ -240,9 +261,9 @@ private fun LimitWindowMeter(
       maxLines = 1,
       overflow = TextOverflow.Ellipsis
     )
-    window.resetsAt?.let {
+    (window.resetsAt ?: window.resetDescription?.takeIf { it.isNotBlank() })?.let {
       Text(
-        "重置 ${formatRelativeTime(it)}",
+        if (window.resetsAt != null) "重置 ${formatRelativeTime(it)}" else it,
         style = MaterialTheme.typography.labelSmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         maxLines = 1,

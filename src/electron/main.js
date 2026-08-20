@@ -106,7 +106,11 @@ const {
   preserveCodexManagedHydrationCollisions,
   upgradeCodexManagedAccountIdentity
 } = require('../shared/codexAuth');
-const { codexLoginUrlFromOutput, isAllowedCodexLoginUrl } = require('../shared/codexLogin');
+const {
+  codexLoginDeviceCodeFromOutput,
+  codexLoginUrlFromOutput,
+  isAllowedCodexLoginUrl
+} = require('../shared/codexLogin');
 const {
   authWithSelectedCodexWorkspace,
   listCodexWorkspaces,
@@ -5881,7 +5885,8 @@ app.whenReady().then(() => {
         sendStatus({
           phase: 'output',
           text: String(text || ''),
-          loginUrl: codexLoginUrlFromOutput(streamed)
+          loginUrl: codexLoginUrlFromOutput(streamed),
+          deviceCode: codexLoginDeviceCodeFromOutput(streamed)
         });
       }, {
         signal: controller.signal,
