@@ -72,8 +72,8 @@
   // synthetic "default" fallback is shown last.
   const VENDOR_ORDER = [
     'claude', 'claude-desktop', 'codex', 'hermes', 'opencode', 'openrouter', 'openclaw', 'cline', 'cursor',
-    'gemini', 'antigravity', 'kimi', 'qwen', 'grok', 'copilot', 'pi', 'zed', 'kilocode', 'micode', 'zcode', 'kiro', 'codebuddy', 'workbuddy', 'proma', 'deepseek', 'xai', 'meta', 'mistral',
-    'moonshot', 'zai', 'zaiteam', 'cohere', 'xiaomi', 'minimax', 'doubao', 'volcengine', 'qoder', 'ollama'
+    'gemini', 'antigravity', 'commandcode', 'kimi', 'qwen', 'grok', 'copilot', 'pi', 'zed', 'kilocode', 'micode', 'zcode', 'kiro', 'codebuddy', 'workbuddy', 'proma', 'deepseek', 'xai', 'meta', 'mistral',
+    'moonshot', 'zai', 'zaiteam', 'cohere', 'xiaomi', 'minimax', 'doubao', 'volcengine', 'qoder', 'ollama', 'thirdparty'
   ];
 
   // Display labels for every vendor in the clientColors map. The widget also
@@ -97,6 +97,7 @@
     pi: 'Pi',
     zed: 'Zed',
     kilocode: 'Kilo Code',
+    commandcode: 'Command Code',
     micode: 'MiMo Code',
     zcode: 'ZCode',
     kiro: 'Kiro',
@@ -118,6 +119,7 @@
     volcengine: 'Volcengine',
     qoder: 'Qoder',
     ollama: 'Ollama',
+    thirdparty: 'Third-party APIs',
     default: 'Default'
   };
 

@@ -26,12 +26,14 @@ const {
 
 test('Windows backdrop modes fail closed to documented Acrylic', () => {
   assert.equal(normalizeRendererMode, normalizeWindowsBackdropMode);
-  for (const value of [undefined, null, '', 'nope', 'ACRYLIC', 'tabbed', 'accent']) {
+  for (const value of [undefined, null, '', 'nope', 'ACRYLIC', 'tabbed']) {
     assert.equal(normalizeWindowsBackdropMode(value), 'acrylic');
     assert.equal(normalizeRendererMode(value), 'acrylic');
   }
   assert.equal(normalizeWindowsBackdropMode('mica'), 'mica');
   assert.equal(normalizeRendererMode('mica'), 'mica');
+  assert.equal(normalizeWindowsBackdropMode('accent'), 'accent');
+  assert.equal(normalizeRendererMode('accent'), 'accent');
 });
 
 test('Windows glass appearance state covers platform boundaries', () => {
@@ -187,7 +189,7 @@ test('Windows exposes an accessible Acrylic and Mica selector', () => {
   assert.match(html, /option value="acrylic"/);
   assert.match(html, /option value="mica"/);
   assert.doesNotMatch(html, /option value="tabbed"/);
-  assert.doesNotMatch(html, /option value="accent"/);
+  assert.match(html, /option value="accent"/);
   assert.match(html, /data-i18n="settings\.appearance\.windowsBackdropNote"/);
   assert.match(html, /id="windowsBackdropNote"/);
   assert.match(html, /<script src="\.\.\/windowsBackdropMode\.js"><\/script>[\s\S]*<script src="windowsGlass\.js"><\/script>[\s\S]*<script src="app\.js"><\/script>/);
@@ -222,19 +224,21 @@ test('experimental Accent mode uses the shared glass surface treatment', () => {
   assert.match(css, /#windowsBackdropNote\.hidden \{ display: none; \}/);
 });
 
-test('normalizeWindowsBackdropMode accepts mica and acrylic', () => {
+test('normalizeWindowsBackdropMode accepts mica, acrylic, and Accent', () => {
   const {
     normalizeWindowsBackdropMode,
     windowsElectronBackgroundMaterial,
     WINDOWS_BACKDROP_MICA,
-    WINDOWS_BACKDROP_ACRYLIC
+    WINDOWS_BACKDROP_ACRYLIC,
+    WINDOWS_BACKDROP_ACCENT
   } = require('../../src/electron/windowsBackdropMode');
   assert.equal(normalizeWindowsBackdropMode('mica'), WINDOWS_BACKDROP_MICA);
   assert.equal(normalizeWindowsBackdropMode('acrylic'), WINDOWS_BACKDROP_ACRYLIC);
+  assert.equal(normalizeWindowsBackdropMode('accent'), WINDOWS_BACKDROP_ACCENT);
   assert.equal(normalizeWindowsBackdropMode('tabbed'), WINDOWS_BACKDROP_ACRYLIC);
-  assert.equal(normalizeWindowsBackdropMode('accent'), WINDOWS_BACKDROP_ACRYLIC);
   assert.equal(normalizeWindowsBackdropMode('nope'), WINDOWS_BACKDROP_ACRYLIC);
   assert.equal(windowsElectronBackgroundMaterial('mica'), 'mica');
   assert.equal(windowsElectronBackgroundMaterial('acrylic'), 'acrylic');
+  assert.equal(windowsElectronBackgroundMaterial('accent'), 'acrylic');
   assert.equal(windowsElectronBackgroundMaterial('tabbed'), 'acrylic');
 });

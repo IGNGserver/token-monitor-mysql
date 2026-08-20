@@ -104,7 +104,9 @@ test('dashboard keeps native Windows material as its base layer', () => {
   assert.match(js, /function applyWindowsBackdrop\(settings\)/);
   assert.match(js, /windowsBackdropUnsupported/);
   assert.match(js, /document\.documentElement\.dataset\.windowsBackdrop/);
-  assert.match(main, /const dashboardQuery = process\.platform === 'win32' && glass && !nativeWindowsBackdrop/);
+  assert.match(main, /const dashboardQuery = \{/);
+  assert.match(main, /windowsBackdropUnsupported/);
+  assert.match(main, /windowsBackdropFallback/);
   assert.match(main, /function rebuildDashboardWindow\(\)/);
 });
 

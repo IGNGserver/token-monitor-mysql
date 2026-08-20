@@ -5,6 +5,8 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('tokenMonitor', {
   getSettings: () => ipcRenderer.invoke('settings:get'),
   updateSettings: (patch) => ipcRenderer.invoke('settings:update', patch),
+  saveSubscriptions: (subscriptions, base) => ipcRenderer.invoke('subscriptions:save', subscriptions, base),
+  discardOrphanedSubscriptions: () => ipcRenderer.invoke('subscriptions:discardOrphans'),
   clearSessionUsageArchive: () => ipcRenderer.invoke('sessionUsageArchive:clear'),
   lookupModelPricing: (modelId) => ipcRenderer.invoke('pricing:lookup', modelId),
   previewAppearance: (patch) => ipcRenderer.invoke('appearance:preview', patch),
@@ -107,6 +109,19 @@ contextBridge.exposeInMainWorld('tokenMonitor', {
     logout: () => ipcRenderer.invoke('cursor:logout'),
     status: () => ipcRenderer.invoke('cursor:status')
   },
+  claude: {
+    saveCookie: (cookie) => ipcRenderer.invoke('claude:saveCookie', cookie)
+  },
+  commandcode: {
+    saveCookie: (cookie) => ipcRenderer.invoke('commandcode:saveCookie', cookie)
+  },
+  thirdparty: {
+    getProfiles: () => ipcRenderer.invoke('thirdparty:getProfiles'),
+    saveProfile: (profile) => ipcRenderer.invoke('thirdparty:saveProfile', profile),
+    deleteProfile: (name) => ipcRenderer.invoke('thirdparty:deleteProfile', name),
+    renameProfile: (oldName, newName) => ipcRenderer.invoke('thirdparty:renameProfile', oldName, newName),
+    setProfileEnabled: (name, enabled) => ipcRenderer.invoke('thirdparty:setProfileEnabled', name, enabled)
+  },
   ollama: {
     validateCookie: (cookie) => ipcRenderer.invoke('ollama:validateCookie', cookie)
   },
@@ -118,7 +133,8 @@ contextBridge.exposeInMainWorld('tokenMonitor', {
     saveProfile: (name, cookie) => ipcRenderer.invoke('opencode:saveProfile', name, cookie),
     deleteProfile: (name) => ipcRenderer.invoke('opencode:deleteProfile', name),
     renameProfile: (oldName, newName) => ipcRenderer.invoke('opencode:renameProfile', oldName, newName),
-    setProfileEnabled: (name, enabled) => ipcRenderer.invoke('opencode:setProfileEnabled', name, enabled)
+    setProfileEnabled: (name, enabled) => ipcRenderer.invoke('opencode:setProfileEnabled', name, enabled),
+    setAmbientEnabled: (enabled) => ipcRenderer.invoke('opencode:setAmbientEnabled', enabled)
   },
   openrouter: {
     getProfiles: () => ipcRenderer.invoke('openrouter:getProfiles'),

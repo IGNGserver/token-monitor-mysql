@@ -15,7 +15,7 @@
     const backdropMode = normalizeWindowsBackdropMode(settings?.windowsBackdrop);
     return {
       showBackdropControl: isWindows && systemGlassEnabled && backdropSupported !== false,
-      showAccentNote: false,
+      showAccentNote: isWindows && systemGlassEnabled && backdropSupported !== false && backdropMode === 'accent',
       showMicaNote: isWindows && systemGlassEnabled && backdropSupported !== false && backdropMode === 'mica',
       backdropMode
     };

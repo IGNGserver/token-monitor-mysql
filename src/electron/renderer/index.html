@@ -263,7 +263,7 @@
           <div id="appearanceSettingsDetails" class="settings-section-details hidden">
             <div class="settings-subgroup settings-appearance-group">
               <div class="settings-item"><span class="settings-item-text"><span id="windowGlassEffectLabel" class="settings-item-title" data-i18n="settings.appearance.systemGlass">Glass Backdrop</span></span><div class="inline-options" role="radiogroup" aria-labelledby="windowGlassEffectLabel"><label class="inline-option"><input type="radio" name="systemGlassOption" value="system" /><span data-i18n="settings.appearance.glassEffectSystem">System</span></label><label class="inline-option"><input type="radio" name="systemGlassOption" value="off" /><span data-i18n="settings.appearance.glassEffectTransparent">Transparent</span></label></div></div>
-              <label id="windowsBackdropRow" class="settings-item hidden"><span class="settings-item-text"><span class="settings-item-title" data-i18n="settings.appearance.windowsBackdrop">Windows Glass Style</span></span><select id="windowsBackdropInput"><option value="acrylic" data-i18n="settings.appearance.windowsBackdropAcrylic">Acrylic</option><option value="mica" data-i18n="settings.appearance.windowsBackdropMica">Mica</option></select><span id="windowsBackdropNote" class="settings-note settings-item-desc hidden" data-i18n="settings.appearance.windowsBackdropNote">Keeps the background translucent and blurred, even when the window is not focused.</span></label>
+              <label id="windowsBackdropRow" class="settings-item hidden"><span class="settings-item-text"><span class="settings-item-title" data-i18n="settings.appearance.windowsBackdrop">Windows Glass Style</span></span><select id="windowsBackdropInput"><option value="acrylic" data-i18n="settings.appearance.windowsBackdropAcrylic">Acrylic</option><option value="mica" data-i18n="settings.appearance.windowsBackdropMica">Mica</option><option value="accent" data-i18n="settings.appearance.windowsBackdropAccent">Accent Blur (experimental)</option></select><span id="windowsBackdropNote" class="settings-note settings-item-desc hidden" data-i18n="settings.appearance.windowsBackdropNote">Keeps the background translucent and blurred, even when the window is not focused.</span></label>
               <label id="macosGlassRow" class="settings-item hidden"><span class="settings-item-text"><span class="settings-item-title" data-i18n="settings.appearance.macosGlassStyle">macOS Glass Style</span></span><select id="macosGlassInput"><option value="vibrancy" data-i18n="settings.appearance.macosGlassVibrancy">Native Frosted Glass (before macOS 26)</option><option value="liquid-glass" data-i18n="settings.appearance.macosGlassLiquid">Liquid Glass (macOS 26+)</option></select><span id="macosGlassNote" class="settings-note settings-item-desc hidden" data-i18n="settings.appearance.macosGlassLiquidNote">Liquid Glass requires macOS 26; older systems use native frosted glass.</span></label>
               <label class="checkbox-label settings-item"><span class="settings-item-text"><span class="settings-item-title" data-i18n="settings.appearance.liveIndicator">Live Indicator</span></span><input id="liveDotInput" type="checkbox" /></label>
               <label class="checkbox-label settings-item"><span class="settings-item-text"><span class="settings-item-title" data-i18n="settings.appearance.toolIcons">Tool Icons</span></span><input id="toolIconsInput" type="checkbox" /></label>
@@ -502,6 +502,21 @@
             <span class="settings-section-meta"><span id="accountsSettingsSummary" class="settings-section-summary"></span><span class="settings-section-disclosure" aria-hidden="true"></span></span>
           </button>
           <div id="accountsSettingsDetails" class="settings-section-details hidden">
+            <div id="claudeAccountGroup" class="settings-group cursor-account-group">
+              <button id="claudeSettingsToggle" class="settings-group-header cursor-settings-toggle" type="button" aria-expanded="false" aria-controls="claudeSettingsDetails">
+                <span data-i18n="settings.claude.title">Claude Account</span>
+                <span class="cursor-settings-summary"><span id="claudeAccountStatus" class="cursor-status-pill">Not configured</span><span class="cursor-disclosure-icon" aria-hidden="true"></span></span>
+              </button>
+              <div id="claudeSettingsDetails" class="cursor-settings-details hidden">
+                <div class="settings-actions"><button id="claudeOpenBrowser" data-i18n="settings.claude.openBrowser">Open Claude usage in browser</button><button id="claudeLogoutButton" class="hidden" data-i18n="settings.claude.clearCookie">Clear cookie</button><button id="claudeRefreshButton" data-i18n="settings.common.refresh">Refresh</button></div>
+                <div id="claudeManualPanel">
+                  <p class="settings-note" data-i18n="settings.claude.note">Claude Web login is optional. The cookie stays on this device.</p>
+                  <textarea id="claudeWebCookieInput" rows="3" spellcheck="false" placeholder="sessionKey=..."></textarea>
+                  <div class="settings-actions"><button id="claudeWebCookieSubmit" data-i18n="settings.claude.saveCookie">Save cookie</button></div>
+                </div>
+                <div id="claudeErrorMessage" class="settings-note error hidden"></div>
+              </div>
+            </div>
             <div id="codexAccountGroup" class="settings-group cursor-account-group">
               <button id="codexSettingsToggle" class="settings-group-header cursor-settings-toggle" type="button" aria-expanded="false" aria-controls="codexSettingsDetails">
                 <span data-i18n="settings.codex.title">Codex Accounts</span>
@@ -577,6 +592,7 @@
               <div id="opencodeSettingsDetails" class="cursor-settings-details hidden">
                 <!-- Profile list -->
                 <div id="opencodeProfileList" class="opencode-profile-list"></div>
+                <label class="checkbox-label settings-item"><span class="settings-item-text"><span class="settings-item-title">Use detected OpenCode Go account</span></span><input id="opencodeAmbientInput" type="checkbox" /></label>
 
                 <!-- Add new account -->
                 <div id="opencodeAddForm" class="opencode-add-form">
@@ -841,6 +857,21 @@
                 <div id="qoderErrorMessage" class="settings-note error hidden"></div>
               </div>
             </div>
+            <div id="commandcodeAccountGroup" class="settings-group cursor-account-group">
+              <button id="commandcodeSettingsToggle" class="settings-group-header cursor-settings-toggle" type="button" aria-expanded="false" aria-controls="commandcodeSettingsDetails">
+                <span data-i18n="settings.commandcode.title">Command Code Account</span>
+                <span class="cursor-settings-summary"><span id="commandcodeAccountStatus" class="cursor-status-pill">Not configured</span><span class="cursor-disclosure-icon" aria-hidden="true"></span></span>
+              </button>
+              <div id="commandcodeSettingsDetails" class="cursor-settings-details hidden">
+                <div class="settings-actions"><button id="commandcodeOpenBrowser" data-i18n="settings.commandcode.openBrowser">Open Command Code usage</button><button id="commandcodeLogoutButton" class="hidden" data-i18n="settings.commandcode.clearCookie">Clear cookie</button><button id="commandcodeRefreshButton" data-i18n="settings.common.refresh">Refresh</button></div>
+                <div id="commandcodeManualPanel">
+                  <p class="settings-note" data-i18n="settings.commandcode.note">Paste the Cookie request header from Command Code usage.</p>
+                  <textarea id="commandcodeCookieInput" rows="3" spellcheck="false" placeholder="__Secure-commandcode_prod_.session_token=..."></textarea>
+                  <div class="settings-actions"><button id="commandcodeCookieSubmit" data-i18n="settings.commandcode.saveCookie">Save cookie</button></div>
+                </div>
+                <div id="commandcodeErrorMessage" class="settings-note error hidden"></div>
+              </div>
+            </div>
             <div id="ollamaAccountGroup" class="settings-group cursor-account-group">
               <button id="ollamaSettingsToggle" class="settings-group-header cursor-settings-toggle" type="button" aria-expanded="false" aria-controls="ollamaSettingsDetails">
                 <span data-i18n="settings.ollama.title">Ollama Account</span>
@@ -988,6 +1019,33 @@
                 <div id="copilotErrorMessage" class="settings-note error hidden"></div>
               </div>
             </div>
+          </div>
+        </div>
+
+        <div class="settings-group settings-collapsible-group settings-accounts-extra-group">
+          <button class="settings-section-toggle" type="button" data-settings-section="subscriptions" aria-expanded="false" aria-controls="subscriptionsSettingsDetails">
+            <span class="settings-section-heading"><span class="settings-section-icon settings-section-icon-accounts" aria-hidden="true"></span><span data-i18n="settings.subscriptions.title">Subscriptions</span></span>
+            <span class="settings-section-meta"><span id="subscriptionsSettingsSummary" class="settings-section-summary"></span><span class="settings-section-disclosure" aria-hidden="true"></span></span>
+          </button>
+          <div id="subscriptionsSettingsDetails" class="settings-section-details hidden">
+            <p class="settings-note" data-i18n="settings.subscriptions.note">Record what you pay for each AI account.</p>
+            <div id="subscriptionList" class="managed-account-list"></div>
+            <div class="settings-row"><input id="subscriptionProviderInput" type="text" placeholder="Provider" /><input id="subscriptionAmountInput" type="number" min="0" step="0.01" placeholder="Amount" /></div>
+            <div class="settings-actions"><button id="subscriptionSaveButton" data-i18n="settings.subscriptions.save">Save subscription</button></div>
+            <div id="subscriptionErrorMessage" class="settings-note error hidden"></div>
+          </div>
+        </div>
+        <div class="settings-group settings-collapsible-group settings-thirdparty-group">
+          <button id="thirdpartySettingsToggle" class="settings-section-toggle" type="button" data-settings-section="thirdparty" aria-expanded="false" aria-controls="thirdpartySettingsDetails">
+            <span class="settings-section-heading"><span data-i18n="settings.thirdparty.title">Third-party API Accounts</span></span>
+            <span class="settings-section-meta"><span id="thirdpartyStatus" class="settings-section-summary"></span><span class="settings-section-disclosure" aria-hidden="true"></span></span>
+          </button>
+          <div id="thirdpartySettingsDetails" class="settings-section-details hidden">
+            <div id="thirdpartyProfileList" class="opencode-profile-list"></div>
+            <div class="settings-row"><input id="thirdpartyProfileName" type="text" placeholder="Account name" /><input id="thirdpartyBaseUrlInput" type="url" placeholder="https://api.example.com" /></div>
+            <div class="settings-row"><select id="thirdpartyModeInput"><option value="account">Account</option><option value="token">API key</option></select><input id="thirdpartyAccessTokenInput" type="password" placeholder="Access token" /><input id="thirdpartyApiKeyInput" class="hidden" type="password" placeholder="API key" /></div>
+            <div class="settings-actions"><button id="thirdpartyProfileSubmit" data-i18n="settings.thirdparty.saveProfile">Save account</button></div>
+            <div id="thirdpartyErrorMessage" class="settings-note error hidden"></div>
           </div>
         </div>
 
@@ -1161,6 +1219,7 @@
     <script src="homeModulePreferences.js"></script>
     <script src="preferenceDragSort.js"></script>
     <script src="i18n.js"></script>
+    <script src="../../shared/reasonixSessionGuard.js"></script>
     <script src="sessionRows.js"></script>
     <script src="breakdownRenderPolicy.js"></script>
     <script src="deviceBreakdown.js"></script>

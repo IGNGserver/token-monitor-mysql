@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const crypto = require('node:crypto');
 const os = require('node:os');
 const path = require('node:path');
-const { app, BrowserWindow, clipboard, dialog, globalShortcut, ipcMain, nativeImage, Notification, screen, session, shell } = require('electron');
+const { app, BrowserWindow, clipboard, dialog, globalShortcut, ipcMain, nativeImage, net, Notification, screen, session, shell } = require('electron');
 const { autoUpdater } = require('electron-updater');
 const { defaultDeviceId, generateHubSecret, lanIpv4Addresses, loadDotEnv, pidFilePath, sharedDataDir, normalizeHubUrl } = require('../shared/config');
 const {
@@ -18,6 +18,10 @@ const {
 } = require('../shared/credentialStore');
 const { installSafeStdout } = require('../shared/safeStdio');
 const { appVersion } = require('../shared/appVersion');
+const { createClaudeWebFetch } = require('./claudeWebFetch');
+const { createElectronLimitsFetch } = require('./limitsFetch');
+const { macWidgetRuntimeSupport } = require('../shared/macSystemRequirements');
+const { normalizeWidgetURLScheme } = require('../shared/macWidgetConfig');
 const { exportFileSet, exportSignature, EXPORT_FILENAMES } = require('../shared/exporter');
 const { createDefaultTrayLayout, normalizeTrayLayout } = require('../shared/trayLayout');
 const motionPreferenceApi = require('./motionPreference');
@@ -26,13 +30,72 @@ const motionPreferenceApi = require('./motionPreference');
 // a closed parent pipe turns the next log call into an unhandled 'error'
 // event and Electron pops a "JavaScript error in the main process" dialog.
 installSafeStdout();
+const electronClaudeWebFetch = createClaudeWebFetch(net);
+
+function electronLimitsFetch() {
+  return createElectronLimitsFetch({ net, env: process.env });
+}
+
+function electronProviderDeps(deps = {}) {
+  return { ...deps, fetch: electronLimitsFetch() };
+}
+
+const OPENCODE_API_PROBE_TIMEOUT_MS = 15_000;
+
+function opencodeAmbientKeyActive(profiles) {
+  const key = opencodeGoApi.readGoApiKey(process.env);
+  if (!key) return false;
+  return !opencodeProfiles.ambientKeyClaimed(
+    profiles,
+    key,
+    opencodeGoApi.goApiIdentity(key)
+  );
+}
+
+function refreshOpencodeAmbientOwnership(wasActive) {
+  if (opencodeAmbientKeyActive(settings?.opencodeProfiles || {}) === wasActive) return;
+  void queueLimitInvalidation({ provider: 'opencode' }, 'ambient-ownership', { clear: true });
+}
+
+async function probeOpenCodeApiKey(apiKey) {
+  try {
+    return await opencodeGoApi.fetchGoApi(apiKey, {
+      fetch: electronLimitsFetch(),
+      signal: AbortSignal.timeout(OPENCODE_API_PROBE_TIMEOUT_MS)
+    });
+  } catch (_) {
+    return { status: 'unavailable', windows: [] };
+  }
+}
+
 const { DEFAULT_CLIENTS, KNOWN_CLIENTS, clientsCsvForSetting, applyNewDefaultClientMigration } = require('../shared/clientTracking');
 const { collectCustomRangeOnce, lookupModelPricing, normalizeHistoryIntervalMs } = require('../shared/collector');
 const { createDeviceRuntime } = require('../shared/deviceRuntime');
 const { customPricingPath } = require('../shared/tokscaleConfig');
 const { applyCustomPricing, normalizeCustomPricingSetting } = require('../shared/tokscaleCustomPricing');
 const { createHub } = require('../hub/server');
-const { deepseekToken, normalizeLimitsRefreshMs, parseBoolean, parseLimitProviders, runCodexLogin, minimaxToken, copilotToken, zaiToken, zaiRegion, zaiTeamToken, volcengineCredentials, qoderCookie, kimiToken, kimiWebToken, ollamaSessionCookie } = require('../shared/limitCollector');
+const {
+  claudeWebCookie,
+  deepseekToken,
+  fetchClaudeLimits,
+  normalizeClaudeWebCookieInput,
+  normalizeLimitsRefreshMode,
+  normalizeLimitsRefreshMs,
+  parseBoolean,
+  parseLimitProviders,
+  runCodexLogin,
+  minimaxToken,
+  copilotToken,
+  zaiToken,
+  zaiRegion,
+  zaiTeamToken,
+  volcengineCredentials,
+  qoderCookie,
+  commandcodeCookie,
+  kimiToken,
+  kimiWebToken,
+  ollamaSessionCookie
+} = require('../shared/limitCollector');
 const { fetchOllamaLimits, rememberOllamaValidation } = require('../shared/ollamaLimits');
 const { copilotLoginErrorMessage, isAllowedVerificationUrl, runCopilotDeviceFlowLogin } = require('../shared/copilotDeviceFlow');
 const {
@@ -92,6 +155,10 @@ const cursorAuth = require('../shared/cursorAuth');
 const cursorProbe = require('../shared/cursorProbe');
 const opencodeWeb = require('../shared/opencodeWeb');
 const openrouterLimits = require('../shared/openrouterLimits');
+const thirdPartyLimits = require('../shared/thirdPartyLimits');
+const opencodeGoApi = require('../shared/opencodeGoApi');
+const opencodeProfiles = require('../shared/opencodeProfiles');
+const subscriptionDisplay = require('../shared/subscriptionDisplay');
 const semver = require('semver');
 const { normalizeCurrency, resolveEffectiveRates, configureRates } = require('../shared/currency');
 const { fetchRates, isCacheStale } = require('../shared/exchangeRates');
@@ -182,9 +249,29 @@ const { applyWindowsChrome } = require('./windowsChrome');
 const { applyMacosNativeWindowButtons } = require('./macosWindowChrome');
 const { setMoveToActiveSpace } = require('./macosSpaceBehavior');
 const {
+  WINDOWS_BACKDROP_ACCENT,
   normalizeWindowsBackdropMode,
   windowsElectronBackgroundMaterial
 } = require('./windowsBackdropMode');
+const { applyWindowsAccentBlur } = require('./windowsBackdrop');
+const { createMacWidgetSnapshotController } = require('./macWidgetSnapshotController');
+const {
+  commitMacWidgetSnapshot,
+  discardMacWidgetSnapshot,
+  prepareMacWidgetSnapshotUpdate,
+  resolveMacWidgetSnapshotPath,
+  syncMacWidgetSnapshotDirectory
+} = require('./macWidgetBridge');
+const { macWidgetHistorySourceKey, resolveMacWidgetHistory } = require('./macWidgetHistory');
+const {
+  macWidgetHistoryCachePath,
+  readMacWidgetHistoryCache,
+  writeMacWidgetHistoryCache
+} = require('./macWidgetHistoryStore');
+const { parseMacWidgetDeepLink } = require('./macWidgetDeepLink');
+const { createMacWidgetLaunchServicesRecovery } = require('./macWidgetLaunchServicesRecovery');
+const { DEFAULT_WIDGET_KIND, requestMacWidgetReload, resetMacWidgetReloadThrottle } = require('./macWidgetReloader');
+const { WIDGET_DEMAND_MARKER, WIDGET_DEMAND_PROVISIONAL_MARKER, createMacWidgetDemandState } = require('./macWidgetDemand');
 const {
   MACOS_GLASS_VIBRANCY,
   MACOS_GLASS_LIQUID,
@@ -245,6 +332,11 @@ let credentialStore = null;
 let credentialStorageErrorShown = false;
 let sessionUsageArchive = null;
 let rendererViewState = normalizeInitialRendererViewState();
+let macWidgetSnapshotController = null;
+let macWidgetDemand = null;
+let macWidgetPublicationReady = false;
+let cachedMacWidgetConfiguration;
+const recoverMacWidgetLaunchServicesRegistration = createMacWidgetLaunchServicesRecovery();
 const serviceStatusClient = createServiceStatusClient();
 const STATUS_PAGE_HOSTS = new Set(SERVICE_STATUS_PROVIDERS.map((provider) => new URL(provider.pageUrl).hostname));
 
@@ -253,6 +345,15 @@ if (process.platform === 'win32') app.setAppUserModelId('com.javis.tokenmonitor'
 
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) app.exit(0);
+
+let pendingMacWidgetOpen = null;
+app.on('open-url', (event, url) => {
+  const destination = parseMacWidgetDeepLink(url, macWidgetConfiguration()?.urlScheme || 'token-monitor');
+  if (!destination) return;
+  event.preventDefault();
+  pendingMacWidgetOpen = destination;
+  if (app.isReady()) setImmediate(openMainWindowFromWidget);
+});
 
 const HOME_LIMIT_ACCOUNT_COUNT_DEFAULT = 3;
 const HOME_LIMIT_ACCOUNT_COUNT_MAX = 12;
@@ -338,6 +439,7 @@ function defaultSettings() {
     homeLimitProviderOrder: '',
     hiddenHomeLimitProviders: '',
     homeLimitAccountCount: HOME_LIMIT_ACCOUNT_COUNT_DEFAULT,
+    limitsRefreshMode: normalizeLimitsRefreshMode(process.env.TOKEN_MONITOR_LIMITS_REFRESH_MODE),
     limitsRefreshMs: normalizeLimitsRefreshMs(process.env.TOKEN_MONITOR_LIMITS_REFRESH_MS),
     showLimitSource: parseBoolean(process.env.TOKEN_MONITOR_SHOW_LIMIT_SOURCE, false),
     maskLimitAccountEmails: false,
@@ -357,7 +459,11 @@ function defaultSettings() {
     startAtLogin: false,
     automaticAppUpdates: false,
     language: 'auto',
+    claudeWebCookie: '',
+    claudePrepaidBalanceEnabled: parseBoolean(process.env.TOKEN_MONITOR_CLAUDE_PREPAID_BALANCE, true),
     opencodeCookie: '',
+    opencodeLocalLimitsEnabled: false,
+    opencodeAmbientEnabled: parseBoolean(process.env.TOKEN_MONITOR_OPENCODE_AMBIENT, true),
     opencodeProfiles: {},
     openrouterProfiles: {},
     deepseekApiKey: '',
@@ -374,11 +480,16 @@ function defaultSettings() {
     volcengineRegion: '',
     qoderCookie: '',
     qoderSite: 'global',
+    commandcodeCookie: '',
     kimiApiKey: '',
     kimiWebAccessToken: '',
     ollamaCookie: '',
     codexManagedAccounts: [],
     mimoManagedAccounts: [],
+    thirdPartyProfiles: {},
+    subscriptions: [],
+    subscriptionsOrphaned: { hubUrl: '', records: [] },
+    subscriptionsCacheHub: '',
     appUpdate: {
       lastCheckedAt: null,
       lastKnownLatest: null,
@@ -448,6 +559,51 @@ function electronLimitsConfig() {
     codexManagedAccounts: codexManagedAccountsForCollector(),
     mimoManagedAccounts: mimoManagedAccountsForCollector()
   });
+}
+
+function normalizeClaudeWebCookie(value) {
+  return normalizeClaudeWebCookieInput(value);
+}
+
+function currentClaudeWebCookie() {
+  return settings?.claudeWebCookie || claudeWebCookie(process.env);
+}
+
+let claudeWebCookieMutationRevision = 0;
+
+function persistClaudeWebCookieRenewal({ previousCookie, cookie } = {}) {
+  if (!settings?.claudeWebCookie) return false;
+  let expected;
+  let renewed;
+  try {
+    expected = normalizeClaudeWebCookie(previousCookie);
+    renewed = normalizeClaudeWebCookie(cookie);
+  } catch (_) {
+    return false;
+  }
+  if (!renewed || normalizeClaudeWebCookie(settings.claudeWebCookie) !== expected) return false;
+  if (settings.claudeWebCookie === renewed) return true;
+  settings.claudeWebCookie = renewed;
+  saveSettings({ throwOnError: true });
+  return true;
+}
+
+function normalizeCommandcodeCookie(value) {
+  return commandcodeCookie({}, { commandcodeCookie: String(value || '') });
+}
+
+function currentCommandcodeCookie() {
+  return settings?.commandcodeCookie || commandcodeCookie(process.env);
+}
+
+function electronLimitsDeps() {
+  return {
+    ...electronProviderDeps(),
+    fetch: electronLimitsFetch(),
+    claudeWebFetch: electronClaudeWebFetch,
+    resolveConfigSnapshot: () => electronLimitsConfig(),
+    onClaudeWebCookieRenewed: persistClaudeWebCookieRenewal
+  };
 }
 
 function electronDeviceEnvelope() {
@@ -688,7 +844,7 @@ function hydrateCodexManagedWorkspaceLabels() {
           description: 'Managed Codex auth',
           encoding: 'utf8'
         }));
-        const workspaces = await listCodexWorkspaces(auth, { env: process.env });
+        const workspaces = await listCodexWorkspaces(auth, electronProviderDeps({ env: process.env }));
         const workspace = workspaces.find((entry) => entry.id === account.workspaceAccountId);
         return workspace
           ? {
@@ -832,7 +988,7 @@ async function addMimoManagedAccount(cookieValue) {
   const accounts = normalizeMimoManagedAccounts(settings?.mimoManagedAccounts);
   const result = createMimoManagedAccount(cookieValue, accounts);
   if (!result.ok) return result;
-  const [validation] = await fetchMimoLimits({ mimoManagedAccounts: [result.account] });
+  const [validation] = await fetchMimoLimits({ mimoManagedAccounts: [result.account] }, electronProviderDeps());
   if (validation?.status !== 'ok') {
     const errorCode = validation?.status === 'unauthorized'
       ? 'invalidCookie'
@@ -1064,10 +1220,10 @@ async function resolveCodexWorkspaceAfterLogin(auth, homePath, options = {}) {
   const initialIdentity = codexAuthIdentity(auth);
   let workspaces;
   try {
-    workspaces = await listCodexWorkspaces(auth, {
+    workspaces = await listCodexWorkspaces(auth, electronProviderDeps({
       env: process.env,
       signal: options.signal
-    });
+    }));
   } catch (error) {
     if (options.signal?.aborted) return { cancelled: true };
     console.warn('Could not list Codex workspaces after sign-in:', error?.message || error);
@@ -1908,6 +2064,14 @@ function readSettings() {
     }
     merged.collectionMode = normalizeCollectionMode(merged.collectionMode);
     merged.collectionIntervalMs = normalizeCollectionIntervalMs(merged.collectionIntervalMs);
+    merged.limitsRefreshMode = normalizeLimitsRefreshMode(merged.limitsRefreshMode);
+    merged.claudePrepaidBalanceEnabled = parseBoolean(merged.claudePrepaidBalanceEnabled, true);
+    merged.opencodeAmbientEnabled = parseBoolean(merged.opencodeAmbientEnabled, true);
+    merged.opencodeLocalLimitsEnabled = parseBoolean(merged.opencodeLocalLimitsEnabled, false);
+    merged.thirdPartyProfiles = merged.thirdPartyProfiles && typeof merged.thirdPartyProfiles === 'object' && !Array.isArray(merged.thirdPartyProfiles)
+      ? merged.thirdPartyProfiles
+      : {};
+    merged.subscriptions = subscriptionDisplay.normalizeSubscriptions(merged.subscriptions, { currencyApi: { normalizeCurrency } });
     merged.syncUploadIntervalMs = normalizeSyncUploadIntervalMs(merged.syncUploadIntervalMs);
     merged.heatmapMetric = normalizeHeatmapMetric(merged.heatmapMetric);
     merged.homeActiveDaysWindow = normalizeHomeActiveDaysWindow(merged.homeActiveDaysWindow);
@@ -2244,6 +2408,133 @@ function withHistoryPreview(stats, devices) {
   return stats;
 }
 
+function macWidgetRuntimeSupported(platform = process.platform, osRelease = os.release()) {
+  return macWidgetRuntimeSupport({ platform, osRelease }).supported;
+}
+
+function macWidgetConfiguration() {
+  if (!macWidgetRuntimeSupported()) return null;
+  if (cachedMacWidgetConfiguration !== undefined) return cachedMacWidgetConfiguration;
+
+  let appGroup = String(process.env.TOKEN_MONITOR_APP_GROUP || '').trim();
+  let urlScheme = String(process.env.TOKEN_MONITOR_WIDGET_URL_SCHEME || 'token-monitor').trim();
+  let snapshotFileName = 'snapshot.json';
+  let widgetKind = DEFAULT_WIDGET_KIND;
+  for (const configPath of [
+    path.join(process.resourcesPath, 'token-monitor-widget.json'),
+    path.resolve(__dirname, '..', '..', 'build', 'macos-widget', 'widget-config.json')
+  ]) {
+    try {
+      const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+      appGroup ||= String(config.appGroup || '').trim();
+      urlScheme = String(config.urlScheme || urlScheme).trim();
+      snapshotFileName = String(config.snapshotFileName || snapshotFileName).trim();
+      widgetKind = String(config.widgetKind || widgetKind).trim() || DEFAULT_WIDGET_KIND;
+      if (appGroup) break;
+    } catch (_) {}
+  }
+  const snapshotPath = resolveMacWidgetSnapshotPath({
+    appGroup,
+    home: app.getPath('home'),
+    snapshotFileName
+  });
+  if (!snapshotPath) {
+    cachedMacWidgetConfiguration = null;
+    return null;
+  }
+  try { urlScheme = normalizeWidgetURLScheme(urlScheme); }
+  catch (_) { urlScheme = 'token-monitor'; }
+  cachedMacWidgetConfiguration = { appGroup, snapshotPath, widgetKind, urlScheme };
+  return cachedMacWidgetConfiguration;
+}
+
+function macWidgetPresentation() {
+  return {
+    currencyCode: settings?.currency,
+    currencyRate: effectiveRates?.[normalizeCurrency(settings?.currency)] || 1,
+    compactNumbers: settings?.showCompactTotalTokens !== false,
+    showCost: true,
+    locale: settings?.language,
+    theme: Object.keys(settings?.themeColors || {}).length ? 'custom' : 'system'
+  };
+}
+
+async function macWidgetHistory() {
+  if (settings?.historyEnabled === false) return aggregateHistory([]);
+  return getDashboardHistory();
+}
+
+function ensureMacWidgetDemand() {
+  if (!macWidgetRuntimeSupported() || macWidgetDemand) return macWidgetDemand;
+  const widget = macWidgetConfiguration();
+  if (!widget) return null;
+  const directory = path.dirname(widget.snapshotPath);
+  macWidgetDemand = createMacWidgetDemandState({
+    markerPath: path.join(directory, WIDGET_DEMAND_MARKER),
+    provisionalMarkerPath: path.join(directory, WIDGET_DEMAND_PROVISIONAL_MARKER),
+    onActivation: () => scheduleMacWidgetSnapshot(latestStats),
+    logger: (message) => console.warn(message)
+  });
+  macWidgetDemand.start();
+  return macWidgetDemand;
+}
+
+function ensureMacWidgetSnapshotController() {
+  if (!macWidgetRuntimeSupported() || macWidgetSnapshotController) return macWidgetSnapshotController;
+  macWidgetSnapshotController = createMacWidgetSnapshotController({
+    startPaused: !macWidgetPublicationReady,
+    captureWork: ({ stats, owner }) => {
+      const widget = macWidgetConfiguration();
+      if (!widget || (macWidgetDemand && !macWidgetDemand.isInstalled())) return null;
+      const sourceKey = macWidgetHistorySourceKey({
+        mode,
+        hubMode: settings?.hubMode,
+        historyEnabled: settings?.historyEnabled !== false,
+        hubUrl: effectiveHubConfig().url || ''
+      });
+      return {
+        stats,
+        owner: Object.freeze({ epoch: owner.epoch, sourceKey }),
+        snapshotPath: widget.snapshotPath,
+        widgetKind: widget.widgetKind,
+        presentation: macWidgetPresentation(),
+        historyCachePath: macWidgetHistoryCachePath(app.getPath('userData'), sourceKey)
+      };
+    },
+    resolveHistory: (work) => resolveMacWidgetHistory({
+      generation: work.owner.epoch,
+      sourceKey: work.owner.sourceKey,
+      revision: work.stats?.historyRevision,
+      fetchHistory: macWidgetHistory,
+      loadCachedHistory: () => readMacWidgetHistoryCache(work.historyCachePath, work.owner.sourceKey),
+      saveCachedHistory: (history) => writeMacWidgetHistoryCache(work.historyCachePath, work.owner.sourceKey, history),
+      logger: (message) => console.warn(message)
+    }),
+    prepareSnapshot: (work, history) => prepareMacWidgetSnapshotUpdate(work.stats, {
+      snapshotPath: work.snapshotPath,
+      snapshotOptions: { presentation: work.presentation, history },
+      logger: (message) => console.warn(message)
+    }),
+    commitSnapshot: (prepared, options) => commitMacWidgetSnapshot(prepared, options),
+    syncSnapshot: (_work, committed, prepared) => syncMacWidgetSnapshotDirectory({ ...committed, fs: prepared?.fs }),
+    discardSnapshot: discardMacWidgetSnapshot,
+    reloadSnapshot: (work, options) => requestMacWidgetReload({
+      widgetKind: work.widgetKind,
+      runtimeSupported: true,
+      isCurrent: options.isCurrent,
+      logger: (message) => console.warn(message)
+    }),
+    logger: (message) => console.warn(message)
+  });
+  return macWidgetSnapshotController;
+}
+
+function scheduleMacWidgetSnapshot(stats) {
+  const controller = ensureMacWidgetSnapshotController();
+  const producerOwner = controller?.captureProducerOwner();
+  return Boolean(stats && controller?.enqueue({ stats, producerOwner }));
+}
+
 let mode = 'idle';
 let deviceRuntimeHandle = null;
 let localDevice = null;
@@ -2480,6 +2771,115 @@ async function postToHub(summary) {
   return response.json();
 }
 
+let hubSubscriptions = null;
+let hubSubscriptionsHub = '';
+const subscriptionQueues = new Map();
+
+function currentHubIdentity() {
+  return String(effectiveHubConfig().url || '').replace(/\/$/, '');
+}
+
+function subscriptionsAreShared() {
+  return settings?.hubMode === 'client' || settings?.hubMode === 'host';
+}
+
+function effectiveSubscriptions() {
+  if (!subscriptionsAreShared()) return subscriptionDisplay.normalizeSubscriptions(settings?.subscriptions, { currencyApi: { normalizeCurrency } });
+  return hubSubscriptionsHub === currentHubIdentity() ? hubSubscriptions?.subscriptions || [] : [];
+}
+
+function queueSubscriptionOp(run) {
+  const hub = currentHubIdentity();
+  const previous = subscriptionQueues.get(hub) || Promise.resolve();
+  const result = previous.then(() => run(hub), () => run(hub));
+  const lane = result.then(() => {}, () => {});
+  subscriptionQueues.set(hub, lane);
+  lane.then(() => { if (subscriptionQueues.get(hub) === lane) subscriptionQueues.delete(hub); });
+  return result;
+}
+
+function subscriptionOpIsCurrent(hub) {
+  return hub === currentHubIdentity();
+}
+
+function subscriptionWriteFailureCode(error) {
+  if (error?.code === 'stale_write') return 'stale_write';
+  if (error?.code === 'rejected') return 'hub_rejected';
+  if (error?.code === 'write_failed') return 'write_failed';
+  return 'hub_unreachable';
+}
+
+async function fetchSharedSubscriptions() {
+  if (settings.hubMode === 'host' && embeddedHub) return embeddedHub.hub.getSubscriptions();
+  const { url, secret } = effectiveHubConfig();
+  if (!url) return null;
+  const response = await fetch(`${url.replace(/\/$/, '')}/api/subscriptions`, {
+    headers: secret ? { authorization: `Bearer ${secret}` } : {},
+    signal: AbortSignal.timeout(15_000)
+  });
+  if (!response.ok) throw new Error(`Hub ${response.status}`);
+  return response.json();
+}
+
+function cacheSharedSubscriptions(document, hub) {
+  hubSubscriptions = document;
+  hubSubscriptionsHub = hub;
+  settings.subscriptions = subscriptionDisplay.normalizeSubscriptions(document?.subscriptions, { currencyApi: { normalizeCurrency } });
+  settings.subscriptionsCacheHub = hub;
+  saveSettings();
+}
+
+async function refreshSharedSubscriptions() {
+  if (!subscriptionsAreShared()) {
+    hubSubscriptions = null;
+    hubSubscriptionsHub = '';
+    return;
+  }
+  return queueSubscriptionOp(async (hub) => {
+    const document = await fetchSharedSubscriptions();
+    if (!document || !subscriptionOpIsCurrent(hub)) return;
+    cacheSharedSubscriptions(document, hub);
+    pushSettingsToRenderer();
+  });
+}
+
+async function saveSubscriptions(list, base = {}) {
+  const normalized = subscriptionDisplay.normalizeSubscriptions(list, { currencyApi: { normalizeCurrency } });
+  if (!subscriptionsAreShared()) {
+    settings.subscriptions = normalized;
+    settings.subscriptionsCacheHub = '';
+    if (!saveSettings()) throw Object.assign(new Error('settings write failed'), { code: 'write_failed' });
+    return settingsForRenderer();
+  }
+  return queueSubscriptionOp(async (hub) => {
+    if (!subscriptionOpIsCurrent(hub)) throw Object.assign(new Error('hub changed'), { code: 'hub_changed' });
+    const baseUpdatedAt = String(base?.updatedAt || '');
+    if (settings.hubMode === 'host' && embeddedHub) {
+      const stored = await embeddedHub.hub.setSubscriptions(normalized, baseUpdatedAt);
+      cacheSharedSubscriptions(stored, hub);
+      return settingsForRenderer();
+    }
+    const { url, secret } = effectiveHubConfig();
+    const response = await fetch(`${url.replace(/\/$/, '')}/api/subscriptions`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json', ...(secret ? { authorization: `Bearer ${secret}` } : {}) },
+      body: JSON.stringify({ subscriptions: normalized, baseUpdatedAt }),
+      signal: AbortSignal.timeout(15_000)
+    });
+    if (response.status === 409) throw Object.assign(new Error('stale_write'), { code: 'stale_write' });
+    if (!response.ok) throw Object.assign(new Error(`Hub ${response.status}`), { code: 'rejected' });
+    const stored = await response.json();
+    cacheSharedSubscriptions(stored, hub);
+    return settingsForRenderer();
+  });
+}
+
+function discardOrphanedSubscriptions() {
+  settings.subscriptionsOrphaned = { hubUrl: '', records: [] };
+  if (!saveSettings()) throw Object.assign(new Error('settings write failed'), { code: 'write_failed' });
+  return settingsForRenderer();
+}
+
 function stopSyncCollector() {
   if (deviceRuntimeHandle) { try { deviceRuntimeHandle.stop(); } catch (_) {} }
   deviceRuntimeHandle = null;
@@ -2520,7 +2920,7 @@ function startSyncCollector() {
     sink,
     onError: (error, reason) => console.log(`[sync-collector] ${reason}: ${error.message}`)
   }, {
-    limitsDeps: { resolveConfigSnapshot: () => electronLimitsConfig() }
+    limitsDeps: electronLimitsDeps()
   });
   drainPendingRuntimeActions(deviceRuntimeHandle);
 }
@@ -2564,7 +2964,7 @@ function startHostCollector() {
     sink,
     onError: (error, reason) => console.log(`[host-collector] ${reason}: ${error.message}`)
   }, {
-    limitsDeps: { resolveConfigSnapshot: () => electronLimitsConfig() }
+    limitsDeps: electronLimitsDeps()
   });
   drainPendingRuntimeActions(deviceRuntimeHandle);
 }
@@ -2627,6 +3027,7 @@ function sendPush(payload) {
   if (payload?.data?.stats) {
     injectLocalDeviceStatus(payload.data.stats);
     latestStats = payload.data.stats;
+    scheduleMacWidgetSnapshot(latestStats);
     syncTrayCodexActiveAccount();
     updateTrayDisplay();
     if (settings.exportAutoEnabled && settings.exportDir && Date.now() - lastExportAt >= exportIntervalMs()) {
@@ -2760,7 +3161,7 @@ function startLocalCollector() {
     },
     onError: (error, reason) => sendStatus(false, { reason: `${reason}:${error.message}` })
   }, {
-    limitsDeps: { resolveConfigSnapshot: () => electronLimitsConfig() }
+    limitsDeps: electronLimitsDeps()
   });
   drainPendingRuntimeActions(deviceRuntimeHandle);
 }
@@ -2867,6 +3268,27 @@ function togglePopover() {
   else showPopover();
 }
 
+function openMainWindowFromWidget() {
+  if (!app.isReady()) return;
+  const destination = pendingMacWidgetOpen || { view: 'home', settings: false };
+  pendingMacWidgetOpen = null;
+  updateRendererViewState({ breakdown: destination.view });
+  applyMacActivationPolicy({ mainWindowVisible: true });
+  if (!mainWindow || mainWindow.isDestroyed()) createWindow();
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (settings?.trayMode && tray) showPopover();
+  else if (mainWindow.isMinimized()) mainWindow.restore();
+  else if (floatingBubbleState.collapsed) expandFloatingBubble();
+  else mainWindow.show();
+  const sendDestination = () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    if (destination.settings) mainWindow.webContents.send('settings:open');
+    else mainWindow.webContents.send('view:open', destination.view);
+  };
+  if (mainWindow?.webContents.isLoadingMainFrame?.()) mainWindow.webContents.once('did-finish-load', sendDestination);
+  else sendDestination();
+}
+
 function focusExistingWindow() {
   applyMacActivationPolicy({ mainWindowVisible: true });
   if (!mainWindow || mainWindow.isDestroyed()) {
@@ -2908,6 +3330,26 @@ function redactOpenRouterProfilesForRenderer(profiles) {
   return out;
 }
 
+function redactThirdPartyProfilesForRenderer(profiles) {
+  const out = Object.create(null);
+  for (const [name, profile] of Object.entries(profiles || {})) {
+    const adapter = thirdPartyLimits.normalizeAdapterId(profile?.adapter);
+    const baseUrl = thirdPartyLimits.normalizeThirdPartyBaseUrl(profile?.baseUrl, {
+      stripTerminalV1: adapter !== thirdPartyLimits.CUSTOM_BALANCE_ADAPTER
+    });
+    if (!adapter || !baseUrl) continue;
+    out[name] = {
+      enabled: profile?.enabled !== false,
+      adapter,
+      baseUrl,
+      userId: String(profile?.userId || '').trim(),
+      accessToken: profile?.accessToken ? 'set' : '',
+      apiKey: profile?.apiKey ? 'set' : ''
+    };
+  }
+  return out;
+}
+
 function settingsForRenderer() {
   const deepseekApiKeySource = settings?.deepseekApiKey
     ? 'settings'
@@ -2944,6 +3386,16 @@ function settingsForRenderer() {
     : qoderCookie(process.env)
       ? 'env'
       : '';
+  const claudeWebCookieSource = settings?.claudeWebCookie
+    ? 'settings'
+    : claudeWebCookie(process.env)
+      ? 'env'
+      : '';
+  const commandcodeCookieSource = settings?.commandcodeCookie
+    ? 'settings'
+    : commandcodeCookie(process.env)
+      ? 'env'
+      : '';
   const ollamaCookieSource = settings?.ollamaCookie
     ? 'settings'
     : ollamaSessionCookie(process.env)
@@ -2972,7 +3424,9 @@ function settingsForRenderer() {
     zaiTeamOrganizationId: settings?.zaiTeamOrganizationId ? 'set' : '',
     zaiTeamProjectId: settings?.zaiTeamProjectId ? 'set' : '',
     volcengineAccessKeyId: settings?.volcengineAccessKeyId ? 'set' : '',
+    claudeWebCookie: settings?.claudeWebCookie ? 'set' : '',
     qoderCookie: settings?.qoderCookie ? 'set' : '',
+    commandcodeCookie: settings?.commandcodeCookie ? 'set' : '',
     ollamaCookie: settings?.ollamaCookie ? 'set' : '',
     // Never ship OpenCode session cookies to the renderer; the UI only needs to
     // know whether a cookie is configured, not its value.
@@ -2983,9 +3437,22 @@ function settingsForRenderer() {
     ...(settings?.openrouterProfiles
       ? { openrouterProfiles: redactOpenRouterProfilesForRenderer(settings.openrouterProfiles) }
       : {}),
+    ...(settings?.thirdPartyProfiles
+      ? { thirdPartyProfiles: redactThirdPartyProfilesForRenderer(settings.thirdPartyProfiles) }
+      : {}),
+    subscriptions: effectiveSubscriptions(),
+    subscriptionsShared: subscriptionsAreShared(),
+    subscriptionsHub: currentHubIdentity(),
+    subscriptionsUpdatedAt: hubSubscriptionsHub === currentHubIdentity() ? (hubSubscriptions?.updatedAt || '') : '',
+    subscriptionsOrphaned: [],
     openrouterEnvConfigured: Boolean(openrouterLimits.openrouterToken(process.env)),
+    thirdPartyEnvConfigured: thirdPartyLimits.configuredAccounts({}, { env: process.env }).length > 0,
     codexManagedAccounts: codexAccountsForRenderer(),
     mimoManagedAccounts: mimoAccountsForRenderer(),
+    claudeWebCookieConfigured: Boolean(currentClaudeWebCookie()),
+    claudeWebCookieSource,
+    commandcodeCookieConfigured: Boolean(currentCommandcodeCookie()),
+    commandcodeCookieSource,
     deepseekApiKeyConfigured: Boolean(currentDeepSeekApiKey()),
     deepseekApiKeySource,
     minimaxApiKeyConfigured: Boolean(currentMinimaxApiKey()),
@@ -3318,6 +3785,7 @@ function exitTrayMode() {
 }
 
 function startMode() {
+  macWidgetSnapshotController?.advanceProducerAndSourceEpoch();
   // Tear down collectors synchronously so they can't double-run while the
   // async reconciliation below is queued.
   stopLocalCollector();
@@ -3345,14 +3813,17 @@ function startMode() {
       }
       await startHostStats();
       startHostCollector();
+      void refreshSharedSubscriptions().catch((error) => console.log(`[sync] subscriptions refresh failed: ${error.message}`));
       return;
     }
     await stopEmbeddedHub();
     if (effectiveHubConfig().url) {
       startStatsStream({ resetSnapshot: true });
       startSyncCollector();
+      void refreshSharedSubscriptions().catch((error) => console.log(`[sync] subscriptions refresh failed: ${error.message}`));
     } else {
       startLocalCollector();
+      void refreshSharedSubscriptions().catch((error) => console.log(`[sync] subscriptions refresh failed: ${error.message}`));
     }
   }).catch((err) => {
     console.log(`[mode] reconciliation failed: ${err?.message || err}`);
@@ -3378,6 +3849,10 @@ function stopAll() {
   stopStatsStream();
   stopHostStats();
   stopSyncCollector();
+  macWidgetSnapshotController?.stop();
+  macWidgetDemand?.stop();
+  macWidgetDemand = null;
+  resetMacWidgetReloadThrottle();
   void stopEmbeddedHub();
   stopDiscordRpc();
   if (tray && !tray.isDestroyed()) tray.destroy();
@@ -3838,6 +4313,8 @@ function isAllowedExternalUrl(value) {
   if (parsed.hostname === 'github.com' && parsed.pathname.startsWith('/IGNGserver/token-monitor-suite')) return true;
   if ((parsed.hostname === 'cursor.com' || parsed.hostname === 'www.cursor.com') && parsed.pathname.startsWith('/settings')) return true;
   if (parsed.hostname === 'opencode.ai' || parsed.hostname === 'www.opencode.ai') return true;
+  if (parsed.hostname === 'claude.ai' || parsed.hostname === 'www.claude.ai') return true;
+  if (parsed.hostname === 'commandcode.ai' || parsed.hostname === 'www.commandcode.ai') return true;
   if (parsed.hostname === 'openrouter.ai' && parsed.pathname.startsWith('/settings/keys')) return true;
   if (parsed.hostname === 'platform.deepseek.com' && parsed.pathname.startsWith('/api_keys')) return true;
   if (parsed.hostname === 'platform.minimaxi.com') return true;
@@ -3912,8 +4389,10 @@ function createWindow(boundsOverride, options = {}) {
   const glass = nativeBlurEnabled();
   const macosGlassStyle = macosGlassStyleFor(settings);
   const windowsBackdrop = normalizeWindowsBackdropMode(settings?.windowsBackdrop);
-  const windowsMaterial = windowsElectronBackgroundMaterial(windowsBackdrop);
   const nativeWindowsBackdrop = glass && windowsNativeBackdropSupported();
+  const windowsAccent = process.platform === 'win32'
+    && nativeWindowsBackdrop
+    && windowsBackdrop === WINDOWS_BACKDROP_ACCENT;
   const bounds = boundsOverride || restoredBounds() || DEFAULT_WINDOW;
   const collapsedSizeLimits = {
     minWidth: bounds.width,
@@ -3938,7 +4417,9 @@ function createWindow(boundsOverride, options = {}) {
     ...(process.platform === 'darwin' && glass && macosGlassStyle === MACOS_GLASS_VIBRANCY
       ? { vibrancy: 'hud', visualEffectState: 'active' }
       : {}),
-    ...(process.platform === 'win32' && nativeWindowsBackdrop ? { backgroundMaterial: windowsMaterial } : {}),
+    ...(process.platform === 'win32' && nativeWindowsBackdrop && !windowsAccent
+      ? { backgroundMaterial: windowsElectronBackgroundMaterial(windowsBackdrop) }
+      : {}),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -3950,6 +4431,12 @@ function createWindow(boundsOverride, options = {}) {
   applyMacosNativeWindowButtons(win, { visible: !collapsedFloatingBubble });
   applyMacSpaceBehavior();
   applyWindowsChrome(win, { round: true });
+  let windowsAccentFallback = false;
+  if (windowsAccent && !applyWindowsAccentBlur(win)) {
+    windowsAccentFallback = true;
+    console.warn('[window] Accent blur unavailable; falling back to Acrylic');
+    try { win.setBackgroundMaterial('acrylic'); } catch (_) {}
+  }
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (isAllowedExternalUrl(url)) shell.openExternal(url);
     return { action: 'deny' };
@@ -3996,7 +4483,8 @@ function createWindow(boundsOverride, options = {}) {
         viewState: rendererViewState
       }),
       ...(settings?.systemGlass === false ? { systemGlassDisabled: '1' } : {}),
-      ...(process.platform === 'win32' && glass && !nativeWindowsBackdrop ? { windowsBackdropUnsupported: '1' } : {})
+      ...(process.platform === 'win32' && glass && !nativeWindowsBackdrop ? { windowsBackdropUnsupported: '1' } : {}),
+      ...(windowsAccentFallback ? { windowsBackdropFallback: '1' } : {})
     }
   });
 }
@@ -4052,7 +4540,11 @@ function createDashboardWindow() {
   }
   const glass = nativeBlurEnabled();
   const macosGlassStyle = macosGlassStyleFor(settings);
+  const windowsBackdrop = normalizeWindowsBackdropMode(settings?.windowsBackdrop);
   const nativeWindowsBackdrop = glass && windowsNativeBackdropSupported();
+  const windowsAccent = process.platform === 'win32'
+    && nativeWindowsBackdrop
+    && windowsBackdrop === WINDOWS_BACKDROP_ACCENT;
   const win = new BrowserWindow({
     width: 920,
     height: 620,
@@ -4067,7 +4559,9 @@ function createDashboardWindow() {
     ...(process.platform === 'darwin' && glass && macosGlassStyle === MACOS_GLASS_VIBRANCY
       ? { vibrancy: 'hud', visualEffectState: 'active' }
       : {}),
-    ...(process.platform === 'win32' && nativeWindowsBackdrop ? { backgroundMaterial: windowsElectronBackgroundMaterial(settings?.windowsBackdrop) } : {}),
+    ...(process.platform === 'win32' && nativeWindowsBackdrop && !windowsAccent
+      ? { backgroundMaterial: windowsElectronBackgroundMaterial(windowsBackdrop) }
+      : {}),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -4077,6 +4571,12 @@ function createDashboardWindow() {
   dashboardWindow = win;
   applyMacosNativeWindowButtons(win);
   applyWindowsChrome(win, { round: true });
+  let windowsAccentFallback = false;
+  if (windowsAccent && !applyWindowsAccentBlur(win)) {
+    windowsAccentFallback = true;
+    console.warn('[dashboard] Accent blur unavailable; falling back to Acrylic');
+    try { win.setBackgroundMaterial('acrylic'); } catch (_) {}
+  }
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (isAllowedExternalUrl(url)) shell.openExternal(url);
     return { action: 'deny' };
@@ -4099,12 +4599,14 @@ function createDashboardWindow() {
     if (!win.isVisible()) discardFailedDashboardWindow(win, 'renderer became unresponsive while opening');
   });
   win.on('closed', () => { dashboardWindow = null; });
-  const dashboardQuery = process.platform === 'win32' && glass && !nativeWindowsBackdrop
-    ? { windowsBackdropUnsupported: '1' }
-    : undefined;
+  const dashboardQuery = {
+    ...(process.platform === 'win32' && glass && !nativeWindowsBackdrop ? { windowsBackdropUnsupported: '1' } : {}),
+    ...(windowsAccentFallback ? { windowsBackdropFallback: '1' } : {})
+  };
+  const hasDashboardQuery = Object.keys(dashboardQuery).length > 0;
   win.loadFile(
     path.join(__dirname, 'renderer', 'dashboard.html'),
-    dashboardQuery ? { query: dashboardQuery } : undefined
+    hasDashboardQuery ? { query: dashboardQuery } : undefined
   )
     .catch((error) => discardFailedDashboardWindow(win, `load failed: ${error.message}`));
   return win;
@@ -4229,7 +4731,30 @@ app.whenReady().then(() => {
   ensureTray();
   if (settings.trayMode) enterTrayMode();
   regenerateTokscalePricing();
+  ensureMacWidgetDemand();
   startMode();
+  const widgetRuntime = macWidgetRuntimeSupport({
+    platform: process.platform,
+    osRelease: process.platform === 'darwin' ? os.release() : ''
+  });
+  const widgetRecoveryAbort = widgetRuntime.supported ? new AbortController() : null;
+  if (widgetRecoveryAbort) app.once('before-quit', () => widgetRecoveryAbort.abort());
+  const widgetRecovery = widgetRuntime.supported
+    ? recoverMacWidgetLaunchServicesRegistration({
+      platform: process.platform,
+      runtimeSupported: true,
+      isPackaged: app.isPackaged,
+      resourcesPath: process.resourcesPath,
+      userDataPath: app.getPath('userData'),
+      signal: widgetRecoveryAbort.signal,
+      logger: (message) => console.warn(message)
+    })
+    : Promise.resolve({ status: 'skipped', reason: widgetRuntime.reason });
+  void widgetRecovery.finally(() => {
+    macWidgetPublicationReady = true;
+    macWidgetSnapshotController?.resume();
+    if (pendingMacWidgetOpen) setImmediate(openMainWindowFromWidget);
+  });
   void hydrateCodexManagedWorkspaceLabels();
   if (settings.discordRpcEnabled) startDiscordRpc();
   rateCache = readRateCache();
@@ -4238,6 +4763,14 @@ app.whenReady().then(() => {
   rateRefreshTimer = setInterval(() => { refreshExchangeRates(); }, 6 * 60 * 60 * 1000);
   setTimeout(() => { checkTokscaleNpm({ silent: true }); }, 2000);
   ipcMain.handle('settings:get', () => settingsForRenderer());
+  ipcMain.handle('subscriptions:discardOrphans', () => discardOrphanedSubscriptions());
+  ipcMain.handle('subscriptions:save', async (_event, subscriptions, base) => {
+    try {
+      return await saveSubscriptions(subscriptions, base);
+    } catch (error) {
+      throw new Error(subscriptionWriteFailureCode(error), { cause: error });
+    }
+  });
   ipcMain.handle('sessionUsageArchive:clear', () => {
     if (isExternalAgentActive()) return { ok: false, error: 'agentActive' };
     try {
@@ -4260,6 +4793,7 @@ app.whenReady().then(() => {
     }
   });
   ipcMain.handle('settings:update', (_event, patch) => {
+    if (patch?.claudeWebCookie !== undefined) claudeWebCookieMutationRevision += 1;
     const previousSettingsState = settings;
     const previousRuntimeSettings = JSON.parse(JSON.stringify(settings));
     const previousNativeMaterial = nativeBlurEnabled();
@@ -4282,6 +4816,10 @@ app.whenReady().then(() => {
     delete normalizedPatch.codexManagedAccounts;
     delete normalizedPatch.mimoManagedAccounts;
     delete normalizedPatch.openrouterProfiles;
+    delete normalizedPatch.thirdPartyProfiles;
+    delete normalizedPatch.subscriptions;
+    delete normalizedPatch.subscriptionsOrphaned;
+    delete normalizedPatch.subscriptionsCacheHub;
     delete normalizedPatch.customModelPricing;
     if (patch.clients !== undefined) normalizedPatch.clients = clientsCsvForSetting(patch.clients, '');
     if (patch.hubUrl !== undefined) normalizedPatch.hubUrl = normalizeHubUrl(patch.hubUrl);
@@ -4299,6 +4837,8 @@ app.whenReady().then(() => {
     if (patch.volcengineRegion !== undefined) normalizedPatch.volcengineRegion = normalizeVolcengineRegion(patch.volcengineRegion);
     if (patch.qoderCookie !== undefined) normalizedPatch.qoderCookie = normalizeQoderCookie(patch.qoderCookie);
     if (patch.qoderSite !== undefined) normalizedPatch.qoderSite = normalizeQoderSite(patch.qoderSite);
+    if (patch.claudeWebCookie !== undefined) normalizedPatch.claudeWebCookie = normalizeClaudeWebCookie(patch.claudeWebCookie);
+    if (patch.commandcodeCookie !== undefined) normalizedPatch.commandcodeCookie = normalizeCommandcodeCookie(patch.commandcodeCookie);
     if (patch.kimiApiKey !== undefined) normalizedPatch.kimiApiKey = normalizeKimiApiKey(patch.kimiApiKey);
     if (patch.kimiWebAccessToken !== undefined) normalizedPatch.kimiWebAccessToken = normalizeKimiWebAccessToken(patch.kimiWebAccessToken);
     if (patch.ollamaCookie !== undefined) normalizedPatch.ollamaCookie = normalizeOllamaCookie(patch.ollamaCookie);
@@ -4330,6 +4870,7 @@ app.whenReady().then(() => {
       discordRpcEnabled: patch.discordRpcEnabled ?? settings.discordRpcEnabled ?? false,
       limitsEnabled: parseBoolean(patch.limitsEnabled ?? settings.limitsEnabled, true),
       limitProviders: patch.limitProviders !== undefined ? parseLimitProviders(patch.limitProviders).join(',') : settings.limitProviders,
+      limitsRefreshMode: normalizeLimitsRefreshMode(patch.limitsRefreshMode ?? settings.limitsRefreshMode),
       limitProviderOrder: patch.limitProviderOrder !== undefined ? migrateLimitProviderOrder(patch.limitProviderOrder) : settings.limitProviderOrder,
       clientDisplayOrder: patch.clientDisplayOrder !== undefined ? migrateClientDisplayOrder(patch.clientDisplayOrder) : (settings.clientDisplayOrder || ''),
       hiddenClients: patch.hiddenClients !== undefined ? normalizeHiddenClients(patch.hiddenClients, KNOWN_CLIENT_LIST) : normalizeHiddenClients(settings.hiddenClients, KNOWN_CLIENT_LIST),
@@ -4355,6 +4896,9 @@ app.whenReady().then(() => {
       hiddenServiceProviders: patch.hiddenServiceProviders !== undefined ? String(patch.hiddenServiceProviders || '') : (settings.hiddenServiceProviders || ''),
       serviceStatusRefreshMs: normalizeServiceStatusRefreshMs(patch.serviceStatusRefreshMs ?? settings.serviceStatusRefreshMs),
       limitsRefreshMs: normalizeLimitsRefreshMs(patch.limitsRefreshMs ?? settings.limitsRefreshMs),
+      claudePrepaidBalanceEnabled: parseBoolean(patch.claudePrepaidBalanceEnabled ?? settings.claudePrepaidBalanceEnabled, true),
+      opencodeAmbientEnabled: parseBoolean(patch.opencodeAmbientEnabled ?? settings.opencodeAmbientEnabled, true),
+      opencodeLocalLimitsEnabled: parseBoolean(patch.opencodeLocalLimitsEnabled ?? settings.opencodeLocalLimitsEnabled, false),
       showLimitSource: parseBoolean(patch.showLimitSource ?? settings.showLimitSource, false),
       maskLimitAccountEmails: parseBoolean(patch.maskLimitAccountEmails ?? settings.maskLimitAccountEmails, false),
       showLimitUsed: parseBoolean(patch.showLimitUsed ?? settings.showLimitUsed, false),
@@ -4436,6 +4980,9 @@ app.whenReady().then(() => {
       rebuildDashboardWindow();
     } else {
       applyNativeMaterial();
+    }
+    if (settings.language !== previousRuntimeSettings.language || settings.currency !== previousRuntimeSettings.currency) {
+      scheduleMacWidgetSnapshot(latestStats);
     }
     const runtimeChange = classifySettingsChange(previousRuntimeSettings, settings);
     if (runtimeChange.modeStructural) {
@@ -4862,10 +5409,48 @@ app.whenReady().then(() => {
       return { ok: false, error: err.message };
     }
   });
+  ipcMain.handle('claude:saveCookie', async (_event, raw) => {
+    const requestRevision = ++claudeWebCookieMutationRevision;
+    let cookie;
+    try {
+      cookie = normalizeClaudeWebCookie(raw);
+    } catch (error) {
+      return { ok: false, status: 'invalid', errorCode: error?.code || 'INVALID_CLAUDE_WEB_SESSION_KEY' };
+    }
+    if (!cookie) return { ok: false, status: 'notConfigured', errorCode: 'INVALID_CLAUDE_WEB_SESSION_KEY' };
+    try {
+      let cookieToPersist = cookie;
+      const provider = await fetchClaudeLimits({ claudeWebCookie: cookie }, {
+        claudeWebFetch: electronClaudeWebFetch,
+        providerRuntimeState: new Map(),
+        onClaudeWebCookieRenewed: ({ cookie: renewedCookie }) => { cookieToPersist = renewedCookie; }
+      });
+      if (provider?.status !== 'ok') return { ok: false, status: provider?.status || 'error' };
+      if (claudeWebCookieMutationRevision !== requestRevision) return { ok: false, status: 'superseded', superseded: true };
+      settings.claudeWebCookie = cookieToPersist;
+      saveSettings({ throwOnError: true });
+      void queueLimitInvalidation({ provider: 'claude' }, 'login', { clear: true });
+      return { ok: true, status: 'ok' };
+    } catch (error) {
+      return { ok: false, status: error?.status || 'error', errorCode: error?.code || '' };
+    }
+  });
+  ipcMain.handle('commandcode:saveCookie', async (_event, raw) => {
+    const cookie = normalizeCommandcodeCookie(raw);
+    if (!cookie) return { ok: false, status: 'notConfigured' };
+    settings.commandcodeCookie = cookie;
+    try {
+      saveSettings({ throwOnError: true });
+    } catch (error) {
+      return { ok: false, error: error?.message || 'Could not persist Command Code cookie' };
+    }
+    void queueLimitInvalidation({ provider: 'commandcode' }, 'credential-save', { clear: true });
+    return { ok: true };
+  });
   ipcMain.handle('ollama:validateCookie', async (_event, raw) => {
     const cookie = normalizeOllamaCookie(raw);
     if (!cookie) return { ok: false, status: 'notConfigured' };
-    const provider = await fetchOllamaLimits({ ollamaCookie: cookie }, { bypassValidationCache: true });
+    const provider = await fetchOllamaLimits({ ollamaCookie: cookie }, electronProviderDeps({ bypassValidationCache: true }));
     rememberOllamaValidation(cookie, provider);
     return { ok: provider.status === 'ok', status: provider.status };
   });
@@ -4885,8 +5470,8 @@ app.whenReady().then(() => {
     }
     try {
       const [go, zen] = await Promise.all([
-        opencodeWeb.fetchGoWeb(cookie, {}),
-        opencodeWeb.fetchZen(cookie, {})
+        opencodeWeb.fetchGoWeb(cookie, electronProviderDeps()),
+        opencodeWeb.fetchZen(cookie, electronProviderDeps())
       ]);
       if (opencodeWeb.summarizeLink(go, zen).expired) {
         return { ok: false, error: 'OpenCode rejected the cookie (it may be expired)' };
@@ -4956,14 +5541,18 @@ app.whenReady().then(() => {
       return opencodeStatusCache.value;
     }
     const profiles = settings.opencodeProfiles || {};
+    const ambientKey = opencodeGoApi.readGoApiKey(process.env);
+    const ambient = opencodeAmbientKeyActive(profiles) && settings.opencodeAmbientEnabled !== false
+      ? await probeOpenCodeApiKey(ambientKey)
+      : null;
     const entries = Object.entries(profiles).filter(([, p]) => p.cookie && p.enabled);
 
     // Query all profiles in parallel
     const results = await Promise.all(
       entries.map(async ([name, profile]) => {
         const [go, zen] = await Promise.all([
-          opencodeWeb.fetchGoWeb(profile.cookie, {}),
-          opencodeWeb.fetchZen(profile.cookie, {})
+          opencodeWeb.fetchGoWeb(profile.cookie, electronProviderDeps()),
+          opencodeWeb.fetchZen(profile.cookie, electronProviderDeps())
         ]);
         return [name, { ...opencodeWeb.summarizeLink(go, zen), balanceUsd: zen.balanceUsd }];
       })
@@ -4977,8 +5566,8 @@ app.whenReady().then(() => {
     const envCookie = process.env.TOKEN_MONITOR_OPENCODE_COOKIE || '';
     if (envCookie && !entries.some(([, p]) => p.cookie === envCookie)) {
       const [go, zen] = await Promise.all([
-        opencodeWeb.fetchGoWeb(envCookie, {}),
-        opencodeWeb.fetchZen(envCookie, {})
+        opencodeWeb.fetchGoWeb(envCookie, electronProviderDeps()),
+        opencodeWeb.fetchZen(envCookie, electronProviderDeps())
       ]);
       let envKey = 'env';
       for (let i = 1; Object.prototype.hasOwnProperty.call(profiles, envKey); i += 1) {
@@ -4986,7 +5575,11 @@ app.whenReady().then(() => {
       }
       result[envKey] = { ...opencodeWeb.summarizeLink(go, zen), balanceUsd: zen.balanceUsd, env: true };
     }
-    const value = { profiles: result, linked: Object.values(result).some(s => s.linked) };
+    const value = {
+      profiles: result,
+      ambient: ambient ? { ...ambient, ambient: true } : null,
+      linked: Object.values(result).some(s => s.linked) || ambient?.status === 'ok'
+    };
     opencodeStatusCache = { value, at: now };
     return value;
   });
@@ -5005,8 +5598,8 @@ app.whenReady().then(() => {
     if (!cookie || !name) return { ok: false, error: 'Empty name or cookie' };
     try {
       const [go, zen] = await Promise.all([
-        opencodeWeb.fetchGoWeb(cookie, {}),
-        opencodeWeb.fetchZen(cookie, {})
+        opencodeWeb.fetchGoWeb(cookie, electronProviderDeps()),
+        opencodeWeb.fetchZen(cookie, electronProviderDeps())
       ]);
       if (opencodeWeb.summarizeLink(go, zen).expired) {
         return { ok: false, error: 'OpenCode rejected the cookie (it may be expired)' };
@@ -5063,6 +5656,19 @@ app.whenReady().then(() => {
     void queueLimitInvalidation({ provider: 'opencode', accountName: newName }, 'profile-rename');
     return { ok: true };
   });
+  ipcMain.handle('opencode:setAmbientEnabled', async (_event, enabled) => {
+    const wasActive = opencodeAmbientKeyActive(settings?.opencodeProfiles || {});
+    settings.opencodeAmbientEnabled = enabled !== false;
+    try {
+      saveSettings({ throwOnError: true });
+    } catch (error) {
+      return { ok: false, error: error?.message || 'Could not persist the OpenCode detection setting' };
+    }
+    opencodeStatusCache = { value: null, at: 0 };
+    refreshOpencodeAmbientOwnership(wasActive);
+    void queueLimitInvalidation({ provider: 'opencode' }, 'ambient-toggle', { clear: true });
+    return { ok: true };
+  });
   ipcMain.handle('opencode:setProfileEnabled', async (_event, name, enabled) => {
     const profiles = settings.opencodeProfiles || {};
     if (!profiles[name]) return { ok: false, error: 'Profile not found' };
@@ -5092,10 +5698,10 @@ app.whenReady().then(() => {
     if (!name) return { ok: false, errorCode: 'invalidName' };
     if (!apiKey) return { ok: false, errorCode: 'missingApiKey' };
     try {
-      const provider = await openrouterLimits.fetchOpenRouterAccount(name, apiKey, {
+      const provider = await openrouterLimits.fetchOpenRouterAccount(name, apiKey, electronProviderDeps({
         env: process.env,
         signal: AbortSignal.timeout(15_000)
-      });
+      }));
       if (provider?.status !== 'ok') {
         return { ok: false, error: provider?.status === 'unauthorized' ? 'OpenRouter rejected the API key' : 'Could not validate the OpenRouter API key' };
       }
@@ -5164,6 +5770,90 @@ app.whenReady().then(() => {
       clear: !enabled,
       refresh: Boolean(enabled)
     });
+    return { ok: true };
+  });
+  ipcMain.handle('thirdparty:getProfiles', async () => ({
+    profiles: redactThirdPartyProfilesForRenderer(settings.thirdPartyProfiles || {}),
+    hasEnvVar: thirdPartyLimits.configuredAccounts({}, { env: process.env }).length > 0
+  }));
+  ipcMain.handle('thirdparty:saveProfile', async (_event, rawProfile = {}) => {
+    const name = thirdPartyLimits.thirdPartyProfileName(rawProfile.name);
+    const adapter = thirdPartyLimits.normalizeAdapterId(rawProfile.adapter);
+    const customAdapter = adapter === thirdPartyLimits.CUSTOM_BALANCE_ADAPTER;
+    const baseUrl = thirdPartyLimits.normalizeThirdPartyBaseUrl(rawProfile.baseUrl, {
+      stripTerminalV1: !customAdapter
+    });
+    if (!name) return { ok: false, errorCode: 'invalidName' };
+    if (!adapter) return { ok: false, errorCode: 'invalidAdapter' };
+    if (!baseUrl) return { ok: false, errorCode: 'invalidBaseUrl' };
+    if (adapter === thirdPartyLimits.NEWAPI_ACCOUNT_ADAPTER && !thirdPartyLimits.newapiAccessToken({}, rawProfile.accessToken)) {
+      return { ok: false, errorCode: 'missingAccessToken' };
+    }
+    if ([thirdPartyLimits.NEWAPI_TOKEN_ADAPTER, thirdPartyLimits.CUSTOM_BALANCE_ADAPTER].includes(adapter)
+      && !thirdPartyLimits.newapiApiKey({}, rawProfile.apiKey)) {
+      return { ok: false, errorCode: 'missingApiKey' };
+    }
+    const profile = thirdPartyLimits.normalizeThirdPartyProfile({ ...rawProfile, adapter, baseUrl, enabled: true });
+    if (!profile) return { ok: false, errorCode: 'invalidCredential' };
+    try {
+      const provider = await thirdPartyLimits.fetchThirdPartyAccount({ name, ...profile }, electronProviderDeps({
+        env: process.env,
+        signal: AbortSignal.timeout(15_000)
+      }));
+      if (provider?.status !== 'ok') return { ok: false, errorCode: provider?.status === 'unauthorized' ? 'invalidCredential' : 'unavailable' };
+      settings.thirdPartyProfiles = { ...(settings.thirdPartyProfiles || {}), [name]: profile };
+      saveSettings({ throwOnError: true });
+      void queueLimitInvalidation({ provider: 'thirdparty', accountName: name }, 'profile-save');
+      return { ok: true };
+    } catch (_) {
+      return { ok: false, errorCode: 'unavailable' };
+    }
+  });
+  ipcMain.handle('thirdparty:deleteProfile', async (_event, rawName) => {
+    const name = String(rawName || '').trim();
+    const profiles = { ...(settings.thirdPartyProfiles || {}) };
+    if (!profiles[name]) return { ok: false, error: 'Profile not found' };
+    delete profiles[name];
+    settings.thirdPartyProfiles = profiles;
+    try {
+      saveSettings({ throwOnError: true });
+    } catch (error) {
+      return { ok: false, error: error?.message || 'Could not persist third-party profile deletion' };
+    }
+    void queueLimitInvalidation({ provider: 'thirdparty', accountName: name }, 'profile-delete', { clear: true, refresh: false });
+    return { ok: true };
+  });
+  ipcMain.handle('thirdparty:renameProfile', async (_event, rawOldName, rawNewName) => {
+    const oldName = String(rawOldName || '').trim();
+    const newName = thirdPartyLimits.thirdPartyProfileName(rawNewName);
+    const profiles = { ...(settings.thirdPartyProfiles || {}) };
+    if (!newName || oldName === newName) return { ok: false, errorCode: 'invalidName' };
+    if (!profiles[oldName]) return { ok: false, error: 'Profile not found' };
+    if (profiles[newName]) return { ok: false, error: 'Profile name already exists' };
+    profiles[newName] = profiles[oldName];
+    delete profiles[oldName];
+    settings.thirdPartyProfiles = profiles;
+    try {
+      saveSettings({ throwOnError: true });
+    } catch (error) {
+      return { ok: false, error: error?.message || 'Could not persist third-party profile rename' };
+    }
+    void queueLimitInvalidation({ provider: 'thirdparty', accountName: oldName }, 'profile-rename', { clear: true, refresh: false });
+    void queueLimitInvalidation({ provider: 'thirdparty', accountName: newName }, 'profile-rename');
+    return { ok: true };
+  });
+  ipcMain.handle('thirdparty:setProfileEnabled', async (_event, rawName, enabled) => {
+    const name = String(rawName || '').trim();
+    const profiles = { ...(settings.thirdPartyProfiles || {}) };
+    if (!profiles[name]) return { ok: false, error: 'Profile not found' };
+    profiles[name] = { ...profiles[name], enabled: Boolean(enabled) };
+    settings.thirdPartyProfiles = profiles;
+    try {
+      saveSettings({ throwOnError: true });
+    } catch (error) {
+      return { ok: false, error: error?.message || 'Could not persist third-party profile state' };
+    }
+    void queueLimitInvalidation({ provider: 'thirdparty', accountName: name }, 'profile-state', { clear: !enabled, refresh: Boolean(enabled) });
     return { ok: true };
   });
   ipcMain.handle('codex:accounts', () => codexAccountsForRenderer());
