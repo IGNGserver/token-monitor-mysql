@@ -1097,6 +1097,37 @@ span.settings-note.settings-item-desc {
   gap: 6px;
 }
 .managed-account-list:empty { display: none; }
+.subscription-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.subscription-form-grid label {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 10px;
+}
+.subscription-form-grid label > input,
+.subscription-form-grid label > select {
+  min-width: 0;
+}
+.subscription-form-full { grid-column: 1 / -1; }
+.subscription-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+.subscription-row .managed-account-main {
+  min-width: 0;
+}
+.subscription-row .managed-account-email {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.subscription-row .managed-account-info {
+  max-width: 180px;
+}
 .codex-workspace-selection {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;

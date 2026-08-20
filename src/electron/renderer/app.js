@@ -2,6 +2,7 @@
 
 const clientLabels = { claude: 'Claude Code', codex: 'Codex', hermes: 'Hermes', gemini: 'Gemini', cursor: 'Cursor', opencode: 'OpenCode', openclaw: 'OpenClaw', antigravity: 'Antigravity', cline: 'Cline', kimi: 'Kimi', qwen: 'Qwen', grok: 'Grok Build', copilot: 'GitHub Copilot', pi: 'Pi', zed: 'Zed', kilocode: 'Kilo Code', commandcode: 'Command Code', micode: 'MiMo Code', zcode: 'ZCode', kiro: 'Kiro', codebuddy: 'CodeBuddy', workbuddy: 'WorkBuddy', proma: 'Proma', 'claude-desktop': 'Claude Desktop' };
 const { clientColors, fallbackModelColors, modelVendorFor, modelColor } = window.TokenMonitorUsageCharts;
+const subscriptionDisplayApi = window.TokenMonitorSubscriptionDisplay;
 const motionPreferenceApi = window.TokenMonitorMotionPreference;
 const windowsGlassApi = window.TokenMonitorWindowsGlass;
 const macosGlassApi = window.TokenMonitorMacosGlass;
@@ -373,6 +374,7 @@ Object.assign(els, {
   syncSettingsSummary: document.getElementById('syncSettingsSummary'),
   toolsSettingsSummary: document.getElementById('toolsSettingsSummary'),
   accountsSettingsSummary: document.getElementById('accountsSettingsSummary'),
+  subscriptionsSettingsSummary: document.getElementById('subscriptionsSettingsSummary'),
   limitsSettingsSummary: document.getElementById('limitsSettingsSummary'),
   generalSettingsSummary: document.getElementById('generalSettingsSummary'),
   mainSettingsSummary: document.getElementById('mainSettingsSummary'),
@@ -556,6 +558,7 @@ function setupSettingsSections() {
       const mutate = () => setSettingsSectionExpanded(section, expanding);
       if (shouldAnchorSettingsScroll(section, expanding)) anchorSettingsScroll(toggle, mutate);
       else { cancelSettingsScrollAnchor(); mutate(); }
+      if (expanding && section === 'thirdparty') renderThirdPartyProfiles();
     });
     setSettingsSectionExpanded(section, state.settingsSections[section]);
   }
@@ -610,6 +613,7 @@ function settingsSectionSummary(section) {
       total: 14
     });
   }
+  if (section === 'subscriptions') return subscriptionsSettingsSummary();
   if (section === 'limits') {
     return t('settings.summary.limits', {
       enabled: enabledLimitProviderSet().size,
@@ -2294,6 +2298,215 @@ function formatMoney(value, currency) {
   if (!Number.isFinite(number)) return '';
   const symbol = CURRENCY_SYMBOLS[String(currency || '').toUpperCase()] || '$';
   return `${symbol}${number.toFixed(2)}`;
+}
+
+function subscriptionRecords() {
+  if (!subscriptionDisplayApi?.normalizeSubscriptions) return [];
+  return subscriptionDisplayApi.normalizeSubscriptions(state.settings?.subscriptions || [], {
+    currencyApi
+  });
+}
+
+function subscriptionToday() {
+  if (subscriptionDisplayApi?.todayString) return subscriptionDisplayApi.todayString();
+  const now = new Date();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${now.getFullYear()}-${month}-${day}`;
+}
+
+function subscriptionProviderLabel(provider) {
+  const id = String(provider || '').trim().toLowerCase();
+  return clientLabels[id] || id.replace(/[-_]+/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function subscriptionAmountText(record) {
+  const code = currencyApi.normalizeCurrency(record?.currency);
+  const amount = subscriptionDisplayApi.amountUnits(record);
+  const symbol = currencyApi.CURRENCY_RATES?.[code]?.symbol || `${code} `;
+  return `${symbol}${amount.toFixed(2)} ${code}`;
+}
+
+function subscriptionMonthlyText(record) {
+  const monthlyUsd = subscriptionDisplayApi.monthlyAmountUsd(record, currencyApi, subscriptionToday());
+  if (!Number.isFinite(monthlyUsd)) return '';
+  return t('settings.subscriptions.monthlyEquivalent', { amount: formatCost(monthlyUsd) });
+}
+
+function subscriptionsSettingsSummary() {
+  const records = subscriptionRecords();
+  if (records.length === 0) return t('settings.subscriptions.statusNotSet');
+  const monthlyUsd = subscriptionDisplayApi.monthlyTotalUsd(records, currencyApi, subscriptionToday());
+  return t('settings.subscriptions.summary', {
+    count: records.length,
+    monthly: formatCost(monthlyUsd)
+  });
+}
+
+function renderSubscriptions() {
+  const list = document.getElementById('subscriptionList');
+  if (!list || !subscriptionDisplayApi) return;
+  const records = subscriptionRecords();
+  list.replaceChildren();
+  if (records.length === 0) {
+    const empty = document.createElement('p');
+    empty.className = 'settings-note';
+    empty.textContent = t('settings.subscriptions.empty');
+    list.append(empty);
+    renderSettingsSummaries();
+    return;
+  }
+
+  for (const record of records) {
+    const row = document.createElement('div');
+    row.className = 'managed-account-row subscription-row';
+
+    const main = document.createElement('div');
+    main.className = 'managed-account-main';
+    const name = document.createElement('div');
+    name.className = 'managed-account-email';
+    name.textContent = subscriptionProviderLabel(record.provider);
+    main.append(name);
+
+    const info = document.createElement('span');
+    info.className = 'managed-account-info';
+    const intervalKey = record.interval === 'year'
+      ? 'settings.subscriptions.yearly'
+      : 'settings.subscriptions.monthly';
+    const details = [
+      subscriptionAmountText(record),
+      t(intervalKey),
+      subscriptionMonthlyText(record)
+    ];
+    const renewal = subscriptionDisplayApi.nextRenewalDate(record, subscriptionToday());
+    if (renewal) details.push(t('settings.subscriptions.renewal', { date: renewal }));
+    info.textContent = details.filter(Boolean).join(' · ');
+    info.title = info.textContent;
+
+    const right = document.createElement('span');
+    right.className = 'managed-account-right';
+    right.append(info);
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'managed-account-remove';
+    remove.textContent = '✕';
+    remove.title = t('settings.subscriptions.delete');
+    let confirming = false;
+    remove.addEventListener('click', async () => {
+      if (!confirming) {
+        confirming = true;
+        remove.classList.add('confirming');
+        remove.textContent = '✓';
+        remove.title = t('settings.subscriptions.deleteConfirm', {
+          provider: subscriptionProviderLabel(record.provider)
+        });
+        return;
+      }
+      remove.disabled = true;
+      try {
+        await persistSubscriptionRecords(records.filter((entry) => entry.id !== record.id));
+      } catch (error) {
+        const errorEl = document.getElementById('subscriptionErrorMessage');
+        if (errorEl) {
+          errorEl.textContent = t('settings.subscriptions.saveFailed', { message: error.message });
+          errorEl.classList.remove('hidden');
+        }
+        remove.disabled = false;
+      }
+    });
+    right.append(remove);
+    row.append(main, right);
+    list.append(row);
+  }
+  renderSettingsSummaries();
+}
+
+async function persistSubscriptionRecords(records) {
+  if (typeof window.tokenMonitor.saveSubscriptions !== 'function') {
+    throw new Error('Subscription storage is unavailable.');
+  }
+  const result = await window.tokenMonitor.saveSubscriptions(records, {
+    updatedAt: state.settings?.subscriptionsUpdatedAt || ''
+  });
+  if (!result || typeof result !== 'object') throw new Error('Subscription storage returned no settings.');
+  state.settings = result;
+  applyEffectiveCurrencyRates();
+  renderSubscriptions();
+  renderSettingsSummaries();
+  return result;
+}
+
+function syncSubscriptionForm() {
+  const currencyInput = document.getElementById('subscriptionCurrencyInput');
+  const intervalInput = document.getElementById('subscriptionIntervalInput');
+  const startDateInput = document.getElementById('subscriptionStartDateInput');
+  if (currencyInput) {
+    const code = currencyApi.normalizeCurrency(state.settings?.currency || 'USD');
+    currencyInput.value = code;
+  }
+  if (intervalInput && !['month', 'year'].includes(intervalInput.value)) intervalInput.value = 'month';
+  if (startDateInput && !startDateInput.value) startDateInput.value = subscriptionToday();
+}
+
+function setupSubscriptionsUI() {
+  const saveButton = document.getElementById('subscriptionSaveButton');
+  if (!saveButton) return;
+  const providerInput = document.getElementById('subscriptionProviderInput');
+  const amountInput = document.getElementById('subscriptionAmountInput');
+  const currencyInput = document.getElementById('subscriptionCurrencyInput');
+  const intervalInput = document.getElementById('subscriptionIntervalInput');
+  const startDateInput = document.getElementById('subscriptionStartDateInput');
+  const errorEl = document.getElementById('subscriptionErrorMessage');
+
+  saveButton.addEventListener('click', async () => {
+    errorEl?.classList.add('hidden');
+    const provider = String(providerInput?.value || '').trim();
+    const amount = Number(amountInput?.value);
+    const currency = currencyApi.normalizeCurrency(currencyInput?.value || currentCurrency());
+    const interval = intervalInput?.value === 'year' ? 'year' : 'month';
+    const startDate = String(startDateInput?.value || '').trim();
+    if (!provider) {
+      if (errorEl) { errorEl.textContent = t('settings.subscriptions.invalidProvider'); errorEl.classList.remove('hidden'); }
+      return;
+    }
+    if (!Number.isFinite(amount) || amount <= 0 || Math.round(amount * 100) <= 0) {
+      if (errorEl) { errorEl.textContent = t('settings.subscriptions.invalidAmount'); errorEl.classList.remove('hidden'); }
+      return;
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate)) {
+      if (errorEl) { errorEl.textContent = t('settings.subscriptions.invalidStartDate'); errorEl.classList.remove('hidden'); }
+      return;
+    }
+    const record = subscriptionDisplayApi.normalizeSubscription({
+      provider,
+      amountMinor: Math.round(amount * 100),
+      currency,
+      interval,
+      intervalCount: 1,
+      startDate,
+      autoRenew: true
+    }, { currencyApi });
+    if (!record) {
+      if (errorEl) { errorEl.textContent = t('settings.subscriptions.invalidStartDate'); errorEl.classList.remove('hidden'); }
+      return;
+    }
+    saveButton.disabled = true;
+    try {
+      await persistSubscriptionRecords([...subscriptionRecords(), record]);
+      if (providerInput) providerInput.value = '';
+      if (amountInput) amountInput.value = '';
+      if (errorEl) errorEl.classList.add('hidden');
+    } catch (error) {
+      if (errorEl) {
+        errorEl.textContent = t('settings.subscriptions.saveFailed', { message: error.message });
+        errorEl.classList.remove('hidden');
+      }
+    } finally {
+      saveButton.disabled = false;
+    }
+  });
+  syncSubscriptionForm();
+  renderSubscriptions();
 }
 
 function optionalFiniteNumber(value) {
@@ -6306,6 +6519,8 @@ function syncSettingsForm() {
   renderExternalProviderStatus('ollama');
   renderExternalProviderStatus('claude');
   renderExternalProviderStatus('commandcode');
+  syncSubscriptionForm();
+  renderSubscriptions();
   renderThirdPartyProfiles();
   renderMimoStatus();
   renderCopilotStatus();
@@ -11741,14 +11956,6 @@ function setupCursorAccountUI() {
   setupSimpleExternal('claude', window.tokenMonitor.claude, claudePlatformUrl(), 'claudeWebCookieInput', 'claudeWebCookieSubmit');
   setupSimpleExternal('commandcode', window.tokenMonitor.commandcode, commandcodePlatformUrl(), 'commandcodeCookieInput', 'commandcodeCookieSubmit');
 
-  const thirdpartyToggle = document.getElementById('thirdpartySettingsToggle');
-  thirdpartyToggle?.addEventListener('click', () => {
-    const details = document.getElementById('thirdpartySettingsDetails');
-    const open = details?.classList.contains('hidden');
-    setSettingsSectionExpanded('thirdparty', open);
-    details?.classList.toggle('hidden', !open);
-    if (open) renderThirdPartyProfiles();
-  });
   document.getElementById('thirdpartyModeInput')?.addEventListener('change', () => {
     const token = document.getElementById('thirdpartyModeInput').value === 'token';
     document.getElementById('thirdpartyAccessTokenInput')?.classList.toggle('hidden', token);
@@ -11823,4 +12030,5 @@ setupSettingsSections();
 setupCursorAccountUI();
 setupCustomPricingUI();
 setupCustomRangeUI();
+setupSubscriptionsUI();
 init();

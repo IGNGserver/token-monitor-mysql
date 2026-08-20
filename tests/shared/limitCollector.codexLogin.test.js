@@ -312,6 +312,42 @@ test('runCodexLogin tries the next Windows command after cmd reports it missing'
   assert.equal(result.outcome, 'success');
 });
 
+test('runCodexLogin retries Windows socket permission failures with device auth', async () => {
+  const firstChild = fakeChild();
+  const secondChild = fakeChild();
+  const spawnCalls = [];
+  const promise = runCodexLogin(
+    { homePath: 'C:/managed/device-auth-home' },
+    {
+      ...noopTimers,
+      platform: 'win32',
+      codexCommand: 'codex.cmd',
+      env: {},
+      spawn: (command, args) => {
+        spawnCalls.push({ command, args });
+        return spawnCalls.length === 1 ? firstChild : secondChild;
+      }
+    }
+  );
+
+  firstChild.stderr.emit('data', 'Error logging in: access denied while opening a callback socket (os error 10013)\n');
+  firstChild.emit('close', 1);
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(spawnCalls.length, 2);
+  assert.equal(spawnCalls[0].command, 'cmd.exe');
+  assert.match(spawnCalls[0].args.at(-1), /codex\.cmd login$/);
+  assert.equal(spawnCalls[1].command, 'cmd.exe');
+  assert.match(spawnCalls[1].args.at(-1), /codex\.cmd login --device-auth$/);
+
+  secondChild.stdout.emit('data', 'Visit https://auth.openai.com/device\n');
+  secondChild.emit('close', 0);
+  const result = await promise;
+
+  assert.equal(result.outcome, 'success');
+  assert.match(result.output, /auth\.openai\.com\/device/);
+});
+
 test('runCodexLogin does not retry a normal login failure', async () => {
   const legacyCodex = '/Applications/Codex.app/Contents/Resources/codex';
   const chatgptCodex = '/Applications/ChatGPT.app/Contents/Resources/codex';

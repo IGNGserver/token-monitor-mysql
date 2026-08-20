@@ -1030,7 +1030,36 @@
           <div id="subscriptionsSettingsDetails" class="settings-section-details hidden">
             <p class="settings-note" data-i18n="settings.subscriptions.note">Record what you pay for each AI account.</p>
             <div id="subscriptionList" class="managed-account-list"></div>
-            <div class="settings-row"><input id="subscriptionProviderInput" type="text" placeholder="Provider" /><input id="subscriptionAmountInput" type="number" min="0" step="0.01" placeholder="Amount" /></div>
+            <div class="subscription-form-grid">
+              <label>
+                <span data-i18n="settings.subscriptions.provider">Provider</span>
+                <input id="subscriptionProviderInput" type="text" data-i18n-placeholder="settings.subscriptions.providerPlaceholder" placeholder="Claude, Cursor..." />
+              </label>
+              <label>
+                <span data-i18n="settings.subscriptions.amount">Amount</span>
+                <input id="subscriptionAmountInput" type="number" min="0" step="0.01" inputmode="decimal" data-i18n-placeholder="settings.subscriptions.amountPlaceholder" placeholder="20.00" />
+              </label>
+              <label>
+                <span data-i18n="settings.subscriptions.currency">Currency</span>
+                <select id="subscriptionCurrencyInput">
+                  <option value="USD" data-i18n="settings.currency.usd">USD - US Dollar</option>
+                  <option value="TWD" data-i18n="settings.currency.twd">TWD - New Taiwan Dollar</option>
+                  <option value="HKD" data-i18n="settings.currency.hkd">HKD - Hong Kong Dollar</option>
+                  <option value="CNY" data-i18n="settings.currency.cny">CNY - Chinese Yuan</option>
+                </select>
+              </label>
+              <label>
+                <span data-i18n="settings.subscriptions.interval">Billing cycle</span>
+                <select id="subscriptionIntervalInput">
+                  <option value="month" data-i18n="settings.subscriptions.monthly">Monthly</option>
+                  <option value="year" data-i18n="settings.subscriptions.yearly">Yearly</option>
+                </select>
+              </label>
+              <label class="subscription-form-full">
+                <span data-i18n="settings.subscriptions.startDate">Start date</span>
+                <input id="subscriptionStartDateInput" type="date" />
+              </label>
+            </div>
             <div class="settings-actions"><button id="subscriptionSaveButton" data-i18n="settings.subscriptions.save">Save subscription</button></div>
             <div id="subscriptionErrorMessage" class="settings-note error hidden"></div>
           </div>
@@ -1238,6 +1267,7 @@
     <script src="../macosGlassMode.js"></script>
     <script src="macosGlass.js"></script>
     <script src="glassRendering.js"></script>
+    <script src="../../shared/subscriptionDisplay.js"></script>
     <script src="trayComposer.js"></script>
     <script src="app.js"></script>
   </body>

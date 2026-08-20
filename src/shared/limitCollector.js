@@ -2399,8 +2399,9 @@ function quoteWindowsCmdArg(value) {
   return `"${text.replace(/"/g, '\\"')}"`;
 }
 
-function codexLoginSpawnSpec(command, platform = process.platform) {
+function codexLoginSpawnSpec(command, platform = process.platform, options = {}) {
   const args = ['login'];
+  if (options.deviceAuth === true) args.push('--device-auth');
   if (platform !== 'win32' || !/\.(cmd|bat)$/i.test(command)) {
     return { command, args };
   }
@@ -2460,7 +2461,7 @@ function runCodexLoginWithCommand(command, options = {}, deps = {}) {
   const onOutput = typeof options.onOutput === 'function' ? options.onOutput : () => {};
   const timeoutMs = Number(options.timeoutMs || deps.codexLoginTimeoutMs || 180000);
   if (signal?.aborted) return Promise.resolve({ outcome: 'cancelled', exitCode: null, output: '' });
-  const spec = codexLoginSpawnSpec(command, platform);
+  const spec = codexLoginSpawnSpec(command, platform, options);
   let child;
   try {
     child = spawnFn(spec.command, spec.args, {
@@ -2525,6 +2526,16 @@ function shouldTryNextCodexLoginCommand(result) {
   );
 }
 
+function shouldRetryCodexLoginWithDeviceAuth(result, platform = process.platform) {
+  if (platform !== 'win32' || result?.outcome !== 'failed') return false;
+  const output = String(result.output || '').toLowerCase();
+  if (output.includes('os error 10013') || output.includes('wsaeacces')) return true;
+  return (
+    /(socket|localhost|127\.0\.0\.1|loopback)/.test(output) &&
+    /(access|permission|eacces|denied)/.test(output)
+  );
+}
+
 function codexLoginAttemptsOutput(attempts) {
   if (attempts.length <= 1) return attempts[0]?.result.output || '';
   return attempts.map(({ command, result }) => {
@@ -2544,6 +2555,17 @@ async function runCodexLogin(options = {}, deps = {}) {
     if (options.signal?.aborted) return { outcome: 'cancelled', exitCode: null, output: '' };
     const result = await runCodexLoginWithCommand(command, options, { ...deps, env, platform });
     attempts.push({ command, result });
+    if (!options.deviceAuth && shouldRetryCodexLoginWithDeviceAuth(result, platform)) {
+      const deviceResult = await runCodexLoginWithCommand(
+        command,
+        { ...options, deviceAuth: true },
+        { ...deps, env, platform }
+      );
+      attempts.push({ command: `${command} --device-auth`, result: deviceResult });
+      if (!shouldTryNextCodexLoginCommand(deviceResult)) {
+        return { ...deviceResult, output: codexLoginAttemptsOutput(attempts) };
+      }
+    }
     if (!shouldTryNextCodexLoginCommand(result)) return result;
   }
 
