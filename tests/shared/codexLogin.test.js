@@ -52,12 +52,25 @@ test('codexLoginUrlFromOutput stops before terminal control sequences', () => {
 
 test('codexLoginDeviceCodeFromOutput extracts the current device-auth code', () => {
   const output = [
+    'Preparing device code login',
     'To authenticate, visit:',
     'https://auth.openai.com/codex/device',
     'Enter this one-time code:',
-    'AB12-CD34'
+    'AB12-CD345'
   ].join('\n');
 
-  assert.equal(codexLoginDeviceCodeFromOutput(output), 'AB12-CD34');
-  assert.equal(codexLoginDeviceCodeFromOutput(`\x1b[1mEnter this one-time code:\x1b[0m\n\x1b[36mAB12-CD34\x1b[0m`), 'AB12-CD34');
+  assert.equal(codexLoginDeviceCodeFromOutput(output), 'AB12-CD345');
+  assert.equal(codexLoginDeviceCodeFromOutput(`\x1b[1mEnter this one-time code:\x1b[0m\n\x1b[36mAB12-CD345\x1b[0m`), 'AB12-CD345');
+});
+
+test('codexLoginDeviceCodeFromOutput accepts nine-character unhyphenated codes', () => {
+  assert.equal(
+    codexLoginDeviceCodeFromOutput('Enter this one-time code: ABCDE1234'),
+    'ABCDE1234'
+  );
+});
+
+test('codexLoginDeviceCodeFromOutput rejects short fragments and old code shapes', () => {
+  assert.equal(codexLoginDeviceCodeFromOutput('Enter this one-time code: tion'), '');
+  assert.equal(codexLoginDeviceCodeFromOutput('Enter this one-time code: AB12-CD34'), '');
 });

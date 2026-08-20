@@ -35,12 +35,34 @@ function codexLoginUrlFromOutput(output) {
   return '';
 }
 
+const CODEX_DEVICE_CODE_PATTERN = /\b[A-Za-z0-9]{9}\b|\b[A-Za-z0-9]{1,8}-[A-Za-z0-9]{1,8}\b/g;
+
+function findCodexDeviceCode(value) {
+  const candidates = String(value || '').match(CODEX_DEVICE_CODE_PATTERN) || [];
+  for (const candidate of candidates) {
+    if (candidate.replace('-', '').length === 9) return candidate;
+  }
+  return '';
+}
+
 function codexLoginDeviceCodeFromOutput(output) {
   const text = stripAnsi(output).replace(/\r\n?/g, '\n');
-  const match = text.match(
-    /(?:one[- ]time code|verification code|device code)[^\n:]*:?\s*([A-Za-z0-9][A-Za-z0-9-]{3,63})/i
-  );
-  return match?.[1] || '';
+  const labelPattern = /(?:one[- ]time code|verification code|device code)\b/gi;
+  let labelMatch;
+
+  while ((labelMatch = labelPattern.exec(text))) {
+    // The CLI may print the code on the same line or on one of the next few
+    // lines. Keep the search local to the prompt so URLs and other output
+    // cannot be mistaken for a device code.
+    const prompt = text.slice(labelMatch.index + labelMatch[0].length)
+      .split('\n')
+      .slice(0, 4)
+      .join('\n');
+    const code = findCodexDeviceCode(prompt);
+    if (code) return code;
+  }
+
+  return '';
 }
 
 module.exports = {
