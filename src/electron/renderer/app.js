@@ -11173,12 +11173,28 @@ function setupCursorAccountUI() {
           state.codexAccountError = '';
           state.codexLoginStatus = t('settings.codex.loginSuccess');
           renderCodexLoginStatus();
-          state.settings.codexManagedAccounts = await window.tokenMonitor.codex.accounts();
-          await refreshStats({ force: true });
+          // The main process has already committed this account and returns the
+          // renderer-safe record with the login result. Do not wait for a second
+          // account read or for the full usage/limits refresh before completing
+          // the sign-in flow: a slow provider probe must not leave the UI stuck on
+          // “loading account”.
+          if (result.account?.id) {
+            const accounts = Array.isArray(state.settings?.codexManagedAccounts)
+              ? state.settings.codexManagedAccounts
+              : [];
+            state.settings.codexManagedAccounts = [
+              ...accounts.filter((account) => account.id !== result.account.id),
+              result.account
+            ];
+          }
+          renderCodexAccounts();
           state.codexLoginStatus = '';
           state.codexLoginOutput = '';
           state.codexWorkspaceChoices = [];
           state.codexWorkspaceId = '';
+          void refreshStats({ force: true }).catch((error) => {
+            console.log(`[codex] post-login refresh failed: ${error?.message || error}`);
+          });
         }
       } catch (err) {
         if (!isCurrentCodexSignInFlow(flowId)) return;

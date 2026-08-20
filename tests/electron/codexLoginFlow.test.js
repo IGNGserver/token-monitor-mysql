@@ -118,3 +118,21 @@ test('Codex login renderer ignores stale flows and exposes explicit URL actions'
   assert.match(setup, /window\.tokenMonitor\.openExternal\(state\.codexLoginUrl\)/);
   assert.match(setup, /copyToClipboard\(state\.codexLoginUrl, codexCopyUrlButton\)/);
 });
+
+test('Codex login completion does not block on a full stats refresh', () => {
+  const app = read(path.join(rendererDir, 'app.js'));
+  const setup = app.slice(
+    app.indexOf('function setupCursorAccountUI()'),
+    app.indexOf('\nsetupCursorAccountUI();')
+  );
+  const success = setup.slice(
+    setup.indexOf("state.codexLoginStatus = t('settings.codex.loginSuccess');"),
+    setup.indexOf('} catch (err)')
+  );
+
+  assert.match(success, /if \(result\.account\?\.id\)/);
+  assert.match(success, /state\.settings\.codexManagedAccounts = \[/);
+  assert.match(success, /void refreshStats\(\{ force: true \}\)\.catch/);
+  assert.doesNotMatch(success, /await refreshStats\(\{ force: true \}\)/);
+  assert.doesNotMatch(success, /await window\.tokenMonitor\.codex\.accounts\(\)/);
+});
