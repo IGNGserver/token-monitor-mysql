@@ -8,16 +8,16 @@
 
 ## 下载
 
-- **macOS Apple Silicon** — [Token-Monitor-0.45.0-rev.6-arm64.dmg](https://github.com/IGNGserver/token-monitor-suite/releases/download/v0.45.0-rev.6/Token-Monitor-0.45.0-rev.6-arm64.dmg)
-- **macOS Intel** — [Token-Monitor-0.45.0-rev.6-x64.dmg](https://github.com/IGNGserver/token-monitor-suite/releases/download/v0.45.0-rev.6/Token-Monitor-0.45.0-rev.6-x64.dmg)
-- **Windows 安装版** — [Token-Monitor-Setup-0.45.0-rev.6.exe](https://github.com/IGNGserver/token-monitor-suite/releases/download/v0.45.0-rev.6/Token-Monitor-Setup-0.45.0-rev.6.exe)（推荐）
-- **Windows 便携版** — [Token-Monitor-0.45.0-rev.6.exe](https://github.com/IGNGserver/token-monitor-suite/releases/download/v0.45.0-rev.6/Token-Monitor-0.45.0-rev.6.exe)（免安装）
-- **Linux x64** — [Token-Monitor-0.45.0-rev.6.AppImage](https://github.com/IGNGserver/token-monitor-suite/releases/download/v0.45.0-rev.6/Token-Monitor-0.45.0-rev.6.AppImage)
+- **macOS Apple Silicon** — [Token-Monitor-0.45.0-rev.7-arm64.dmg](https://github.com/IGNGserver/token-monitor-suite/releases/download/v0.45.0-rev.7/Token-Monitor-0.45.0-rev.7-arm64.dmg)
+- **macOS Intel** — [Token-Monitor-0.45.0-rev.7-x64.dmg](https://github.com/IGNGserver/token-monitor-suite/releases/download/v0.45.0-rev.7/Token-Monitor-0.45.0-rev.7-x64.dmg)
+- **Windows 安装版** — [Token-Monitor-Setup-0.45.0-rev.7.exe](https://github.com/IGNGserver/token-monitor-suite/releases/download/v0.45.0-rev.7/Token-Monitor-Setup-0.45.0-rev.7.exe)（推荐）
+- **Windows 便携版** — [Token-Monitor-0.45.0-rev.7.exe](https://github.com/IGNGserver/token-monitor-suite/releases/download/v0.45.0-rev.7/Token-Monitor-0.45.0-rev.7.exe)（免安装）
+- **Linux x64** — [Token-Monitor-0.45.0-rev.7.AppImage](https://github.com/IGNGserver/token-monitor-suite/releases/download/v0.45.0-rev.7/Token-Monitor-0.45.0-rev.7.AppImage)
 
 ---
 
 <details>
-<summary><strong>Full Changelog:</strong> <a href="https://github.com/IGNGserver/token-monitor-suite/compare/v0.45.0-rev.5...v0.45.0-rev.6">v0.45.0-rev.5...v0.45.0-rev.6</a></summary>
+<summary><strong>Full Changelog:</strong> <a href="https://github.com/IGNGserver/token-monitor-suite/compare/v0.45.0-rev.6...v0.45.0-rev.7">v0.45.0-rev.6...v0.45.0-rev.7</a></summary>
 
 <!-- github-generated-release-notes -->
 
