@@ -769,6 +769,20 @@ test('DeepSeek main Limits row preserves the intentional month-spend balance met
   assert.match(styles, /\.limit-window-no-reset \.limit-reset\s*\{/);
 });
 
+test('Third-party API limits show the absolute balance without a derived meter', () => {
+  const app = readRendererFile('app.js');
+  const renderProviderWindows = functionBody(app, 'renderProviderWindows', 'renderLimitProviderRow');
+  const quotaWindow = functionBody(app, 'thirdPartyQuotaWindow', 'formatLimitWindowValue');
+
+  assert.match(quotaWindow, /window\?\.metric === 'credits'/);
+  assert.match(renderProviderWindows, /provider\.provider === 'thirdparty'/);
+  assert.match(renderProviderWindows, /const balance = provider\.balance \|\| null;/);
+  assert.match(renderProviderWindows, /const balanceAmount = optionalFiniteNumber\(balance\?\.amount\)/);
+  assert.match(renderProviderWindows, /showMeter: false/);
+  assert.match(renderProviderWindows, /formatMoney\(balanceAmount, currency\)/);
+  assert.match(renderProviderWindows, /limit-window-wide', 'limit-window-no-reset'/);
+});
+
 test('MiMo main Limits row falls back to balance plan fields for Token Plan', () => {
   const app = readRendererFile('app.js');
   const renderProviderWindows = functionBody(app, 'renderProviderWindows', 'renderLimitProviderRow');

@@ -212,6 +212,15 @@ test('each configurable account panel exposes its own auto-detection switch', ()
   assert.match(html, /settings\.accounts\.onlyManualDesc/);
 });
 
+test('account auto-detection switches stay inside collapsible account details', () => {
+  const app = readRendererFile('app.js');
+  const body = functionBody(app, 'renderAccountAutoDetectControls', 'limitProviderEnabled');
+
+  assert.match(body, /const detailsContent = details\.querySelector\(':scope > \.accordion-animation-inner'\) \|\| details;/);
+  assert.match(body, /detailsContent\.prepend\(control\);/);
+  assert.doesNotMatch(body, /details\.prepend\(control\);/);
+});
+
 test('OpenCode multi-account rows separate profile identity from plan label', () => {
   const app = readRendererFile('app.js');
   const titleBody = functionBody(app, 'opencodeAccountTitle', 'renderOpenCodeAccountGroup');

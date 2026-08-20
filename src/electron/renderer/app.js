@@ -2029,6 +2029,7 @@ function renderAccountAutoDetectControls() {
   for (const target of ACCOUNT_AUTO_DETECT_TARGETS) {
     const details = document.getElementById(target.detailsId);
     if (!details) continue;
+    const detailsContent = details.querySelector(':scope > .accordion-animation-inner') || details;
     let control = details.querySelector(`[data-account-auto-detect-provider="${target.provider}"]`);
     if (!control) {
       control = document.createElement('label');
@@ -2047,8 +2048,8 @@ function renderAccountAutoDetectControls() {
       input.type = 'checkbox';
       input.id = `disableAutoDetect-${target.provider}`;
       control.append(text, input);
-      details.prepend(control);
     }
+    if (control.parentElement !== detailsContent) detailsContent.prepend(control);
 
     const input = control.querySelector('input[type="checkbox"]');
     const title = control.querySelector('.settings-item-title');
@@ -2607,6 +2608,13 @@ function openrouterCreditsWindow(provider) {
   // fallback only for those mixed-version payloads.
   return windows.find((window) => window?.metric === 'credits')
     || windows.find((window) => !window?.metric && window?.label === 'Credits')
+    || null;
+}
+
+function thirdPartyQuotaWindow(provider) {
+  const windows = Array.isArray(provider?.windows) ? provider.windows : [];
+  return windows.find((window) => window?.metric === 'credits')
+    || windows.find((window) => !window?.metric && window?.kind === 'billing')
     || null;
 }
 
@@ -3357,11 +3365,36 @@ function renderProviderWindows(provider, color) {
       windows.append(node);
     }
   } else if (provider.provider === 'thirdparty') {
-    const credits = windowsForKind(provider, 'billing');
-    for (const window of credits) {
-      const node = limitWindowNode(window.label || 'Balance', window, color, 0.68);
-      node.classList.add('limit-window-wide');
-      windows.append(node);
+    windows.classList.add('limit-windows-thirdparty');
+    const balance = provider.balance || null;
+    const currency = balance?.currency || 'USD';
+    const quotaWindow = thirdPartyQuotaWindow(provider);
+    const balanceAmount = optionalFiniteNumber(balance?.amount)
+      ?? optionalFiniteNumber(quotaWindow?.remaining);
+    const balanceLabel = quotaWindow?.label || 'Balance';
+    if (balanceAmount !== null) {
+      const balanceNode = limitWindowNode(
+        balanceLabel,
+        { ...(quotaWindow || {}), label: balanceLabel, showMeter: false },
+        color,
+        0.95,
+        `${formatMoney(balanceAmount, currency)} left`
+      );
+      balanceNode.classList.add('limit-window-wide', 'limit-window-no-reset');
+      windows.append(balanceNode);
+    } else if (quotaWindow?.showMeter === false && quotaWindow.detail) {
+      const value = String(quotaWindow.detail).toLowerCase() === 'unlimited'
+        ? 'Unlimited'
+        : quotaWindow.detail;
+      const balanceNode = limitWindowNode(
+        balanceLabel,
+        { ...quotaWindow, label: balanceLabel, showMeter: false },
+        color,
+        0.95,
+        value
+      );
+      balanceNode.classList.add('limit-window-wide', 'limit-window-no-reset');
+      windows.append(balanceNode);
     }
   } else if (provider.provider === 'claude') {
     // Claude usually shows session + one all-models weekly, but can carry a second
