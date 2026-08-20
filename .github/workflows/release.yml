@@ -529,7 +529,7 @@ jobs:
             echo
             echo "---"
             echo
-            echo "## Hub Docker image"
+            echo "## Hub Docker 镜像"
             echo
             echo '```bash'
             echo "docker pull ${image}:${version}"
@@ -539,11 +539,11 @@ jobs:
             echo '```'
             echo
             if [ "${{ steps.ver.outputs.release_type }}" = "release" ]; then
-              echo "Compose: set \`TOKEN_MONITOR_VERSION=${version}\` (or \`latest\`) then \`docker compose pull && docker compose up -d\`."
+              echo "Compose 部署：设置 \`TOKEN_MONITOR_VERSION=${version}\`（或 \`latest\`），然后执行 \`docker compose pull && docker compose up -d\`。"
             else
-              echo "Compose: set \`TOKEN_MONITOR_VERSION=${version}\` then \`docker compose pull && docker compose up -d\`; this prerelease does not move the \`latest\` tag."
+              echo "Compose 部署：设置 \`TOKEN_MONITOR_VERSION=${version}\`，然后执行 \`docker compose pull && docker compose up -d\`；此预发布版本不会移动 \`latest\` 标签。"
             fi
-            echo "Or download \`Token-Monitor-Hub-Compose-${version}.zip\` from Assets for a minimal deploy bundle."
+            echo "也可以从 Assets 下载 \`Token-Monitor-Hub-Compose-${version}.zip\` 获取最小化部署包。"
           } >> release-body.md
       - uses: softprops/action-gh-release@v2
         with:
