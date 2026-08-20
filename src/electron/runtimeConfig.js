@@ -5,6 +5,7 @@ const { normalizeHistoryIntervalMs } = require('../shared/collector');
 const {
   normalizeLimitsRefreshMode,
   normalizeLimitsRefreshMs,
+  parseLimitProviderAutoDetectDisabled,
   parseLimitProviders
 } = require('../shared/limitCollector');
 const { normalizeSyncUploadIntervalMs } = require('../shared/syncUploadInterval');
@@ -33,6 +34,7 @@ const USAGE_STRUCTURAL_KEYS = Object.freeze([
 const LIMITS_RECONFIGURE_KEYS = Object.freeze([
   'limitsEnabled',
   'limitProviders',
+  'limitProviderAutoDetectDisabled',
   'limitsRefreshMode',
   'limitsRefreshMs',
   'opencodeLocalLimitsEnabled'
@@ -41,6 +43,8 @@ const SINK_STRUCTURAL_KEYS = Object.freeze(['syncUploadIntervalMs']);
 const LIMIT_PROVIDER_SETTING_KEYS = Object.freeze({
   claude: ['claudeWebCookie'],
   opencode: ['opencodeCookie', 'opencodeProfiles', 'opencodeLocalLimitsEnabled'],
+  cursor: [],
+  antigravity: [],
   openrouter: ['openrouterProfiles'],
   deepseek: ['deepseekApiKey'],
   minimax: ['minimaxApiKey'],
@@ -54,7 +58,9 @@ const LIMIT_PROVIDER_SETTING_KEYS = Object.freeze({
   ollama: ['ollamaCookie'],
   codex: ['codexManagedAccounts'],
   mimo: ['mimoManagedAccounts'],
-  thirdparty: ['thirdPartyProfiles']
+  thirdparty: ['thirdPartyProfiles'],
+  grok: [],
+  kiro: []
 });
 
 function equalSetting(left, right) {
@@ -120,17 +126,20 @@ function diagnosticConfigurationFromSettings(settings = {}, context = {}) {
 }
 
 function limitsConfigFromSettings(settings = {}, context = {}) {
-  const env = context.env || process.env;
   return {
     limitsEnabled: settings.limitsEnabled !== false,
     limitProviders: settings.limitProviders ?? context.defaultLimitProviders,
+    limitProviderAutoDetectDisabled: parseLimitProviderAutoDetectDisabled(settings.limitProviderAutoDetectDisabled).join(','),
     limitsRefreshMode: normalizeLimitsRefreshMode(settings.limitsRefreshMode),
     limitsRefreshMs: normalizeLimitsRefreshMs(settings.limitsRefreshMs),
-    claudeWebCookie: settings.claudeWebCookie || env.CLAUDE_WEB_COOKIE || '',
+    // Keep GUI credentials separate from environment discovery. The provider
+    // can still fall back to env when auto-detection is enabled, but a disabled
+    // provider must be able to retain only the credential saved in the GUI.
+    claudeWebCookie: settings.claudeWebCookie || '',
     claudePrepaidBalanceEnabled: settings.claudePrepaidBalanceEnabled !== false,
     opencodeLocalLimitsEnabled: settings.opencodeLocalLimitsEnabled === true,
     opencodeAmbientEnabled: settings.opencodeAmbientEnabled !== false,
-    opencodeCookie: settings.opencodeCookie || env.TOKEN_MONITOR_OPENCODE_COOKIE || '',
+    opencodeCookie: settings.opencodeCookie || '',
     opencodeProfiles: settings.opencodeProfiles || {},
     openrouterProfiles: settings.openrouterProfiles || {},
     deepseekApiKey: settings.deepseekApiKey || '',
@@ -151,6 +160,7 @@ function limitsConfigFromSettings(settings = {}, context = {}) {
     kimiApiKey: settings.kimiApiKey || '',
     kimiWebAccessToken: settings.kimiWebAccessToken || '',
     ollamaCookie: settings.ollamaCookie || '',
+    cursorManualAccountConfigured: context.cursorManualAccountConfigured === true,
     codexManagedAccounts: context.codexManagedAccounts ?? settings.codexManagedAccounts ?? [],
     mimoManagedAccounts: context.mimoManagedAccounts ?? settings.mimoManagedAccounts ?? [],
     thirdPartyProfiles: settings.thirdPartyProfiles || {}
@@ -167,8 +177,13 @@ function envelopeFromSettings(settings = {}, context = {}) {
 
 function classifySettingsChange(previous = {}, next = {}) {
   const limitScopes = [];
+  const previousAutoDetectDisabled = new Set(parseLimitProviderAutoDetectDisabled(previous.limitProviderAutoDetectDisabled));
+  const nextAutoDetectDisabled = new Set(parseLimitProviderAutoDetectDisabled(next.limitProviderAutoDetectDisabled));
   for (const [provider, keys] of Object.entries(LIMIT_PROVIDER_SETTING_KEYS)) {
-    if (changedAny(previous, next, keys)) limitScopes.push({ provider });
+    if (changedAny(previous, next, keys)
+      || previousAutoDetectDisabled.has(provider) !== nextAutoDetectDisabled.has(provider)) {
+      limitScopes.push({ provider });
+    }
   }
   return {
     modeStructural: changedAny(previous, next, MODE_STRUCTURAL_KEYS),

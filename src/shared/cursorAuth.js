@@ -71,6 +71,7 @@ function readActiveAccount({ home = os.homedir() } = {}) {
     sessionToken: acct.sessionToken,
     userId: typeof acct.userId === 'string' ? acct.userId : null,
     label: typeof acct.label === 'string' ? acct.label : null,
+    source: acct.source === 'manual' ? 'manual' : '',
     createdAt: typeof acct.createdAt === 'string' ? acct.createdAt : null,
     expiresAt: typeof acct.expiresAt === 'string' ? acct.expiresAt : null
   };
@@ -138,7 +139,8 @@ async function runCursorLogin(token, { label = '', home = os.homedir() } = {}) {
     userId: userId || null,
     createdAt: new Date().toISOString(),
     expiresAt: null,
-    label: trimmedLabel || null
+    label: trimmedLabel || null,
+    source: 'manual'
   };
   store.activeAccountId = accountId;
   if (!store.version) store.version = 1;

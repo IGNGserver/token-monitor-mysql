@@ -100,8 +100,14 @@ function parseBoolean(value, fallback = true) {
 function parseLimitProviders(value) {
   const isEmpty = value === undefined || value === null || value === ''
     || (Array.isArray(value) && value.length === 0);
-  const source = isEmpty ? LIMIT_PROVIDER_IDS : value;
-  const raw = Array.isArray(source) ? source : String(source).split(',');
+  const raw = isEmpty
+    ? LIMIT_PROVIDER_IDS
+    : (Array.isArray(value) ? value : String(value).split(','));
+  return normalizeLimitProviderIds(raw);
+}
+
+function normalizeLimitProviderIds(value) {
+  const raw = Array.isArray(value) ? value : String(value || '').split(',');
   const seen = new Set();
   const providers = [];
   for (const item of raw) {
@@ -111,6 +117,15 @@ function parseLimitProviders(value) {
     providers.push(provider);
   }
   return providers;
+}
+
+function parseLimitProviderAutoDetectDisabled(value) {
+  return normalizeLimitProviderIds(value);
+}
+
+function limitProviderAutoDetectDisabled(provider, options = {}) {
+  const normalized = String(provider || '').trim().toLowerCase();
+  return parseLimitProviderAutoDetectDisabled(options.limitProviderAutoDetectDisabled).includes(normalized);
 }
 
 function normalizeLimitsRefreshMs(value) {
@@ -3053,7 +3068,8 @@ async function fetchCodexLimits(options = {}, deps = {}) {
       if (scope.accountLabel) return account.accountLabel === scope.accountLabel;
       return false;
     });
-  let includeLiveAccount = options.includeLiveCodexAccount !== false;
+  let includeLiveAccount = options.includeLiveCodexAccount !== false
+    && !limitProviderAutoDetectDisabled('codex', options);
   if (scope) {
     if (scope.sourceDetail) {
       includeLiveAccount = includeLiveAccount && scope.sourceDetail !== 'managed';
@@ -3228,7 +3244,11 @@ async function fetchOpenCodeLimits(options = {}, deps = {}) {
 
   // Determine cookie sources: explicit profiles > legacy single cookie > env var
   const explicitProfiles = options.opencodeProfiles;
-  const envCookie = (deps.env || process.env).TOKEN_MONITOR_OPENCODE_COOKIE || '';
+  const suppressAutoDetectedAccounts = options.suppressAutoDetectedAccounts
+    || limitProviderAutoDetectDisabled('opencode', options);
+  const envCookie = suppressAutoDetectedAccounts
+    ? ''
+    : (deps.env || process.env).TOKEN_MONITOR_OPENCODE_COOKIE || '';
 
   // An account is a name, and credentials belong to a name. A profile may hold
   // any of: a cookie (Go quota plus Zen balance), a stored API key (Go quota),
@@ -3266,7 +3286,7 @@ async function fetchOpenCodeLimits(options = {}, deps = {}) {
   // reported. Only the unclaimed row is suppressed: once an account has claimed
   // the key it is that account's credential, and the account's own toggle owns
   // it, exactly as for a cookie.
-  if (ambientKey && !ambientClaimed && options.opencodeAmbientEnabled !== false) {
+  if (ambientKey && !ambientClaimed && options.opencodeAmbientEnabled !== false && !suppressAutoDetectedAccounts) {
     cookies.push({ name: OPENCODE_AMBIENT_ACCOUNT_NAME, apiKey: ambientKey, ambient: true });
   }
 
@@ -3289,7 +3309,8 @@ async function fetchOpenCodeLimits(options = {}, deps = {}) {
   if (!multiAccountMode) {
     // The database is device-wide and has no stable account identity, so every
     // caller must opt in explicitly before this process reads it.
-    const goLocal = (options.opencodeLocalLimitsEnabled === true || hasInjectedLocalCollector)
+    const goLocal = (!suppressAutoDetectedAccounts
+      && (options.opencodeLocalLimitsEnabled === true || hasInjectedLocalCollector))
       ? collectGo({ env: deps.env || process.env, now: () => nowMs })
       : { status: 'notConfigured', windows: [] };
     const primary = cookies[0] || {};
@@ -3728,6 +3749,69 @@ function providerFetchers(deps = {}) {
   };
 }
 
+function hasEnabledProfileCredential(profiles, predicate) {
+  return Object.values(profiles || {}).some((profile) => (
+    profile && profile.enabled !== false && (!predicate || predicate(profile))
+  ));
+}
+
+// When a provider is configured to hide automatic discovery, an explicit GUI
+// credential/profile is still a valid source. This distinction is kept at the
+// collector boundary so the individual providers can continue to own their
+// credential parsing and API behavior.
+function hasExplicitLimitProviderConfig(provider, options = {}) {
+  switch (provider) {
+    case 'claude':
+      return Boolean(options.claudeWebCookie);
+    case 'codex':
+      return normalizeCodexManagedAccounts(options.codexManagedAccounts || options.managedAccounts)
+        .some((account) => account.enabled !== false);
+    case 'cursor':
+      return options.cursorManualAccountConfigured === true;
+    case 'opencode':
+      return Boolean(options.opencodeCookie)
+        || hasEnabledProfileCredential(options.opencodeProfiles, (profile) => (
+          profile.cookie || profile.apiKey || profile.useAmbientKey
+        ));
+    case 'openrouter':
+      return hasEnabledProfileCredential(options.openrouterProfiles, (profile) => profile.apiKey);
+    case 'deepseek':
+      return Boolean(options.deepseekApiKey);
+    case 'minimax':
+      return Boolean(options.minimaxApiKey);
+    case 'mimo':
+      return Array.isArray(options.mimoManagedAccounts || options.managedAccounts)
+        && (options.mimoManagedAccounts || options.managedAccounts).some((account) => (
+          account && account.enabled !== false && account.cookieHeader
+        ));
+    case 'copilot':
+      return Boolean(options.copilotApiToken);
+    case 'zai':
+      return Boolean(options.zaiApiKey);
+    case 'zaiteam':
+      return Boolean(options.zaiTeamApiKey && options.zaiTeamOrganizationId && options.zaiTeamProjectId);
+    case 'volcengine': {
+      const accessKeyId = String(options.volcengineAccessKeyId || '').trim();
+      const secretAccessKey = String(options.volcengineSecretAccessKey || '').trim();
+      return Boolean(accessKeyId && (!/^AKLT/iu.test(accessKeyId) || secretAccessKey));
+    }
+    case 'qoder':
+      return Boolean(options.qoderCookie);
+    case 'commandcode':
+      return Boolean(options.commandcodeCookie);
+    case 'ollama':
+      return Boolean(options.ollamaCookie);
+    case 'kimi':
+      return Boolean(options.kimiApiKey || options.kimiWebAccessToken);
+    case 'thirdparty':
+      return hasEnabledProfileCredential(options.thirdPartyProfiles);
+    case 'grok':
+      return Boolean(options.grokBearerToken);
+    default:
+      return false;
+  }
+}
+
 function providerPhysicalBoundMs(provider, options = {}, deps = {}) {
   const configured = Number(deps.providerPhysicalBounds?.[provider]);
   const base = Number.isFinite(configured) && configured > 0
@@ -3787,9 +3871,14 @@ async function probeLimitProvider(provider, options = {}, context = {}, deps = {
   const nowMs = (deps.now || Date.now)();
   const fetcher = providerFetchers(deps)[provider];
   if (!fetcher) return [statusProvider(provider, 'notConfigured', nowIso(nowMs))];
+  const suppressAutoDetectedAccounts = limitProviderAutoDetectDisabled(provider, options);
+  if (suppressAutoDetectedAccounts && !hasExplicitLimitProviderConfig(provider, options)) return [];
+  const providerOptions = suppressAutoDetectedAccounts
+    ? { ...options, suppressAutoDetectedAccounts: true }
+    : options;
   try {
     const signal = context.signal ?? deps.signal;
-    const result = await fetcher(options, {
+    const result = await fetcher(providerOptions, {
       ...deps,
       fetch: createProbeFetch(resolveProviderFetch(provider, deps), { ...context, signal }, deps),
       signal
@@ -4083,7 +4172,10 @@ module.exports = {
   mapCodexRateLimitsToProvider,
   parseClaudeCliUsageText,
   parseBoolean,
+  parseLimitProviderAutoDetectDisabled,
   parseLimitProviders,
+  limitProviderAutoDetectDisabled,
+  normalizeLimitProviderIds,
   normalizeLimitsRefreshMode,
   normalizeLimitsRefreshMs,
   refreshClaudeAccessToken,

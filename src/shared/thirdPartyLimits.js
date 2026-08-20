@@ -497,6 +497,7 @@ function configuredAccounts(options = {}, deps = {}) {
   }
 
   const env = deps.env || process.env;
+  if (options.suppressAutoDetectedAccounts) return accounts;
   const baseUrl = newapiBaseUrl(env);
   const accessToken = newapiAccessToken(env);
   const userId = newapiUserId(env);

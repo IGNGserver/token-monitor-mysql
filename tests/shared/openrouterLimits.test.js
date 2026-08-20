@@ -7,6 +7,7 @@ const {
   OPENROUTER_ENV_ACCOUNT_NAME,
   OPENROUTER_CREDITS_URL,
   OPENROUTER_KEY_URL,
+  configuredAccounts,
   fetchOpenRouterLimits,
   keyLimitWindow,
   openrouterProfileName,
@@ -203,6 +204,17 @@ test('the official env key uses a normalization-safe account identity', async ()
     })
   });
   assert.equal(provider.accountName, OPENROUTER_ENV_ACCOUNT_NAME);
+});
+
+test('manual OpenRouter profiles remain when automatic environment detection is disabled', () => {
+  assert.deepEqual(configuredAccounts({
+    suppressAutoDetectedAccounts: true,
+    openrouterProfiles: {
+      personal: { apiKey: 'sk-personal', enabled: true }
+    }
+  }, {
+    env: { OPENROUTER_API_KEY: 'sk-environment' }
+  }), [{ name: 'personal', apiKey: 'sk-personal' }]);
 });
 
 test('blank and absent API numbers stay unknown instead of becoming zero-value meters', async () => {

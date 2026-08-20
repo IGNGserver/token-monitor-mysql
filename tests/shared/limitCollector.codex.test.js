@@ -768,6 +768,29 @@ test('fetchCodexLimits keeps the live system account visible alongside managed a
   assert.deepEqual(providers.map((provider) => provider.sourceDetail), ['app', 'managed']);
 });
 
+test('fetchCodexLimits hides the live system account when auto-detection is disabled', async () => {
+  const seenHomes = [];
+  const providers = await fetchCodexLimits({
+    limitProviderAutoDetectDisabled: 'codex',
+    codexManagedAccounts: [
+      { id: 'two', email: 'two@example.com', homePath: '/tmp/token-monitor-codex/two' }
+    ]
+  }, {
+    now: () => Date.parse('2026-06-01T00:00:00Z'),
+    env: { PATH: '/usr/bin' },
+    ...noLiveAuth,
+    readCodexRpc: async (deps) => {
+      const home = deps.env.CODEX_HOME || '<live>';
+      seenHomes.push(home);
+      return codexPayload('two@example.com');
+    }
+  });
+
+  assert.deepEqual(seenHomes, ['/tmp/token-monitor-codex/two']);
+  assert.deepEqual(providers.map((provider) => provider.accountEmail), ['two@example.com']);
+  assert.deepEqual(providers.map((provider) => provider.sourceDetail), ['managed']);
+});
+
 test('fetchCodexLimits does not show the live account twice when it is also managed', async () => {
   const providers = await fetchCodexLimits({
     codexManagedAccounts: [

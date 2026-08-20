@@ -189,7 +189,9 @@ function configuredAccounts(options = {}, deps = {}) {
       seenKeys.add(apiKey);
     }
   }
-  const envKey = openrouterToken(deps.env || process.env);
+  const envKey = options.suppressAutoDetectedAccounts
+    ? ''
+    : openrouterToken(deps.env || process.env);
   if (envKey && !seenKeys.has(envKey)) {
     accounts.push({ name: OPENROUTER_ENV_ACCOUNT_NAME, apiKey: envKey });
   }

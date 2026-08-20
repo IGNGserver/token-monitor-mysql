@@ -68,3 +68,21 @@ test('collectLimitsOnce preserves a standalone dependency cancellation signal', 
   assert.equal(observedSignal, controller.signal);
   assert.equal(summary.providers[0].provider, 'kimi');
 });
+
+test('disabling automatic detection skips a provider until a manual credential exists', async () => {
+  let called = false;
+  const summary = await collectLimitsOnce({
+    limitProviders: 'deepseek',
+    limitProviderAutoDetectDisabled: 'deepseek'
+  }, {
+    providerFetchers: {
+      deepseek: async () => {
+        called = true;
+        return { provider: 'deepseek', status: 'ok', windows: [] };
+      }
+    }
+  });
+
+  assert.equal(called, false);
+  assert.deepEqual(summary.providers, []);
+});

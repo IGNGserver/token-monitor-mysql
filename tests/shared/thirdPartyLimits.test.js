@@ -690,6 +690,30 @@ test('environment configuration prefers account quota and falls back to token qu
   }]);
 });
 
+test('manual third-party profiles remain when automatic environment detection is disabled', () => {
+  assert.deepEqual(configuredAccounts({
+    suppressAutoDetectedAccounts: true,
+    thirdPartyProfiles: {
+      personal: {
+        adapter: NEWAPI_TOKEN_ADAPTER,
+        baseUrl: 'https://manual.example',
+        apiKey: 'manual-key'
+      }
+    }
+  }, {
+    env: {
+      TOKEN_MONITOR_NEWAPI_BASE_URL: 'https://environment.example',
+      TOKEN_MONITOR_NEWAPI_API_KEY: 'environment-key'
+    }
+  }), [{
+    name: 'personal',
+    adapter: NEWAPI_TOKEN_ADAPTER,
+    baseUrl: 'https://manual.example',
+    apiKey: 'manual-key',
+    enabled: true
+  }]);
+});
+
 test('scoped refresh fetches only the selected third-party profile', async () => {
   const calls = [];
   const [provider] = await fetchThirdPartyLimits({

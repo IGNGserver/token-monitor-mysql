@@ -189,6 +189,29 @@ test('OpenCode account panel provides multi-profile management', () => {
   assert.match(setupBody, /updateOpenCodeProfilesStatus\(\)/);
 });
 
+test('each configurable account panel exposes its own auto-detection switch', () => {
+  const app = readRendererFile('app.js');
+  const html = readRendererFile('index.html');
+  const providers = [
+    'claude', 'codex', 'cursor', 'opencode', 'openrouter', 'deepseek', 'minimax',
+    'zai', 'zaiteam', 'volcengine', 'qoder', 'commandcode', 'ollama', 'kimi',
+    'mimo', 'copilot', 'thirdparty'
+  ];
+
+  for (const provider of providers) {
+    assert.match(
+      app,
+      new RegExp(`\\{ provider: '${provider}', detailsId: '${provider}SettingsDetails' \\}`),
+      `${provider} should have an independent account setting target`
+    );
+  }
+  assert.match(app, /function renderAccountAutoDetectControls\(\)/);
+  assert.match(app, /saveSettings\(\{ limitProviderAutoDetectDisabled: \[\.\.\.selected\]\.join\(','\) \}\)/);
+  assert.match(app, /input\.checked = disabledProviders\.has\(target\.provider\)/);
+  assert.match(html, /data-account-auto-detect-provider="opencode"/);
+  assert.match(html, /settings\.accounts\.onlyManualDesc/);
+});
+
 test('OpenCode multi-account rows separate profile identity from plan label', () => {
   const app = readRendererFile('app.js');
   const titleBody = functionBody(app, 'opencodeAccountTitle', 'renderOpenCodeAccountGroup');

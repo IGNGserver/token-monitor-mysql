@@ -597,7 +597,13 @@
               <div id="opencodeSettingsDetails" class="cursor-settings-details hidden">
                 <!-- Profile list -->
                 <div id="opencodeProfileList" class="opencode-profile-list"></div>
-                <label class="checkbox-label settings-item"><span class="settings-item-text"><span class="settings-item-title">Use detected OpenCode Go account</span></span><input id="opencodeAmbientInput" type="checkbox" /></label>
+                <label class="checkbox-label settings-item account-auto-detect-control" data-account-auto-detect-provider="opencode">
+                  <span class="settings-item-text">
+                    <span class="settings-item-title" data-i18n="settings.accounts.onlyManual">Only show manually added accounts</span>
+                    <span class="settings-item-desc" data-i18n="settings.accounts.onlyManualDesc">Hides auto-detected accounts for this provider. You can enable it before adding one.</span>
+                  </span>
+                  <input id="opencodeAmbientInput" type="checkbox" />
+                </label>
 
                 <!-- Add new account -->
                 <div id="opencodeAddForm" class="opencode-add-form">
@@ -1104,6 +1110,10 @@
                 <label id="thirdpartyAccessTokenField" class="thirdparty-credential-field">
                   <span data-i18n="settings.thirdparty.accessToken">Access token</span>
                   <input id="thirdpartyAccessTokenInput" type="password" autocomplete="off" data-i18n-placeholder="settings.thirdparty.accessTokenPlaceholder" placeholder="Paste access token" />
+                </label>
+                <label id="thirdpartyUserIdField" class="thirdparty-credential-field">
+                  <span data-i18n="settings.thirdparty.userId">User ID (optional)</span>
+                  <input id="thirdpartyUserIdInput" type="text" inputmode="numeric" autocomplete="off" data-i18n-placeholder="settings.thirdparty.userIdPlaceholder" placeholder="Optional user ID" />
                 </label>
                 <label id="thirdpartyApiKeyField" class="thirdparty-credential-field hidden">
                   <span data-i18n="settings.thirdparty.apiKey">API key</span>

@@ -81,6 +81,7 @@ const {
   normalizeClaudeWebCookieInput,
   normalizeLimitsRefreshMode,
   normalizeLimitsRefreshMs,
+  parseLimitProviderAutoDetectDisabled,
   parseBoolean,
   parseLimitProviders,
   runCodexLogin,
@@ -439,6 +440,7 @@ function defaultSettings() {
     customModelPricing: [],
     limitsEnabled: parseBoolean(process.env.TOKEN_MONITOR_LIMITS_ENABLED, true),
     limitProviders: parseLimitProviders(process.env.TOKEN_MONITOR_LIMIT_PROVIDERS).join(','),
+    limitProviderAutoDetectDisabled: '',
     limitProviderOrder: defaultLimitProviderOrder(),
     homeLimitProviderOrder: '',
     hiddenHomeLimitProviders: '',
@@ -561,7 +563,10 @@ function electronLimitsConfig() {
     env: process.env,
     defaultLimitProviders: defaultLimitProviders(),
     codexManagedAccounts: codexManagedAccountsForCollector(),
-    mimoManagedAccounts: mimoManagedAccountsForCollector()
+    mimoManagedAccounts: mimoManagedAccountsForCollector(),
+    // Cursor's credential store is itself the manual-account registry. Treat
+    // legacy entries without the newer source marker as manual too.
+    cursorManualAccountConfigured: Boolean(cursorAuth.readActiveAccount())
   });
 }
 
@@ -2069,6 +2074,7 @@ function readSettings() {
     merged.collectionMode = normalizeCollectionMode(merged.collectionMode);
     merged.collectionIntervalMs = normalizeCollectionIntervalMs(merged.collectionIntervalMs);
     merged.limitsRefreshMode = normalizeLimitsRefreshMode(merged.limitsRefreshMode);
+    merged.limitProviderAutoDetectDisabled = parseLimitProviderAutoDetectDisabled(merged.limitProviderAutoDetectDisabled).join(',');
     merged.claudePrepaidBalanceEnabled = parseBoolean(merged.claudePrepaidBalanceEnabled, true);
     merged.opencodeAmbientEnabled = parseBoolean(merged.opencodeAmbientEnabled, true);
     merged.opencodeLocalLimitsEnabled = parseBoolean(merged.opencodeLocalLimitsEnabled, false);
@@ -4874,6 +4880,9 @@ app.whenReady().then(() => {
       discordRpcEnabled: patch.discordRpcEnabled ?? settings.discordRpcEnabled ?? false,
       limitsEnabled: parseBoolean(patch.limitsEnabled ?? settings.limitsEnabled, true),
       limitProviders: patch.limitProviders !== undefined ? parseLimitProviders(patch.limitProviders).join(',') : settings.limitProviders,
+      limitProviderAutoDetectDisabled: patch.limitProviderAutoDetectDisabled !== undefined
+        ? parseLimitProviderAutoDetectDisabled(patch.limitProviderAutoDetectDisabled).join(',')
+        : parseLimitProviderAutoDetectDisabled(settings.limitProviderAutoDetectDisabled).join(','),
       limitsRefreshMode: normalizeLimitsRefreshMode(patch.limitsRefreshMode ?? settings.limitsRefreshMode),
       limitProviderOrder: patch.limitProviderOrder !== undefined ? migrateLimitProviderOrder(patch.limitProviderOrder) : settings.limitProviderOrder,
       clientDisplayOrder: patch.clientDisplayOrder !== undefined ? migrateClientDisplayOrder(patch.clientDisplayOrder) : (settings.clientDisplayOrder || ''),

@@ -94,6 +94,25 @@ const LIMIT_PROVIDERS = [
   { id: 'commandcode', label: 'Command Code' },
   { id: 'thirdparty', label: 'Third-party APIs' }
 ];
+const ACCOUNT_AUTO_DETECT_TARGETS = [
+  { provider: 'claude', detailsId: 'claudeSettingsDetails' },
+  { provider: 'codex', detailsId: 'codexSettingsDetails' },
+  { provider: 'cursor', detailsId: 'cursorSettingsDetails' },
+  { provider: 'opencode', detailsId: 'opencodeSettingsDetails' },
+  { provider: 'openrouter', detailsId: 'openrouterSettingsDetails' },
+  { provider: 'deepseek', detailsId: 'deepseekSettingsDetails' },
+  { provider: 'minimax', detailsId: 'minimaxSettingsDetails' },
+  { provider: 'zai', detailsId: 'zaiSettingsDetails' },
+  { provider: 'zaiteam', detailsId: 'zaiteamSettingsDetails' },
+  { provider: 'volcengine', detailsId: 'volcengineSettingsDetails' },
+  { provider: 'qoder', detailsId: 'qoderSettingsDetails' },
+  { provider: 'commandcode', detailsId: 'commandcodeSettingsDetails' },
+  { provider: 'ollama', detailsId: 'ollamaSettingsDetails' },
+  { provider: 'kimi', detailsId: 'kimiSettingsDetails' },
+  { provider: 'mimo', detailsId: 'mimoSettingsDetails' },
+  { provider: 'copilot', detailsId: 'copilotSettingsDetails' },
+  { provider: 'thirdparty', detailsId: 'thirdpartySettingsDetails' }
+];
 const TRAY_ICON_VARIANTS = [
   { id: 'claude-brand', label: 'Claude', after: 'claude' },
   { id: 'chatgpt', label: 'ChatGPT', after: 'codex' }
@@ -1996,6 +2015,70 @@ function configuredLimitProviderSelection() {
 function enabledLimitProviderSet() {
   if (state.settings?.limitsEnabled === false) return new Set();
   return new Set(configuredLimitProviderSelection());
+}
+
+function autoDetectDisabledProviderSet() {
+  return new Set(String(state.settings?.limitProviderAutoDetectDisabled || '')
+    .split(',')
+    .map((provider) => provider.trim().toLowerCase())
+    .filter(Boolean));
+}
+
+function renderAccountAutoDetectControls() {
+  const disabledProviders = autoDetectDisabledProviderSet();
+  for (const target of ACCOUNT_AUTO_DETECT_TARGETS) {
+    const details = document.getElementById(target.detailsId);
+    if (!details) continue;
+    let control = details.querySelector(`[data-account-auto-detect-provider="${target.provider}"]`);
+    if (!control) {
+      control = document.createElement('label');
+      control.className = 'checkbox-label settings-item account-auto-detect-control';
+      control.dataset.accountAutoDetectProvider = target.provider;
+
+      const text = document.createElement('span');
+      text.className = 'settings-item-text';
+      const title = document.createElement('span');
+      title.className = 'settings-item-title';
+      const description = document.createElement('span');
+      description.className = 'settings-item-desc';
+      text.append(title, description);
+
+      const input = document.createElement('input');
+      input.type = 'checkbox';
+      input.id = `disableAutoDetect-${target.provider}`;
+      control.append(text, input);
+      details.prepend(control);
+    }
+
+    const input = control.querySelector('input[type="checkbox"]');
+    const title = control.querySelector('.settings-item-title');
+    const description = control.querySelector('.settings-item-desc');
+    if (!input) continue;
+    if (title) title.textContent = t('settings.accounts.onlyManual');
+    if (description) description.textContent = t('settings.accounts.onlyManualDesc');
+    input.checked = disabledProviders.has(target.provider);
+    input.setAttribute('aria-label', t('settings.accounts.onlyManual'));
+    if (input.dataset.autoDetectListener !== 'true') {
+      input.dataset.autoDetectListener = 'true';
+      input.addEventListener('change', async () => {
+        const next = input.checked;
+        const selected = autoDetectDisabledProviderSet();
+        if (next) selected.add(target.provider);
+        else selected.delete(target.provider);
+        input.disabled = true;
+        try {
+          await saveSettings({ limitProviderAutoDetectDisabled: [...selected].join(',') });
+          await refreshStats({ force: true });
+        } catch (error) {
+          console.error(`Could not update ${target.provider} auto-detection setting:`, error);
+          input.checked = !next;
+        } finally {
+          input.disabled = false;
+          renderAccountAutoDetectControls();
+        }
+      });
+    }
+  }
 }
 
 function limitProviderEnabled(providerName) {
@@ -6532,9 +6615,7 @@ function syncSettingsForm() {
   renderLimitProviderCheckboxes();
   renderSettingsSummaries();
   renderOpenCodeProfiles();
-  if (document.getElementById('opencodeAmbientInput')) {
-    document.getElementById('opencodeAmbientInput').checked = state.settings.opencodeAmbientEnabled !== false;
-  }
+  renderAccountAutoDetectControls();
   renderOpenRouterProfiles();
   applyVendorColorOverrides(state.settings.vendorColors);
   applyAppearanceSettings(state.settings);
@@ -11326,12 +11407,6 @@ function setupCursorAccountUI() {
       setOpencodeCookieExpanded(expanding);
       if (expanding) renderOpenCodeProfiles();
     });
-    document.getElementById('opencodeAmbientInput')?.addEventListener('change', async (event) => {
-      const result = await window.tokenMonitor.opencode.setAmbientEnabled(event.target.checked);
-      if (!result?.ok) event.target.checked = !event.target.checked;
-      else await refreshStats({ force: true });
-    });
-
     const addToggle = document.getElementById('opencodeAddToggle');
     const addDetails = document.getElementById('opencodeAddDetails');
     function setOpenCodeAddExpanded(expanded) {
@@ -12115,6 +12190,7 @@ function setupCursorAccountUI() {
   document.getElementById('thirdpartyModeInput')?.addEventListener('change', () => {
     const token = document.getElementById('thirdpartyModeInput').value === 'token';
     document.getElementById('thirdpartyAccessTokenField')?.classList.toggle('hidden', token);
+    document.getElementById('thirdpartyUserIdField')?.classList.toggle('hidden', token);
     document.getElementById('thirdpartyApiKeyField')?.classList.toggle('hidden', !token);
   });
   document.getElementById('thirdpartyProfileSubmit')?.addEventListener('click', async () => {
@@ -12127,7 +12203,7 @@ function setupCursorAccountUI() {
       baseUrl: document.getElementById('thirdpartyBaseUrlInput')?.value,
       accessToken: document.getElementById('thirdpartyAccessTokenInput')?.value,
       apiKey: document.getElementById('thirdpartyApiKeyInput')?.value,
-      userId: ''
+      userId: document.getElementById('thirdpartyUserIdInput')?.value
     };
     const result = await window.tokenMonitor.thirdparty.saveProfile(profile);
     if (!result?.ok) {
@@ -12137,6 +12213,7 @@ function setupCursorAccountUI() {
     document.getElementById('thirdpartyProfileName').value = '';
     document.getElementById('thirdpartyBaseUrlInput').value = '';
     document.getElementById('thirdpartyAccessTokenInput').value = '';
+    document.getElementById('thirdpartyUserIdInput').value = '';
     document.getElementById('thirdpartyApiKeyInput').value = '';
     renderThirdPartyProfiles();
     await saveSettings({ limitProviders: limitProviderSelectionIncluding('thirdparty'), limitsEnabled: true });

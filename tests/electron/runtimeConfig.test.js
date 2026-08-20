@@ -51,6 +51,20 @@ test('limits config resolves managed credentials at dispatch time through contex
   assert.deepEqual(limits.mimoManagedAccounts, [{ id: 'mimo', cookieHeader: 'allowlisted' }]);
 });
 
+test('per-provider auto-detection settings normalize and invalidate only the changed lane', () => {
+  const limits = limitsConfigFromSettings({
+    limitProviderAutoDetectDisabled: ' codex, OPENROUTER, unknown, codex '
+  }, { env: {}, defaultLimitProviders: 'codex,openrouter' });
+  assert.equal(limits.limitProviderAutoDetectDisabled, 'codex,openrouter');
+
+  const classification = classifySettingsChange(
+    { limitProviderAutoDetectDisabled: 'codex' },
+    { limitProviderAutoDetectDisabled: 'codex,openrouter' }
+  );
+  assert.equal(classification.limitsReconfigure, true);
+  assert.deepEqual(classification.limitScopes, [{ provider: 'openrouter' }]);
+});
+
 test('settings classifier separates structural, limits reconfigure, sink, and provider invalidation changes', () => {
   const previous = {
     hubMode: 'local',

@@ -21,6 +21,7 @@ test('third-party API settings use the shared section icon and structured form',
   assert.match(group, /data-i18n="settings\.thirdparty\.endpoint"/);
   assert.match(group, /data-i18n="settings\.thirdparty\.authentication"/);
   assert.match(group, /id="thirdpartyAccessTokenField"/);
+  assert.match(group, /id="thirdpartyUserIdField"/);
   assert.match(group, /id="thirdpartyApiKeyField"/);
 });
 
