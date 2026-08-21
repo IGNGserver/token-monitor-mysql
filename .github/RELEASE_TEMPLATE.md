@@ -10,22 +10,24 @@
 - **OpenCode 账号探测：** 修复关闭自动探测后旧账号仍残留，以及设置页继续显示环境变量和本机探测账号的问题。
 - **第三方 API 余额：** 中转站额度主显示改为实际余额金额，隐藏不可靠的派生百分比进度条。
 - **跨端数据：** 补齐 DeepSeek Harness 用量采集，以及 Android 的订阅资料、历史数据和额度展示。
+- **Android 订阅并发：** 多设备同时编辑订阅时，移动端会基于 Hub 最新文档重放本地操作，避免覆盖其他设备的记录。
+- **Android 额度与连接：** 补齐第三方余额、来源和首页排序展示，并增加 Hub 构建兼容性提示与 DeepSeek Harness 品牌标识。
 - **Codex 验证码：** 修正设备验证码解析，确保显示完整的 9 位验证码。
 - **Codex 账号登录：** 登录完成后立即写入账号状态，额度刷新转入后台，避免因慢请求卡在“读取账号”。
 <!-- app-update-notes:zh:end -->
 
 ## 下载
 
-- **macOS Apple Silicon** — [Token-Monitor-0.45.0-rev.13-arm64.dmg](https://github.com/IGNGserver/token-monitor-suite/releases/download/v0.45.0-rev.13/Token-Monitor-0.45.0-rev.13-arm64.dmg)
-- **macOS Intel** — [Token-Monitor-0.45.0-rev.13-x64.dmg](https://github.com/IGNGserver/token-monitor-suite/releases/download/v0.45.0-rev.13/Token-Monitor-0.45.0-rev.13-x64.dmg)
-- **Windows 安装版** — [Token-Monitor-Setup-0.45.0-rev.13.exe](https://github.com/IGNGserver/token-monitor-suite/releases/download/v0.45.0-rev.13/Token-Monitor-Setup-0.45.0-rev.13.exe)（推荐）
-- **Windows 便携版** — [Token-Monitor-0.45.0-rev.13.exe](https://github.com/IGNGserver/token-monitor-suite/releases/download/v0.45.0-rev.13/Token-Monitor-0.45.0-rev.13.exe)（免安装）
-- **Linux x64** — [Token-Monitor-0.45.0-rev.13.AppImage](https://github.com/IGNGserver/token-monitor-suite/releases/download/v0.45.0-rev.13/Token-Monitor-0.45.0-rev.13.AppImage)
+- **macOS Apple Silicon** — [Token-Monitor-0.45.0-rev.14-arm64.dmg](https://github.com/IGNGserver/token-monitor-suite/releases/download/v0.45.0-rev.14/Token-Monitor-0.45.0-rev.14-arm64.dmg)
+- **macOS Intel** — [Token-Monitor-0.45.0-rev.14-x64.dmg](https://github.com/IGNGserver/token-monitor-suite/releases/download/v0.45.0-rev.14/Token-Monitor-0.45.0-rev.14-x64.dmg)
+- **Windows 安装版** — [Token-Monitor-Setup-0.45.0-rev.14.exe](https://github.com/IGNGserver/token-monitor-suite/releases/download/v0.45.0-rev.14/Token-Monitor-Setup-0.45.0-rev.14.exe)（推荐）
+- **Windows 便携版** — [Token-Monitor-0.45.0-rev.14.exe](https://github.com/IGNGserver/token-monitor-suite/releases/download/v0.45.0-rev.14/Token-Monitor-0.45.0-rev.14.exe)（免安装）
+- **Linux x64** — [Token-Monitor-0.45.0-rev.14.AppImage](https://github.com/IGNGserver/token-monitor-suite/releases/download/v0.45.0-rev.14/Token-Monitor-0.45.0-rev.14.AppImage)
 
 ---
 
 <details>
-<summary><strong>Full Changelog:</strong> <a href="https://github.com/IGNGserver/token-monitor-suite/compare/v0.45.0-rev.12...v0.45.0-rev.13">v0.45.0-rev.12...v0.45.0-rev.13</a></summary>
+<summary><strong>Full Changelog:</strong> <a href="https://github.com/IGNGserver/token-monitor-suite/compare/v0.45.0-rev.13...v0.45.0-rev.14">v0.45.0-rev.13...v0.45.0-rev.14</a></summary>
 
 <!-- github-generated-release-notes -->
 
