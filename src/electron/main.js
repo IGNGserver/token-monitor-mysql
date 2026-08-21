@@ -52,6 +52,10 @@ function opencodeAmbientKeyActive(profiles) {
   );
 }
 
+function opencodeAutoDetectionDisabled() {
+  return parseLimitProviderAutoDetectDisabled(settings?.limitProviderAutoDetectDisabled).includes('opencode');
+}
+
 function refreshOpencodeAmbientOwnership(wasActive) {
   if (opencodeAmbientKeyActive(settings?.opencodeProfiles || {}) === wasActive) return;
   void queueLimitInvalidation({ provider: 'opencode' }, 'ambient-ownership', { clear: true });
@@ -5000,12 +5004,12 @@ app.whenReady().then(() => {
     const runtimeChange = classifySettingsChange(previousRuntimeSettings, settings);
     if (runtimeChange.modeStructural) {
       for (const scope of runtimeChange.limitScopes) {
-        rememberPendingLimitInvalidation(scope, 'settings-change');
+        rememberPendingLimitInvalidation(scope, 'settings-change', true);
       }
       startMode();
     } else if (runtimeChange.usageStructural || runtimeChange.sinkStructural) {
       for (const scope of runtimeChange.limitScopes) {
-        rememberPendingLimitInvalidation(scope, 'settings-change');
+        rememberPendingLimitInvalidation(scope, 'settings-change', true);
       }
       restartDeviceRuntimeForMode();
     } else {
@@ -5013,7 +5017,7 @@ app.whenReady().then(() => {
         deviceRuntimeHandle.reconfigureLimits(electronLimitsConfig());
       }
       for (const scope of runtimeChange.limitScopes) {
-        void queueLimitInvalidation(scope, 'settings-change').catch((error) => {
+        void queueLimitInvalidation(scope, 'settings-change', { clear: true }).catch((error) => {
           console.log(`[limits-runtime] settings refresh failed: ${error.message}`);
         });
       }
@@ -5554,8 +5558,11 @@ app.whenReady().then(() => {
       return opencodeStatusCache.value;
     }
     const profiles = settings.opencodeProfiles || {};
+    const autoDetectionDisabled = opencodeAutoDetectionDisabled();
     const ambientKey = opencodeGoApi.readGoApiKey(process.env);
-    const ambient = opencodeAmbientKeyActive(profiles) && settings.opencodeAmbientEnabled !== false
+    const ambient = !autoDetectionDisabled
+      && opencodeAmbientKeyActive(profiles)
+      && settings.opencodeAmbientEnabled !== false
       ? await probeOpenCodeApiKey(ambientKey)
       : null;
     const entries = Object.entries(profiles).filter(([, p]) => p.cookie && p.enabled);
@@ -5576,7 +5583,7 @@ app.whenReady().then(() => {
     // Legacy env cookie. Skip it when it matches an enabled profile so the
     // panel doesn't report an extra "connected" account that the collector
     // dedupes away (otherwise it shows 2/2 while only one account is tracked).
-    const envCookie = process.env.TOKEN_MONITOR_OPENCODE_COOKIE || '';
+    const envCookie = autoDetectionDisabled ? '' : (process.env.TOKEN_MONITOR_OPENCODE_COOKIE || '');
     if (envCookie && !entries.some(([, p]) => p.cookie === envCookie)) {
       const [go, zen] = await Promise.all([
         opencodeWeb.fetchGoWeb(envCookie, electronProviderDeps()),
@@ -5598,7 +5605,7 @@ app.whenReady().then(() => {
   });
   ipcMain.handle('opencode:getProfiles', async () => {
     const profiles = settings.opencodeProfiles || {};
-    const hasEnvVar = Boolean(process.env.TOKEN_MONITOR_OPENCODE_COOKIE);
+    const hasEnvVar = !opencodeAutoDetectionDisabled() && Boolean(process.env.TOKEN_MONITOR_OPENCODE_COOKIE);
     // Strip cookie values — renderer only needs name/enabled for display
     const safe = {};
     for (const [name, p] of Object.entries(profiles)) {

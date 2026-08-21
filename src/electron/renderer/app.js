@@ -2632,6 +2632,12 @@ function formatLimitWindowValue(window, fillPercent, hasPercent, showUsed) {
 
 function formatHomeLimitWindowValue(window, showUsed) {
   if (window?.planStatus === 'expired') return t('limits.mimo.planExpired');
+  if (window?.metric === 'credits') {
+    const remaining = optionalFiniteNumber(window?.remaining) ?? optionalFiniteNumber(window?.amount);
+    if (remaining !== null) return `${formatMoney(remaining, window.currency)} left`;
+    const detail = String(window?.detail || '').trim();
+    return detail || '--';
+  }
   if (window?.kind === 'balance') {
     return `${formatMoney(window.amount, window.currency)} left`;
   }
@@ -4365,6 +4371,10 @@ function homeLimitRows() {
       const id = String(provider?.provider || '').trim().toLowerCase();
       const option = providerOptions.find((entry) => entry.id === id);
       const providerTitle = option?.label || id;
+      if (id === 'thirdparty') {
+        const accountTitle = String(provider?.accountName || provider?.accountLabel || '').trim();
+        if (accountTitle) return accountTitle;
+      }
       if (providerEntries.length > 1) {
         const accountTitle = homeLimitAccountTitle(id, provider, index, providerEntries);
         return state.settings?.showHomeLimitProviderNames === true || state.settings?.showToolIcons === false

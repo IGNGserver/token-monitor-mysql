@@ -511,11 +511,18 @@ function createLimitsRuntime(initialOptions = {}, deps = {}) {
       return true;
     }
 
+    const emptyResult = normalizedRows.length === 0 && !dispatch.accountScoped;
     const genericTerminal = normalizedRows.length === 1
       && rowIdentityKey(normalizedRows[0]) === `${lane.provider}:*`
       && !TRANSIENT_STATUSES.has(normalizedRows[0].status)
       && normalizedRows[0].status !== 'ok';
     if (genericTerminal && !dispatch.accountScoped) lane.identities.clear();
+    // A provider-wide probe returning no rows is an authoritative empty
+    // result. This is how an auto-detection-only provider reports that its
+    // discovered account disappeared (for example after the user enables
+    // "only show manually added accounts"). Keeping the previous identities
+    // here would make the old account survive the refresh indefinitely.
+    if (emptyResult) lane.identities.clear();
 
     for (const row of normalizedRows) {
       let identityKey = rowIdentityKey(row);
@@ -538,7 +545,7 @@ function createLimitsRuntime(initialOptions = {}, deps = {}) {
       if (row.status === 'ok') markLimitsProbeSuccess(burnState, row);
     }
 
-    if (!dispatch.accountScoped && !genericTerminal) {
+    if (!dispatch.accountScoped && !genericTerminal && !emptyResult) {
       for (const identityKey of expected) {
         if (represented.has(identityKey) || !accountRevisionStillCurrent(lane, identityKey, dispatch)) continue;
         applyAttempt(lane, identityKey, { provider: lane.provider }, 'unavailable', attemptAt);

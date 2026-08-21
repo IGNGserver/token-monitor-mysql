@@ -196,6 +196,47 @@ test('homeLimitAccountsForProviders includes Grok billing and DeepSeek balance r
   ]);
 });
 
+test('homeLimitAccountsForProviders preserves third-party credit balance fields', () => {
+  const rows = homeLimitAccountsForProviders({
+    providers: [{
+      provider: 'thirdparty',
+      accountName: 'ccode',
+      windows: [{
+        kind: 'billing',
+        label: 'Balance',
+        metric: 'credits',
+        remaining: 12.34,
+        usedPercent: 100,
+        currency: 'USD',
+        detail: '12.34 USD'
+      }]
+    }],
+    providerOptions: [{ id: 'thirdparty', label: 'Third-party APIs' }],
+    enabledProviderIds: ['thirdparty'],
+    colors: { thirdparty: '#e83e68' },
+    accountName: (provider) => provider.accountName,
+    limit: 5
+  });
+
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].name, 'ccode');
+  assert.deepEqual(rows[0].windows.map((window) => ({
+    kind: window.kind,
+    metric: window.metric,
+    remaining: window.remaining,
+    remainingPercent: window.remainingPercent,
+    currency: window.currency,
+    detail: window.detail
+  })), [{
+    kind: 'billing',
+    metric: 'credits',
+    remaining: 12.34,
+    remainingPercent: 0,
+    currency: 'USD',
+    detail: '12.34 USD'
+  }]);
+});
+
 test('homeLimitAccountsForProviders includes MiMo Token Plan status and balance', () => {
   const rows = homeLimitAccountsForProviders({
     providers: [
@@ -630,4 +671,3 @@ test('shouldFetchHomeHistory never polls a zero-usage account', () => {
   assert.equal(shouldFetchHomeHistory({ requested: true, stats: { historyPreview: emptyHistory } }), false);
   assert.equal(shouldFetchHomeHistory({ requested: true, stats: null }), false);
 });
-

@@ -945,6 +945,23 @@ test('opencode status env account avoids saved profile names', () => {
   assert.doesNotMatch(handler, /hasOwnProperty\.call\(result, envKey\)/);
 });
 
+test('OpenCode account status honors the per-provider auto-detection switch', () => {
+  const main = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'electron', 'main.js'), 'utf8');
+  const statusHandler = main.slice(
+    main.indexOf("ipcMain.handle('opencode:status'"),
+    main.indexOf("ipcMain.handle('opencode:getProfiles'")
+  );
+  const profilesHandler = main.slice(
+    main.indexOf("ipcMain.handle('opencode:getProfiles'"),
+    main.indexOf("ipcMain.handle('opencode:saveProfile'")
+  );
+  assert.match(main, /function opencodeAutoDetectionDisabled\(\)/);
+  assert.match(statusHandler, /const autoDetectionDisabled = opencodeAutoDetectionDisabled\(\);/);
+  assert.match(statusHandler, /const ambient = !autoDetectionDisabled/);
+  assert.match(statusHandler, /const envCookie = autoDetectionDisabled \? ''/);
+  assert.match(profilesHandler, /const hasEnvVar = !opencodeAutoDetectionDisabled\(\)/);
+});
+
 test('settingsForRenderer strips provider cookies before they reach the renderer', () => {
   const main = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'electron', 'main.js'), 'utf8');
   const credentialStore = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'shared', 'credentialStore.js'), 'utf8');

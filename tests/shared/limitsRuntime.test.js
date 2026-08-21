@@ -402,6 +402,23 @@ test('credential and account lifecycle changes clear an old provider cooldown', 
   }
 });
 
+test('a provider-wide empty result removes accounts from the previous snapshot', async () => {
+  let calls = 0;
+  const runtime = createLimitsRuntime({ limitProviders: ['opencode'] }, runtimeDeps({
+    probeProvider: async () => {
+      calls += 1;
+      return calls === 1 ? [providerRow('opencode', 'auto', 'Auto-detected')] : [];
+    }
+  }));
+
+  await runtime.refresh({ provider: 'opencode' }, 'startup');
+  assert.equal(runtime.getSnapshot().providers.length, 1);
+
+  await runtime.refresh({ provider: 'opencode' }, 'settings-change');
+  assert.deepEqual(runtime.getSnapshot().providers, []);
+  runtime.stop();
+});
+
 test('a transient failure retains matching lastGood windows with the latest status', async () => {
   const results = [
     [providerRow('kimi', 'account', 'Kimi', { updatedAt: '2026-07-21T00:00:00.000Z' })],

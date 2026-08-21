@@ -730,6 +730,8 @@ test('Home uses explicit billing labels so Copilot Premium and Chat stay distinc
   assert.match(homeLabel, /if \(window\?\.kind === 'billing'\) \{/);
   assert.match(homeLabel, /limitProviderCompactWindowLabel\(providerId, window, visibleWindows\)/);
   assert.match(homeRows, /limitProviderCompactWindows\(provider, provider\.windows\)/);
+  assert.match(homeRows, /if \(id === 'thirdparty'\) \{/);
+  assert.match(homeRows, /provider\?\.accountName \|\| provider\?\.accountLabel/);
   assert.match(homeLabel, /const label = String\(window\?\.label \|\| ''\)\.trim\(\);/);
   assert.match(homeLabel, /if \(label\) return label;/);
   assert.match(homeLabel, /billing: 'home\.limit\.billing'/);
@@ -738,6 +740,9 @@ test('Home uses explicit billing labels so Copilot Premium and Chat stay distinc
   assert.match(homeModule, /value\.textContent = window\.value \|\| formatHomeLimitWindowValue\(window, showUsed\);/);
   assert.match(homeModule, /limitProviderCompactWindowPeriodLabel\(row\.providerId, window, row\.windows\)/);
   assert.match(homeModule, /`\$\{periodLabel\} · \$\{resetLabel\}`/);
+  assert.match(valueFormatter, /if \(window\?\.metric === 'credits'\) \{/);
+  assert.match(valueFormatter, /optionalFiniteNumber\(window\?\.remaining\) \?\? optionalFiniteNumber\(window\?\.amount\)/);
+  assert.match(valueFormatter, /formatMoney\(remaining, window\.currency\)/);
   assert.match(valueFormatter, /`\$\{formatMoney\(window\.amount, window\.currency\)\} left`/);
   assert.match(valueFormatter, /`\$\{formatPercent\(percent\)\} \$\{limitModeSuffix\(showUsed\)\}`/);
   assert.doesNotMatch(i18n, /home\.limit\.(balance|leftPercent|leftAmount)/);

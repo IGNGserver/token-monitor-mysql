@@ -106,7 +106,11 @@
             value: window.value || '',
             planStatus: window.planStatus || '',
             amount: finiteNumber(window.amount),
+            metric: String(window.metric || '').trim().toLowerCase(),
+            remaining: finiteNumber(window.remaining),
             currency: window.currency || '',
+            detail: window.detail || '',
+            showMeter: window.showMeter !== false,
             index: windowIndex
           }))
           .filter((window) => window.remainingPercent != null || window.planStatus === 'expired' || window.value)
