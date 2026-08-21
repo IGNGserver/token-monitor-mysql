@@ -155,20 +155,62 @@ class HubViewModel @Inject constructor(private val repository: HubRepository) : 
     }
   }
 
-  fun saveSubscriptions(subscriptions: List<SubscriptionDto>, baseUpdatedAt: String = "") = viewModelScope.launch {
+  /**
+   * Save a subscription mutation with one optimistic-concurrency rebase.
+   *
+   * The UI passes the candidate list for the common path and a mutation
+   * function for the conflict path. On 409 we fetch the Hub's latest document,
+   * apply that mutation to it, and retry once with the latest updatedAt. This
+   * preserves edits made by another device instead of blindly resubmitting a
+   * stale full-list snapshot.
+   */
+  fun saveSubscriptions(
+    subscriptions: List<SubscriptionDto>,
+    baseUpdatedAt: String = "",
+    rebase: ((List<SubscriptionDto>) -> List<SubscriptionDto>)? = null,
+    onSuccess: () -> Unit = {}
+  ) = viewModelScope.launch {
     _state.value = _state.value.copy(subscriptionsLoading = true, error = null)
-    when (val result = repository.putSubscriptions(SubscriptionsRequestDto(subscriptions, baseUpdatedAt))) {
-      is HubResult.Success -> _state.value = _state.value.copy(
-        subscriptions = result.value,
-        subscriptionsLoading = false
-      )
-      is HubResult.Failure -> {
-        _state.value = _state.value.copy(
-          subscriptionsLoading = false,
-          error = result.error.message
-        )
-        if (result.error.kind == HubError.Kind.Conflict) {
-          refreshSubscriptions()
+    var candidate = subscriptions
+    var base = baseUpdatedAt
+    var retried = false
+    while (true) {
+      when (val result = repository.putSubscriptions(SubscriptionsRequestDto(candidate, base))) {
+        is HubResult.Success -> {
+          _state.value = _state.value.copy(
+            subscriptions = result.value,
+            subscriptionsLoading = false
+          )
+          onSuccess()
+          return@launch
+        }
+        is HubResult.Failure -> {
+          if (result.error.kind == HubError.Kind.Conflict && !retried && rebase != null) {
+            retried = true
+            when (val latest = repository.subscriptions()) {
+              is HubResult.Success -> {
+                candidate = rebase(latest.value.subscriptions)
+                base = latest.value.updatedAt
+                _state.value = _state.value.copy(subscriptions = latest.value)
+                continue
+              }
+              is HubResult.Failure -> {
+                _state.value = _state.value.copy(
+                  subscriptionsLoading = false,
+                  error = latest.error.message
+                )
+                return@launch
+              }
+            }
+          }
+          _state.value = _state.value.copy(
+            subscriptionsLoading = false,
+            error = result.error.message
+          )
+          if (result.error.kind == HubError.Kind.Conflict) {
+            refreshSubscriptions()
+          }
+          return@launch
         }
       }
     }

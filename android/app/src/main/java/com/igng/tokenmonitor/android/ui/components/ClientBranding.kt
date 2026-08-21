@@ -48,6 +48,7 @@ object ClientBranding {
     "proma" to "Proma",
     "reasonix" to "Reasonix",
     "deepseek" to "DeepSeek",
+    "deepseek-harness" to "DeepSeek Harness",
     "xiaomi" to "Xiaomi",
     "mimo" to "MiMo",
     "minimax" to "MiniMax",
@@ -66,60 +67,65 @@ object ClientBranding {
     "openrouter" to "OpenRouter"
   )
 
-  private val colors: Map<String, Color> = mapOf(
-    "claude" to Color(0xFFCC7C5E),
-    "claude-desktop" to Color(0xFFD4927A),
-    "codex" to Color(0xFF49A3B0),
-    "commandcode" to Color(0xFF7B61FF),
-    "hermes" to Color(0xFFD4AF37),
-    "gemini" to Color(0xFF4285F4),
-    "antigravity" to Color(0xFF4285F4),
-    "cline" to Color(0xFF323B43),
-    "kimi" to Color(0xFF16191E),
-    "grok" to Color(0xFF222222),
-    "copilot" to Color(0xFF24292F),
-    "deepseek" to Color(0xFF4D6BFE),
-    "cursor" to Color(0xFF2D2D2D),
-    "opencode" to Color(0xFF1A1A1A),
-    "openclaw" to Color(0xFFFF4D4D),
-    "xai" to Color(0xFF222222),
-    "meta" to Color(0xFF1D65C1),
-    "mistral" to Color(0xFFFA520F),
-    "qwen" to Color(0xFF615CED),
-    "pi" to Color(0xFF333333),
-    "zed" to Color(0xFF4173E7),
-    "kilocode" to Color(0xFFF8F676),
-    "micode" to Color(0xFF333333),
-    "mimo" to Color(0xFFFF6700),
-    "xiaomi" to Color(0xFFFF6700),
-    "zcode" to Color(0xFF333333),
-    "kiro" to Color(0xFF9046FF),
-    "codebuddy" to Color(0xFF6C4DFF),
-    "workbuddy" to Color(0xFF0DC8A5),
-    "proma" to Color(0xFF333333),
-    "reasonix" to Color(0xFFEF6C3A),
-    "moonshot" to Color(0xFF16191E),
-    "minimax" to Color(0xFFF23F5D),
-    "doubao" to Color(0xFF1E37FC),
-    "ollama" to Color(0xFF888888),
-    "zai" to Color(0xFF333333),
-    "zaiteam" to Color(0xFF333333),
-    "cohere" to Color(0xFF39594D),
-    "volcengine" to Color(0xFF006EFF),
-    "qoder" to Color(0xFF2ADB5C),
-    "qodercn" to Color(0xFF1BAA70),
-    "openrouter" to Color(0xFF6B57FF),
-    "default" to Color(0xFF6AB4F0)
-  )
+  private val colors: Map<String, Color> by lazy {
+    mapOf(
+      "claude" to Color(0xFFCC7C5E),
+      "claude-desktop" to Color(0xFFD4927A),
+      "codex" to Color(0xFF49A3B0),
+      "commandcode" to Color(0xFF7B61FF),
+      "hermes" to Color(0xFFD4AF37),
+      "gemini" to Color(0xFF4285F4),
+      "antigravity" to Color(0xFF4285F4),
+      "cline" to Color(0xFF323B43),
+      "kimi" to Color(0xFF16191E),
+      "grok" to Color(0xFF222222),
+      "copilot" to Color(0xFF24292F),
+      "deepseek" to Color(0xFF4D6BFE),
+      "cursor" to Color(0xFF2D2D2D),
+      "opencode" to Color(0xFF1A1A1A),
+      "openclaw" to Color(0xFFFF4D4D),
+      "xai" to Color(0xFF222222),
+      "meta" to Color(0xFF1D65C1),
+      "mistral" to Color(0xFFFA520F),
+      "qwen" to Color(0xFF615CED),
+      "pi" to Color(0xFF333333),
+      "zed" to Color(0xFF4173E7),
+      "kilocode" to Color(0xFFF8F676),
+      "micode" to Color(0xFF333333),
+      "mimo" to Color(0xFFFF6700),
+      "xiaomi" to Color(0xFFFF6700),
+      "zcode" to Color(0xFF333333),
+      "kiro" to Color(0xFF9046FF),
+      "codebuddy" to Color(0xFF6C4DFF),
+      "workbuddy" to Color(0xFF0DC8A5),
+      "proma" to Color(0xFF333333),
+      "reasonix" to Color(0xFFEF6C3A),
+      "moonshot" to Color(0xFF16191E),
+      "deepseek-harness" to Color(0xFF4D6BFE),
+      "minimax" to Color(0xFFF23F5D),
+      "doubao" to Color(0xFF1E37FC),
+      "ollama" to Color(0xFF888888),
+      "zai" to Color(0xFF333333),
+      "zaiteam" to Color(0xFF333333),
+      "cohere" to Color(0xFF39594D),
+      "volcengine" to Color(0xFF006EFF),
+      "qoder" to Color(0xFF2ADB5C),
+      "qodercn" to Color(0xFF1BAA70),
+      "openrouter" to Color(0xFF6B57FF),
+      "default" to Color(0xFF6AB4F0)
+    )
+  }
 
-  private val fallbacks = listOf(
-    Color(0xFF6AB4F0),
-    Color(0xFFCC7C5E),
-    Color(0xFFA57DF0),
-    Color(0xFF49A3B0),
-    Color(0xFFF0D66A),
-    Color(0xFFF06A7B)
-  )
+  private val fallbacks: List<Color> by lazy {
+    listOf(
+      Color(0xFF6AB4F0),
+      Color(0xFFCC7C5E),
+      Color(0xFFA57DF0),
+      Color(0xFF49A3B0),
+      Color(0xFFF0D66A),
+      Color(0xFFF06A7B)
+    )
+  }
 
   fun label(id: String): String {
     val key = id.trim().lowercase()

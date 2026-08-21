@@ -1,6 +1,7 @@
 package com.igng.tokenmonitor.android.ui.more
 
 import com.igng.tokenmonitor.android.data.model.SubscriptionDto
+import com.igng.tokenmonitor.android.data.model.SubscriptionBindingDto
 import com.igng.tokenmonitor.android.data.model.SubscriptionTopUpDto
 import java.time.LocalDate
 import org.junit.Assert.assertEquals
@@ -78,5 +79,51 @@ class SubscriptionLogicTest {
     )
 
     assertEquals(100L, subscriptionTopUpTotalMinor(subscription))
+  }
+
+  @Test
+  fun subscriptionEditRebasesOntoConcurrentRecords() {
+    val remote = SubscriptionDto(id = "remote", provider = "claude")
+    val draft = SubscriptionDto(id = "local", provider = "codex", planName = "Pro")
+
+    val result = upsertSubscription(listOf(remote), draft)
+
+    assertEquals(listOf("remote", "local"), result.map { it.id })
+    assertEquals("Pro", result.last().planName)
+  }
+
+  @Test
+  fun topUpEditRetainsConcurrentTopUp() {
+    val record = SubscriptionDto(
+      id = "credits",
+      provider = "deepseek",
+      kind = "topup",
+      binding = SubscriptionBindingDto(accountEmail = "old@example.com"),
+      topUps = listOf(SubscriptionTopUpDto(id = "remote-entry", amountMinor = 500))
+    )
+    val template = record.copy(
+      binding = SubscriptionBindingDto(accountEmail = "new@example.com"),
+      topUps = emptyList()
+    )
+    val localEntry = SubscriptionTopUpDto(id = "local-entry", amountMinor = 900)
+
+    val result = upsertTopUp(listOf(record), template, localEntry).single()
+
+    assertEquals("new@example.com", result.binding.accountEmail)
+    assertEquals(listOf("remote-entry", "local-entry"), result.topUps.map { it.id })
+  }
+
+  @Test
+  fun removingMissingTopUpIsAnIdempotentRebase() {
+    val record = SubscriptionDto(
+      id = "credits",
+      kind = "topup",
+      topUps = listOf(SubscriptionTopUpDto(id = "already-removed"))
+    )
+
+    assertEquals(
+      listOf(record),
+      removeTopUp(listOf(record), record.id, "other-entry")
+    )
   }
 }

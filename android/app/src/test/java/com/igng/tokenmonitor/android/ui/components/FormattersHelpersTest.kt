@@ -2,6 +2,7 @@ package com.igng.tokenmonitor.android.ui.components
 
 import com.igng.tokenmonitor.android.data.model.HistoryDayDto
 import com.igng.tokenmonitor.android.data.model.LimitProviderDto
+import com.igng.tokenmonitor.android.data.model.LimitWindowDto
 import com.igng.tokenmonitor.android.data.local.clampHomeLimitAccountCount
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -121,5 +122,61 @@ class FormattersHelpersTest {
     assertEquals(3, clampHomeLimitAccountCount(3))
     assertEquals(1, clampHomeLimitAccountCount(0))
     assertEquals(12, clampHomeLimitAccountCount(99))
+  }
+
+  @Test
+  fun deepSeekHarnessUsesDedicatedBranding() {
+    assertEquals("DeepSeek Harness", ClientBranding.label("deepseek-harness"))
+    assertEquals("DH", ClientBranding.monogram("deepseek-harness"))
+  }
+
+  @Test
+  fun limitSourceLabelsAreHumanReadable() {
+    assertEquals(
+      "App",
+      limitProviderSourceLabel(LimitProviderDto(provider = "codex", source = "rpc", sourceDetail = "app"))
+    )
+    assertEquals(
+      "API",
+      limitProviderSourceLabel(LimitProviderDto(provider = "deepseek", source = "api"))
+    )
+  }
+
+  @Test
+  fun thirdPartyBalanceFallsBackToCreditsWindow() {
+    val provider = LimitProviderDto(
+      provider = "thirdparty",
+      windows = listOf(
+        LimitWindowDto(
+          kind = "billing",
+          remaining = 12.5,
+          currency = "CNY",
+          showMeter = false
+        )
+      )
+    )
+
+    val display = thirdPartyBalanceDisplay(provider)
+
+    assertEquals(12.5, display?.amount ?: 0.0, 0.001)
+    assertEquals("CNY", display?.currency)
+  }
+
+  @Test
+  fun homeLimitSortingPutsLowestRemainingFirstAndKeepsUnknownLast() {
+    val unknown = LimitProviderDto(provider = "opencode")
+    val healthy = LimitProviderDto(
+      provider = "claude",
+      windows = listOf(LimitWindowDto(remainingPercent = 80.0))
+    )
+    val critical = LimitProviderDto(
+      provider = "codex",
+      windows = listOf(LimitWindowDto(remainingPercent = 10.0))
+    )
+
+    assertEquals(
+      listOf("codex", "claude", "opencode"),
+      sortLimitProvidersForHome(listOf(unknown, healthy, critical)).map { it.provider }
+    )
   }
 }

@@ -2,6 +2,7 @@ package com.igng.tokenmonitor.android.ui.more
 
 import com.igng.tokenmonitor.android.data.model.SubscriptionDto
 import com.igng.tokenmonitor.android.data.model.SubscriptionBindingDto
+import com.igng.tokenmonitor.android.data.model.SubscriptionTopUpDto
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.temporal.ChronoUnit
@@ -15,6 +16,67 @@ data class TopUpDraft(
   val binding: SubscriptionBindingDto,
   val note: String
 )
+
+/**
+ * Apply a single subscription edit to the document returned by the Hub.
+ *
+ * The editor starts from a possibly stale snapshot. Keeping the mutation as a
+ * function of the latest list lets the ViewModel retry a 409 without replacing
+ * unrelated records written by another client in the meantime.
+ */
+fun upsertSubscription(
+  subscriptions: List<SubscriptionDto>,
+  draft: SubscriptionDto
+): List<SubscriptionDto> = subscriptions
+  .filterNot { it.id == draft.id }
+  .plus(draft)
+
+fun removeSubscription(
+  subscriptions: List<SubscriptionDto>,
+  id: String
+): List<SubscriptionDto> = subscriptions.filterNot { it.id == id }
+
+/** Apply a top-up edit while retaining any top-ups added concurrently. */
+fun upsertTopUp(
+  subscriptions: List<SubscriptionDto>,
+  recordTemplate: SubscriptionDto,
+  entry: SubscriptionTopUpDto
+): List<SubscriptionDto> {
+  val existing = subscriptions.firstOrNull { it.id == recordTemplate.id }
+  val base = existing ?: recordTemplate
+  val updated = base.copy(
+    provider = recordTemplate.provider,
+    binding = recordTemplate.binding,
+    planName = recordTemplate.planName,
+    currency = recordTemplate.currency,
+    topUps = base.topUps.filterNot { it.id == entry.id } + entry,
+    autoRenew = false,
+    note = recordTemplate.note,
+    updatedAt = ""
+  )
+  return if (existing == null) {
+    subscriptions + updated
+  } else {
+    subscriptions.map { if (it.id == recordTemplate.id) updated else it }
+  }
+}
+
+/** A delete is already satisfied when another client removed the record first. */
+fun removeTopUp(
+  subscriptions: List<SubscriptionDto>,
+  recordId: String,
+  entryId: String
+): List<SubscriptionDto> {
+  val record = subscriptions.firstOrNull { it.id == recordId } ?: return subscriptions
+  val remaining = record.topUps.filterNot { it.id == entryId }
+  return if (remaining.isEmpty()) {
+    subscriptions.filterNot { it.id == recordId }
+  } else {
+    subscriptions.map {
+      if (it.id == recordId) it.copy(topUps = remaining, updatedAt = "") else it
+    }
+  }
+}
 
 /** Display-only subscription calculations kept separate from the Hub wire model. */
 fun isTopUp(subscription: SubscriptionDto): Boolean =

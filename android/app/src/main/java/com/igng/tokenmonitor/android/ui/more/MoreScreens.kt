@@ -181,6 +181,10 @@ import com.igng.tokenmonitor.android.ui.ConnectionUiState
 
 import com.igng.tokenmonitor.android.ui.ConnectionViewModel
 
+import com.igng.tokenmonitor.android.ui.compareHubBuild
+
+import com.igng.tokenmonitor.android.ui.hubBuildCompatibilityLabel
+
 import com.igng.tokenmonitor.android.ui.HubUiState
 
 import com.igng.tokenmonitor.android.ui.HubViewModel
@@ -473,12 +477,13 @@ fun SubscriptionsScreen(
       onSave = { draft ->
         val current = document
         if (current != null) {
-          val next = current.subscriptions
-            .filterNot { it.id == draft.id }
-            .plus(draft)
-          viewModel.saveSubscriptions(next, current.updatedAt)
+          viewModel.saveSubscriptions(
+            subscriptions = upsertSubscription(current.subscriptions, draft),
+            baseUpdatedAt = current.updatedAt,
+            rebase = { latest -> upsertSubscription(latest, draft) },
+            onSuccess = { editorVisible = false }
+          )
         }
-        editorVisible = false
       }
     )
   }
@@ -517,11 +522,12 @@ fun SubscriptionsScreen(
           val current = document
           if (current != null) {
             viewModel.saveSubscriptions(
-              current.subscriptions.filterNot { it.id == target.id },
-              current.updatedAt
+              subscriptions = removeSubscription(current.subscriptions, target.id),
+              baseUpdatedAt = current.updatedAt,
+              rebase = { latest -> removeSubscription(latest, target.id) },
+              onSuccess = { deleting = null }
             )
           }
-          deleting = null
         }) { Text("删除") }
       },
       dismissButton = { TextButton(onClick = { deleting = null }) { Text("取消") } }
@@ -535,19 +541,14 @@ fun SubscriptionsScreen(
       confirmButton = {
         Button(onClick = {
           val current = document
-          val record = current?.subscriptions?.firstOrNull { it.id == target.first.id }
-          if (current != null && record != null) {
-            val remaining = record.topUps.filterNot { it.id == target.second.id }
-            val next = if (remaining.isEmpty()) {
-              current.subscriptions.filterNot { it.id == record.id }
-            } else {
-              current.subscriptions.map {
-                if (it.id == record.id) it.copy(topUps = remaining, updatedAt = "") else it
-              }
-            }
-            viewModel.saveSubscriptions(next, current.updatedAt)
+          if (current != null) {
+            viewModel.saveSubscriptions(
+              subscriptions = removeTopUp(current.subscriptions, target.first.id, target.second.id),
+              baseUpdatedAt = current.updatedAt,
+              rebase = { latest -> removeTopUp(latest, target.first.id, target.second.id) },
+              onSuccess = { deletingTopUp = null }
+            )
           }
-          deletingTopUp = null
         }) { Text("删除") }
       },
       dismissButton = { TextButton(onClick = { deletingTopUp = null }) { Text("取消") } }
@@ -561,45 +562,30 @@ fun SubscriptionsScreen(
       onSave = { draft ->
         val current = document
         if (current != null) {
+          val entryId = topUpEntry?.id ?: "android-topup-${System.currentTimeMillis()}"
           val entry = SubscriptionTopUpDto(
-            id = topUpEntry?.id ?: "android-topup-${System.currentTimeMillis()}",
+            id = entryId,
             date = draft.date,
             amountMinor = draft.amountMinor
           )
-          val targetRecord = topUpRecord
-          val next = if (targetRecord == null) {
-            current.subscriptions + SubscriptionDto(
-              id = "android-topup-record-${System.currentTimeMillis()}",
-              provider = draft.provider,
-              kind = "topup",
-              binding = draft.binding,
-              planName = draft.planName,
-              currency = draft.currency,
-              topUps = listOf(entry),
-              autoRenew = false,
-              note = draft.note
-            )
-          } else {
-            current.subscriptions.map { record ->
-              if (record.id != targetRecord.id) {
-                record
-              } else {
-                record.copy(
-                  provider = draft.provider,
-                  binding = draft.binding,
-                  planName = draft.planName,
-                  currency = draft.currency,
-                  topUps = record.topUps.filterNot { it.id == entry.id } + entry,
-                  autoRenew = false,
-                  note = draft.note,
-                  updatedAt = ""
-                )
-              }
-            }
-          }
-          viewModel.saveSubscriptions(next, current.updatedAt)
+          val recordTemplate = SubscriptionDto(
+            id = topUpRecord?.id ?: "android-topup-record-${System.currentTimeMillis()}",
+            provider = draft.provider,
+            kind = "topup",
+            binding = draft.binding,
+            planName = draft.planName,
+            currency = draft.currency,
+            topUps = listOf(entry),
+            autoRenew = false,
+            note = draft.note
+          )
+          viewModel.saveSubscriptions(
+            subscriptions = upsertTopUp(current.subscriptions, recordTemplate, entry),
+            baseUpdatedAt = current.updatedAt,
+            rebase = { latest -> upsertTopUp(latest, recordTemplate, entry) },
+            onSuccess = { topUpEditorVisible = false }
+          )
         }
-        topUpEditorVisible = false
       }
     )
   }
@@ -2431,6 +2417,20 @@ fun SettingsScreen(
           Text(
 
             "Hub 构建：${build.runtime ?: "unknown"} · core r${build.coreRevision ?: "?"} · runtime r${build.runtimeRevision ?: "?"}",
+
+            style = MaterialTheme.typography.bodySmall,
+
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+
+          )
+
+        }
+
+        (state.hubCompatibility ?: state.health?.hubBuild?.let(::compareHubBuild))?.let { compatibility ->
+
+          Text(
+
+            "Hub 兼容性：${hubBuildCompatibilityLabel(compatibility.status)}",
 
             style = MaterialTheme.typography.bodySmall,
 

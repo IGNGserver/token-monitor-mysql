@@ -59,6 +59,107 @@ fun providerDisplayName(id: String): String =
     if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString()
   }
 
+private val sourceLabels = mapOf(
+  "oauth" to "OAuth",
+  "cli" to "CLI",
+  "web" to "Web",
+  "rpc" to "RPC",
+  "local" to "Local",
+  "api" to "API"
+)
+
+private val providerSourceLabels = mapOf(
+  "claude" to mapOf("oauth" to "OAuth", "cli" to "CLI"),
+  "codex" to mapOf("rpc" to "RPC"),
+  "cursor" to mapOf("web" to "Web"),
+  "antigravity" to mapOf("rpc" to "RPC"),
+  "opencode" to mapOf("local" to "Local", "web" to "Web"),
+  "openrouter" to mapOf("api" to "API"),
+  "deepseek" to mapOf("api" to "API"),
+  "minimax" to mapOf("api" to "API"),
+  "mimo" to mapOf("web" to "Web"),
+  "grok" to mapOf("rpc" to "CLI", "web" to "Web"),
+  "copilot" to mapOf("api" to "API"),
+  "kiro" to mapOf("cli" to "CLI"),
+  "zai" to mapOf("api" to "API"),
+  "zaiteam" to mapOf("api" to "API"),
+  "volcengine" to mapOf("api" to "API"),
+  "qoder" to mapOf("web" to "Web"),
+  "commandcode" to mapOf("web" to "Web"),
+  "thirdparty" to mapOf("api" to "API"),
+  "kimi" to mapOf("api" to "API", "web" to "Web"),
+  "ollama" to mapOf("web" to "Web")
+)
+
+private val codexRpcDetailLabels = mapOf(
+  "app" to "App",
+  "cli" to "CLI",
+  "managed" to "Managed",
+  "unknown" to "RPC"
+)
+
+/** Human-readable source identity aligned with the desktop presentation. */
+fun limitProviderSourceLabel(provider: LimitProviderDto): String {
+  val providerId = provider.provider.trim().lowercase(Locale.US)
+  val source = provider.source?.trim()?.lowercase(Locale.US).orEmpty()
+  val detail = provider.sourceDetail?.trim()?.lowercase(Locale.US).orEmpty()
+  if (providerId == "codex" && source == "rpc") {
+    codexRpcDetailLabels[detail]?.let { return it }
+  }
+  return providerSourceLabels[providerId]?.get(source)
+    ?: sourceLabels[source]
+    ?: ""
+}
+
+data class ThirdPartyBalanceDisplay(
+  val amount: Double? = null,
+  val currency: String = "USD",
+  val detail: String? = null
+)
+
+fun thirdPartyQuotaWindow(provider: LimitProviderDto): LimitWindowDto? {
+  if (!provider.provider.trim().equals("thirdparty", ignoreCase = true)) return null
+  return provider.windows.firstOrNull { it.metric.equals("credits", ignoreCase = true) }
+    ?: provider.windows.firstOrNull {
+      it.metric.isNullOrBlank() && it.kind.equals("billing", ignoreCase = true)
+    }
+}
+
+/** Resolve the absolute third-party balance used by the desktop's balance row. */
+fun thirdPartyBalanceDisplay(provider: LimitProviderDto): ThirdPartyBalanceDisplay? {
+  val quota = thirdPartyQuotaWindow(provider) ?: return null
+  val balance = provider.balance
+  val amount = balance?.amount ?: quota.remaining
+  if (amount != null) {
+    return ThirdPartyBalanceDisplay(
+      amount = amount,
+      currency = balance?.currency ?: quota.currency ?: "USD"
+    )
+  }
+  val detail = quota.detail?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+  return ThirdPartyBalanceDisplay(
+    detail = if (detail.equals("unlimited", ignoreCase = true)) "无限" else detail
+  )
+}
+
+private fun limitProviderRemainingPercent(provider: LimitProviderDto): Double? =
+  provider.windows.mapNotNull { window ->
+    window.remainingPercent?.coerceIn(0.0, 100.0)
+      ?: windowUsedPercent(window)?.let { (100.0 - it).coerceIn(0.0, 100.0) }
+  }.minOrNull()
+
+/** Home cards show the tightest quota first, with unknown balances at the end. */
+fun sortLimitProvidersForHome(providers: List<LimitProviderDto>): List<LimitProviderDto> =
+  providers.withIndex()
+    .sortedWith(
+      compareBy<IndexedValue<LimitProviderDto>>(
+        { limitProviderRemainingPercent(it.value) == null },
+        { limitProviderRemainingPercent(it.value) ?: Double.POSITIVE_INFINITY },
+        { it.index }
+      )
+    )
+    .map { it.value }
+
 fun windowKindLabel(kind: String): String = when (kind.lowercase(Locale.US)) {
   "session" -> "会话"
   "weekly" -> "每周"
@@ -82,11 +183,16 @@ fun LimitsSection(
       provider.windows.any { it.showMeter && windowUsedPercent(it) != null } ||
         provider.balanceUsd != null ||
         provider.balance?.amount != null ||
+        thirdPartyBalanceDisplay(provider)?.let { it.amount != null || it.detail != null } == true ||
         provider.resetCredits != null ||
         !provider.status.isNullOrBlank()
     }
   }
-  val providers = if (maxAccounts != null) filtered.take(maxAccounts.coerceIn(1, 12)) else filtered
+  val providers = if (maxAccounts != null) {
+    sortLimitProvidersForHome(filtered).take(maxAccounts.coerceIn(1, 12))
+  } else {
+    filtered
+  }
   if (providers.isEmpty()) return
 
   AppCard(modifier = modifier) {
@@ -126,8 +232,7 @@ private fun LimitProviderCard(
         val meta = buildList {
           add(providerDisplayName(provider.provider))
           limitPlanLabel(provider).takeIf { it.isNotBlank() }?.let { add(it) }
-          provider.source?.takeIf { it.isNotBlank() }?.let { add(it.uppercase(Locale.US)) }
-          provider.sourceDetail?.takeIf { it.isNotBlank() }?.let { add(it.uppercase(Locale.US)) }
+          limitProviderSourceLabel(provider).takeIf { it.isNotBlank() }?.let { add(it) }
           provider.region?.takeIf { it.isNotBlank() }?.let { add(it.uppercase(Locale.US)) }
           provider.accountEmail
             ?.takeIf { it.isNotBlank() && it != displayName }
@@ -146,8 +251,15 @@ private fun LimitProviderCard(
       }
     }
 
+    val thirdPartyBalance = thirdPartyBalanceDisplay(provider)
     val balanceLines = buildList {
       provider.balanceUsd?.let { add("USD 余额 " + formatMoneyAmount(it, "USD")) }
+      if (provider.balance?.amount == null) {
+        thirdPartyBalance?.amount?.let { amount ->
+          add("余额 " + formatMoneyAmount(amount, thirdPartyBalance.currency))
+        }
+        thirdPartyBalance?.detail?.let { detail -> add("额度 $detail") }
+      }
       provider.balance?.let { balance ->
         balance.amount?.let { amount ->
           add("余额 " + formatMoneyAmount(amount, balance.currency))

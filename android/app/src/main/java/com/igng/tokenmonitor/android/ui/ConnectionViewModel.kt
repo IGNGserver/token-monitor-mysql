@@ -17,7 +17,8 @@ data class ConnectionUiState(
   val secret: String = "",
   val testing: Boolean = false,
   val message: String? = null,
-  val health: HealthDto? = null
+  val health: HealthDto? = null,
+  val hubCompatibility: HubBuildCompatibility? = null
 )
 
 @HiltViewModel
@@ -34,13 +35,15 @@ class ConnectionViewModel @Inject constructor(private val repository: HubReposit
     _state.value = _state.value.copy(testing = true, message = null)
     when (val result = repository.testConnection(config)) {
       is HubResult.Success -> {
+        val compatibility = compareHubBuild(result.value.hubBuild)
         val build = result.value.hubBuild?.let {
           "${it.runtime ?: "hub"} core r${it.coreRevision ?: "?"} / runtime r${it.runtimeRevision ?: "?"}"
         }
         _state.value = _state.value.copy(
           testing = false,
           health = result.value,
-          message = "连接成功：${build ?: "Hub v${result.value.version ?: "?"}"}"
+          hubCompatibility = compatibility,
+          message = "连接成功：${hubBuildCompatibilityLabel(compatibility.status)} · ${build ?: "Hub v${result.value.version ?: "?"}"}"
         )
       }
       is HubResult.Failure -> _state.value = _state.value.copy(testing = false, message = result.error.message)
